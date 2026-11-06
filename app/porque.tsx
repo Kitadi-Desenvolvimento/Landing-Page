@@ -1,0 +1,128 @@
+import Image from "next/image";
+import SectionContainer from "./section-container";
+
+const pillars = [
+  { number: "01", label: "Segurança financeira" },
+  { number: "02", label: "Realização de sonhos" },
+  { number: "03", label: "Renovação e comunidade" },
+];
+
+const steps = [
+  { number: "01", label: "Consciência" },
+  { number: "02", label: "Decisão" },
+  { number: "03", label: "Acção" },
+];
+
+function Principles({
+  heading,
+  items,
+}: {
+  heading: string;
+  items: { number: string; label: string }[];
+}) {
+  return (
+    <div>
+      <h3 className="section-eyebrow text-[#cda45c]">
+        {heading}
+      </h3>
+      <div className="mt-[18px] grid grid-cols-3 gap-[19px]">
+        {items.map((item) => (
+          <div
+            className="border-t border-white/45 pt-[18px]"
+            key={item.number}
+          >
+            <p className="section-eyebrow text-[#d0ad73]">
+              {item.number}
+            </p>
+            <p className="content-card-copy mt-[11px] text-white/90">
+              {item.label}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function PorqueEscolherKitadi() {
+  return (
+    <section
+      aria-labelledby="why-kitadi-title"
+      className="flex min-h-svh items-center px-6 py-16 text-white sm:py-20 lg:py-10"
+      id="quem-somos"
+      style={{
+        background:
+          "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)",
+      }}
+    >
+      <SectionContainer className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[minmax(0,1.14fr)_minmax(0,1fr)] lg:gap-16">
+        <div className="w-full max-w-[428px]">
+          <p className="section-eyebrow text-[#cda45c]">
+            Porquê escolher a Kitadi
+          </p>
+          <h2
+            className="section-heading mt-5 max-w-[430px]"
+            id="why-kitadi-title"
+          >
+            O dinheiro deve sustentar uma vida com propósito
+          </h2>
+          <p className="content-card-copy mt-[16px] max-w-[410px] text-white/75">
+            O dinheiro pode sustentar um estilo de vida, mas deve sustentar
+            sobretudo paz, segurança, liberdade e legado.
+          </p>
+
+          <div className="mt-[28px]">
+            <Principles heading="Os nossos pilares" items={pillars} />
+          </div>
+
+          <div className="mt-[32px]">
+            <Principles heading="O nosso método" items={steps} />
+          </div>
+        </div>
+
+        <article className="content-card w-full max-w-[378px] justify-self-end bg-white p-8 text-[#211d1e]">
+          <div className="relative h-[220px] overflow-hidden rounded-[12px]">
+          <Image
+            alt="Neuza Pinto, educadora financeira"
+            className="object-cover"
+            fill
+            sizes="(min-width: 1024px) 314px, 263px"
+            src="/neuza-pinto.png"
+          />
+          </div>
+          <h3 className="content-card-title mt-[19px] text-[#cda45c]">
+            Neuza Pinto
+          </h3>
+          <p className="section-eyebrow mt-[7px] text-[#625c5c]">
+            Educadora financeira &amp; business designer
+          </p>
+          <p className="content-card-copy mt-[19px] text-[#625c5c]">
+            Com mais de 20 anos de experiência em gestão financeira,
+            desenvolvimento humano e orientação estratégica, é uma referência
+            consolidada em Angola na intersecção entre finanças pessoais e
+            transformação de vida.
+          </p>
+
+          <div className="mt-[37px] grid grid-cols-2 gap-6">
+            <div>
+              <p className="text-[36px] font-bold leading-none text-[#cda45c]">
+                25+
+              </p>
+              <p className="mt-[8px] text-[12px] text-[#625c5c]">
+                Anos de experiência
+              </p>
+            </div>
+            <div>
+              <p className="text-[36px] font-bold leading-none text-[#cda45c]">
+                10K+
+              </p>
+              <p className="mt-[8px] text-[12px] text-[#625c5c]">
+                Clientes atendidos
+              </p>
+            </div>
+          </div>
+        </article>
+      </SectionContainer>
+    </section>
+  );
+}
