@@ -2,34 +2,8 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
+import { courses } from "./course-data";
 import SectionContainer from "./section-container";
-
-const courses = [
-  {
-    title: "Orçamento com propósito",
-    description:
-      "Organize despesas, priorize objectivos e crie um plano mensal que dê paz de espírito.",
-    price: "499.900 Kz",
-    image: "/formacoes/orcamento.png",
-    alt: "Mulher a organizar as finanças num computador",
-  },
-  {
-    title: "Investir com disciplina",
-    description:
-      "Aprenda a escolher ativos, gerir risco e construir um património com consistência.",
-    price: "799.900 Kz",
-    image: "/formacoes/investir.png",
-    alt: "Mulher a consultar gráficos financeiros num tablet",
-  },
-  {
-    title: "Negócios sustentáveis",
-    description:
-      "Estruture o seu negócio com decisões claras e crescimento.",
-    price: "99.900 Kz",
-    image: "/formacoes/negocios.png",
-    alt: "Duas mulheres a conversar à mesa",
-  },
-];
 
 export default function Formacoes() {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -115,7 +89,7 @@ export default function Formacoes() {
                   </p>
                   <a
                     className="inline-flex h-[35px] min-w-[72px] items-center justify-center rounded-full bg-[#cda45c] px-4 text-[11px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
-                    href="#contactos"
+                    href={`/formacoes/${course.slug}/inscricao`}
                   >
                     Aderir
                   </a>
@@ -149,7 +123,7 @@ export default function Formacoes() {
 
         <div className="mt-[56px] flex items-center justify-between pr-6 text-[13px] text-[#716a69]">
           <p>3 formações em destaque</p>
-          <a className="text-[#2b2627] hover:text-[#862f3b]" href="#formacoes">
+          <a className="text-[#2b2627] hover:text-[#862f3b]" href="/formacoes">
             Ver todos
           </a>
         </div>

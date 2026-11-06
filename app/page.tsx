@@ -3,13 +3,7 @@ import Contactos from "./contactos";
 import PorqueEscolherKitadi from "./porque";
 import Referencias from "./referencias";
 import SectionContainer from "./section-container";
-
-const navItems = [
-  { label: "Início", href: "#inicio" },
-  { label: "Serviços", href: "#servicos" },
-  { label: "Quem somos", href: "#quem-somos" },
-  { label: "Contactos", href: "#contactos" },
-];
+import SiteHeader from "./site-header";
 
 const serviceAreas = [
   {
@@ -56,17 +50,6 @@ const audiences = [
   },
 ];
 
-function ContactButton({ className = "" }: { className?: string }) {
-  return (
-    <a
-      className={`inline-flex min-h-[50px] items-center justify-center rounded-full bg-[#cda45c] px-[31px] text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e] ${className}`}
-      href="#contactos"
-    >
-      Contactar
-    </a>
-  );
-}
-
 export default function Home() {
   return (
     <main className="min-h-svh overflow-x-hidden">
@@ -75,60 +58,7 @@ export default function Home() {
         className="flex min-h-svh flex-col"
         id="inicio"
       >
-        <header className="mx-auto flex w-[calc(100%-48px)] max-w-[1058px] items-center justify-between pt-[30px]">
-          <a
-            aria-label="Kitadi — início"
-            className="text-[27px] font-bold leading-none tracking-[-1.2px]"
-            href="#inicio"
-          >
-            Kitadi
-          </a>
-
-          <nav
-            aria-label="Navegação principal"
-            className="hidden items-center gap-[45px] md:flex"
-          >
-            {navItems.map((item) => (
-              <a
-                className="text-[14px] font-normal text-white/90 transition-colors hover:text-[#d1aa64]"
-                href={item.href}
-                key={item.label}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <ContactButton className="hidden min-w-[128px] md:inline-flex" />
-
-          <details className="group relative md:hidden">
-            <summary
-              aria-label="Abrir menu"
-              className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-full border border-white/50"
-            >
-              <span className="flex w-[18px] flex-col gap-[5px]">
-                <span className="h-px w-full bg-white" />
-                <span className="h-px w-full bg-white" />
-                <span className="h-px w-full bg-white" />
-              </span>
-            </summary>
-            <nav
-              aria-label="Navegação principal"
-              className="absolute right-0 top-[52px] z-10 flex min-w-[190px] flex-col gap-5 rounded-2xl border border-white/15 bg-[#390b15] p-5 shadow-xl"
-            >
-              {navItems.map((item) => (
-                <a
-                  className="text-sm text-white/90"
-                  href={item.href}
-                  key={item.label}
-                >
-                  {item.label}
-                </a>
-              ))}
-              <ContactButton className="mt-1 min-h-11 px-5" />
-            </nav>
-          </details>
-        </header>
+        <SiteHeader />
 
         <div className="mx-auto flex w-[calc(100%-48px)] max-w-[1058px] flex-1 flex-col justify-center py-12 md:py-16">
           <p className="text-[12px] font-bold uppercase tracking-[0.7px] text-[#cda45c]">
