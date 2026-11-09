@@ -84,7 +84,7 @@ export default function PorqueEscolherKitadi() {
           <div className="relative h-[260px] overflow-hidden rounded-[12px] bg-[#f5f2f1]">
             <Image
               alt="Neuza Pinto, educadora financeira"
-              className="object-contain"
+              className="object-cover object-top"
               fill
               sizes="(min-width: 1024px) 314px, 263px"
               src="/neuza-pinto.jpg"
