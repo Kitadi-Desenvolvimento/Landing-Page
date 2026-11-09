@@ -27,7 +27,7 @@ const contactDetails = [
   },
   {
     label: "Morada",
-    content: <>Edifício Very, Av. 21 de Janeiro nº 101, Luanda</>,
+    content: <>Edifício  Vany, Av. 21 de Janeiro nº 101, Luanda</>,
   },
 ];
 
