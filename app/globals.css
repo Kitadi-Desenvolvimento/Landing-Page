@@ -68,3 +68,10 @@ a {
   font-size: 16px;
   line-height: 1.6;
 }
+.references-carousel-track {
+  scrollbar-width: none;
+}
+
+.references-carousel-track::-webkit-scrollbar {
+  display: none;
+}

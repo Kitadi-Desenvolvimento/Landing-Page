@@ -81,14 +81,14 @@ export default function PorqueEscolherKitadi() {
         </div>
 
         <article className="content-card w-full max-w-[378px] justify-self-end bg-white p-8 text-[#211d1e]">
-          <div className="relative h-[220px] overflow-hidden rounded-[12px]">
-          <Image
-            alt="Neuza Pinto, educadora financeira"
-            className="object-cover"
-            fill
-            sizes="(min-width: 1024px) 314px, 263px"
-            src="/neuza-pinto.png"
-          />
+          <div className="relative h-[260px] overflow-hidden rounded-[12px] bg-[#f5f2f1]">
+            <Image
+              alt="Neuza Pinto, educadora financeira"
+              className="object-contain"
+              fill
+              sizes="(min-width: 1024px) 314px, 263px"
+              src="/neuza-pinto.jpg"
+            />
           </div>
           <h3 className="content-card-title mt-[19px] text-[#cda45c]">
             Neuza Pinto

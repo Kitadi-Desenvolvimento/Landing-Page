@@ -18,10 +18,20 @@ type EnrollmentDetails = {
 type ChargeDetails = {
   customId: string;
   chargeId: string;
-  status: "pending" | "paid";
+  status: PaymentStatus;
   checkoutUrl: string;
   entity: string | null;
   reference: string | null;
+  amount: number;
+  currency: "AOA";
+  expiresAt: string | null;
+};
+
+type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "canceled" | "refunded";
+
+type PaymentStatusResult = {
+  chargeId: string;
+  status: PaymentStatus;
   amount: number;
   currency: "AOA";
   expiresAt: string | null;
@@ -34,7 +44,7 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
   return (
     typeof charge.customId === "string" &&
     typeof charge.chargeId === "string" &&
-    (charge.status === "pending" || charge.status === "paid") &&
+    isPaymentStatus(charge.status) &&
     typeof charge.checkoutUrl === "string" &&
     (() => {
       try {
@@ -52,6 +62,30 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
     typeof charge.amount === "number" &&
     charge.currency === "AOA" &&
     (typeof charge.expiresAt === "string" || charge.expiresAt === null)
+  );
+}
+
+function isPaymentStatus(value: unknown): value is PaymentStatus {
+  return (
+    value === "pending" ||
+    value === "paid" ||
+    value === "failed" ||
+    value === "expired" ||
+    value === "canceled" ||
+    value === "refunded"
+  );
+}
+
+function isPaymentStatusResult(value: unknown): value is PaymentStatusResult {
+  if (typeof value !== "object" || value === null) return false;
+  const result = value as Record<string, unknown>;
+
+  return (
+    typeof result.chargeId === "string" &&
+    isPaymentStatus(result.status) &&
+    typeof result.amount === "number" &&
+    result.currency === "AOA" &&
+    (typeof result.expiresAt === "string" || result.expiresAt === null)
   );
 }
 
@@ -111,6 +145,7 @@ function PaymentInstructions({
   statusError: string | null;
 }) {
   const isPaid = charge.status === "paid";
+  const isPending = charge.status === "pending";
   const instructions = [
     {
       title: "Abra o checkout seguro da Blue Lemon",
@@ -155,10 +190,18 @@ function PaymentInstructions({
                 strokeWidth="1.3"
               />
             </svg>
-            {isPaid ? "Pagamento confirmado" : "Cobrança criada"}
+            {isPaid
+              ? "Pagamento confirmado"
+              : isPending
+                ? "Cobrança criada"
+                : "Pagamento não concluído"}
           </span>
           <h2 aria-live="polite" className="mt-5 text-[20px] font-semibold">
-            {isPaid ? "Pagamento confirmado" : "Continue para o checkout"}
+            {isPaid
+              ? "Pagamento confirmado"
+              : isPending
+                ? "Continue para o checkout"
+                : "Verifique o estado do pagamento"}
           </h2>
         </div>
       </div>
@@ -166,7 +209,9 @@ function PaymentInstructions({
       <p className="content-card-copy mt-3 text-sm text-[#716a69]">
         {isPaid
           ? "A Blue Lemon confirmou o pagamento desta inscrição."
-          : "A cobrança foi criada. Escolha o método de pagamento no checkout seguro da Blue Lemon."}
+          : isPending
+            ? "A cobrança foi criada. Escolha o método de pagamento no checkout seguro da Blue Lemon."
+            : `O estado atual do pagamento é: ${charge.status}.`}
       </p>
 
       <p className="mt-3 text-sm text-[#716a69]">
@@ -199,7 +244,7 @@ function PaymentInstructions({
         </dl>
       </div>
 
-      {!isPaid && (
+      {isPending && (
         <a
           className="mt-5 inline-flex min-h-[46px] w-full items-center justify-center rounded-full bg-[#cda45c] px-6 text-sm font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
           href={charge.checkoutUrl}
@@ -257,23 +302,31 @@ export default function Checkout({ course }: { course: Course }) {
   });
 
   useEffect(() => {
-    if (!paymentCharge || paymentCharge.status === "paid") return;
+    if (!paymentCharge || paymentCharge.status !== "pending") return;
 
     let active = true;
     const intervalId = window.setInterval(async () => {
       try {
         const response = await fetch(
-          `/api/payments/charges/${encodeURIComponent(paymentCharge.customId)}`,
+          `/api/payments/charges/${encodeURIComponent(paymentCharge.chargeId)}`,
           { cache: "no-store" },
         );
         const result: unknown = await response.json();
 
-        if (!response.ok || !isChargeDetails(result)) {
+        if (!response.ok || !isPaymentStatusResult(result)) {
           throw new Error("Não foi possível consultar o estado do pagamento.");
         }
 
         if (active) {
-          setPaymentCharge(result);
+          setPaymentCharge((current) =>
+            current
+              ? {
+                  ...current,
+                  status: result.status,
+                  expiresAt: result.expiresAt,
+                }
+              : current,
+          );
           setPaymentError(null);
         }
       } catch {
@@ -324,6 +377,10 @@ export default function Checkout({ course }: { course: Course }) {
         throw new Error("O serviço de pagamentos devolveu dados inválidos.");
       }
 
+      if (result.amount !== course.priceAmount) {
+        throw new Error("O valor devolvido não corresponde a esta formação.");
+      }
+
       setPaymentCharge(result);
     } catch (error) {
       setPaymentError(
@@ -342,14 +399,18 @@ export default function Checkout({ course }: { course: Course }) {
   const checkoutHeading =
     paymentCharge?.status === "paid"
       ? "Pagamento confirmado"
+      : paymentCharge && paymentCharge.status !== "pending"
+        ? "Pagamento não concluído"
       : paymentCharge
         ? "Continue para o checkout"
         : "Está a um passo de começar";
   const checkoutDescription =
     paymentCharge?.status === "paid"
       ? "A Blue Lemon confirmou o pagamento desta inscrição."
+      : paymentCharge && paymentCharge.status !== "pending"
+        ? `O estado atual do pagamento é: ${paymentCharge.status}.`
       : paymentCharge
-        ? "A cobrança foi criada. Escolha o método de pagamento no checkout seguro da Blue Lemon."
+        ? "A cobrança foi criada. O estado é consultado diretamente na Blue Lemon."
         : "Preencha os seus dados e escolha como pagar. Sem carrinho, sem complicações.";
 
   return (

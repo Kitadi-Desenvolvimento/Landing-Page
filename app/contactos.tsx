@@ -5,9 +5,6 @@ const contactDetails = [
     label: "Telefone",
     content: (
       <>
-        <a className="transition-colors hover:text-[#862f3b]" href="tel:+244927313220">
-          +244 927 313 220
-        </a>
         <span aria-hidden="true" className="mx-3">
           ·
         </span>
@@ -22,9 +19,9 @@ const contactDetails = [
     content: (
       <a
         className="transition-colors hover:text-[#862f3b]"
-        href="mailto:contacto@kitadi.co.ao"
+        href="mailto:comercial@kitadi.co.ao"
       >
-        contacto@kitadi.co.ao
+        comercial@kitadi.co.ao
       </a>
     ),
   },

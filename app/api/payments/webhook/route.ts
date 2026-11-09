@@ -1,6 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getPayment, markPaymentPaid } from "../../../lib/payments";
+import { courses } from "../../../course-data";
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -48,13 +51,6 @@ function verifySignature(
 }
 
 export async function POST(request: Request) {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json(
-      { error: "O armazenamento de webhooks de teste não está ativo em produção." },
-      { status: 503 },
-    );
-  }
-
   const secret = process.env.BLUELEMON_WEBHOOK_SECRET;
   if (!secret) {
     console.error("Blue Lemon webhook signing secret is not configured.");
@@ -108,9 +104,13 @@ export async function POST(request: Request) {
 
   const eventId = typeof body.id === "string" ? body.id : "";
   const eventType = typeof body.type === "string" ? body.type : "";
-  if (!eventId || !eventType || body.livemode !== false) {
+  if (
+    !uuidPattern.test(eventId) ||
+    !eventType ||
+    typeof body.livemode !== "boolean"
+  ) {
     return NextResponse.json(
-      { error: "O evento não corresponde ao ambiente de teste." },
+      { error: "O envelope do evento é inválido." },
       { status: 400 },
     );
   }
@@ -123,34 +123,27 @@ export async function POST(request: Request) {
   const customId = typeof data.merchant_order_id === "string"
     ? data.merchant_order_id
     : "";
-  const payment = getPayment(customId);
-
-  if (!payment) {
-    console.error("BambooPay webhook references an unknown test payment.");
-    return NextResponse.json(
-      { error: "A cobrança indicada pelo webhook não existe nesta sessão." },
-      { status: 404 },
-    );
-  }
-
   const paymentId = typeof data.payment_id === "string" ? data.payment_id : "";
   const amountMinor = Number(data.amount_minor);
   const paidAt = typeof data.paid_at === "string" ? data.paid_at : "";
-  const transactionReceipt =
-    typeof data.provider_transaction_id === "string"
-      ? data.provider_transaction_id
-      : null;
+  const course = courses.find((item) =>
+    customId.startsWith(`KITADI-${item.slug}-`),
+  );
+  const orderIdSuffix = course
+    ? customId.slice(`KITADI-${course.slug}-`.length)
+    : "";
 
   if (
-    data.environment !== "test" ||
+    !course ||
+    !uuidPattern.test(orderIdSuffix) ||
+    data.environment !== (body.livemode ? "live" : "test") ||
     data.status !== "succeeded" ||
-    !paymentId ||
+    !uuidPattern.test(paymentId) ||
     !Number.isSafeInteger(amountMinor) ||
-    amountMinor !== payment.amount * 100 ||
+    amountMinor !== course.priceAmount * 100 ||
     data.currency !== "AOA" ||
     !paidAt ||
-    Number.isNaN(Date.parse(paidAt)) ||
-    paymentId !== payment.chargeId
+    Number.isNaN(Date.parse(paidAt))
   ) {
     console.error("BambooPay webhook rejected: payment details do not match.");
     return NextResponse.json(
@@ -159,22 +152,5 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = markPaymentPaid({
-    customId,
-    eventId,
-    transactionReceipt,
-    paidAt,
-  });
-
-  if (result === "not-found") {
-    return NextResponse.json(
-      { error: "A cobrança indicada pelo webhook não existe nesta sessão." },
-      { status: 404 },
-    );
-  }
-
-  return NextResponse.json({
-    received: true,
-    duplicate: result === "duplicate",
-  });
+  return NextResponse.json({ received: true });
 }

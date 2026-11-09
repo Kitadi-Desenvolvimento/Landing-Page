@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { courses } from "../../../course-data";
-import {
-  createPayment,
-  getPayment,
-  removePayment,
-  type PaymentRecord,
-} from "../../../lib/payments";
 
 const apiBaseUrl = "https://api.bluelemon.ao/v1";
 
@@ -20,18 +14,7 @@ function readString(value: unknown, maxLength: number) {
     : null;
 }
 
-function inMemoryStoreUnavailable() {
-  return process.env.NODE_ENV === "production";
-}
-
 export async function POST(request: Request) {
-  if (inMemoryStoreUnavailable()) {
-    return NextResponse.json(
-      { error: "O armazenamento de pagamentos de teste não está ativo em produção." },
-      { status: 503 },
-    );
-  }
-
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 16_384) {
     return NextResponse.json(
@@ -96,21 +79,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const customId = `KITADI-${randomUUID()}`;
-  const payment: PaymentRecord = {
-    customId,
-    courseSlug: course.slug,
-    amount: course.priceAmount,
-    status: "pending",
-    chargeId: null,
-    checkoutUrl: null,
-    entity: null,
-    reference: null,
-    expiresAt: null,
-    transactionReceipt: null,
-    paidAt: null,
-  };
-  createPayment(payment);
+  const customId = `KITADI-${course.slug}-${randomUUID()}`;
 
   let providerResponse: Response;
   try {
@@ -159,7 +128,6 @@ export async function POST(request: Request) {
   }
 
   if (!providerResponse.ok || !isRecord(providerBody)) {
-    removePayment(customId);
     console.error(
       `Blue Lemon charge request failed with HTTP ${providerResponse.status}.`,
     );
@@ -212,7 +180,6 @@ export async function POST(request: Request) {
     !validCheckoutUrl ||
     (expiresAt !== null && Number.isNaN(Date.parse(expiresAt)))
   ) {
-    removePayment(customId);
     console.error("Blue Lemon returned an incomplete or mismatched payment.");
     return NextResponse.json(
       { error: "A cobrança devolvida pelo serviço não pôde ser validada." },
@@ -220,24 +187,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const savedPayment = getPayment(customId);
-  if (!savedPayment) {
-    console.error("The in-memory payment record disappeared before completion.");
-    return NextResponse.json(
-      { error: "Não foi possível guardar a cobrança para consulta." },
-      { status: 500 },
-    );
-  }
-
-  savedPayment.chargeId = paymentId;
-  savedPayment.checkoutUrl = checkoutUrl;
-  savedPayment.expiresAt = expiresAt;
-
   return NextResponse.json(
     {
       customId,
       chargeId: paymentId,
-      status: savedPayment.status,
+      status: "pending",
       checkoutUrl,
       entity: null,
       reference: null,
