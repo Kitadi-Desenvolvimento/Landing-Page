@@ -106,7 +106,7 @@ export default function PorqueEscolherKitadi() {
           <div className="mt-[37px] grid grid-cols-2 gap-6">
             <div>
               <p className="text-[36px] font-bold leading-none text-[#cda45c]">
-                25+
+                20+
               </p>
               <p className="mt-[8px] text-[12px] text-[#625c5c]">
                 Anos de experiência
