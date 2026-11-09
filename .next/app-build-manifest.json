@@ -7,12 +7,13 @@
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/app/_not-found/page-63b9f8430d41cd18.js"
     ],
-    "/api/payments/charges/[paymentId]/route": [
+    "/layout": [
       "static/chunks/webpack-9d795f9e26b86992.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/chunks/app/api/payments/charges/[paymentId]/route-4be5f06fd38ef20e.js"
+      "static/css/c1608cb6602bf26e.css",
+      "static/chunks/app/layout-f6b6230bf14e38e3.js"
     ],
     "/api/payments/webhook/route": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -28,13 +29,12 @@
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/app/api/payments/charges/route-4be5f06fd38ef20e.js"
     ],
-    "/layout": [
+    "/api/payments/charges/[paymentId]/route": [
       "static/chunks/webpack-9d795f9e26b86992.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/css/b56ba499bbe0017f.css",
-      "static/chunks/app/layout-f6b6230bf14e38e3.js"
+      "static/chunks/app/api/payments/charges/[paymentId]/route-4be5f06fd38ef20e.js"
     ],
     "/formacoes/[slug]/inscricao/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -42,7 +42,7 @@
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/850-e2f4b8acb00a5fe7.js",
-      "static/chunks/app/formacoes/[slug]/inscricao/page-b9fdd51d6ae08430.js"
+      "static/chunks/app/formacoes/[slug]/inscricao/page-ba5926c4745050e9.js"
     ],
     "/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -50,7 +50,7 @@
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/850-e2f4b8acb00a5fe7.js",
-      "static/chunks/app/page-a8678a404ae8bb30.js"
+      "static/chunks/app/page-204b4de18f6d27be.js"
     ],
     "/formacoes/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",

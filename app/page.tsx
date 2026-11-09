@@ -1,4 +1,3 @@
-import Formacoes from "./formacoes";
 import Contactos from "./contactos";
 import PorqueEscolherKitadi from "./porque";
 import Referencias from "./referencias";
@@ -178,7 +177,7 @@ export default function Home() {
         </SectionContainer>
       </section>
 
-      <Formacoes />
+      {/* <Formacoes /> */}
 
       <PorqueEscolherKitadi />
 
