@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const navItems = [
@@ -24,10 +25,17 @@ export default function SiteHeader() {
       <div className="mx-auto flex w-full max-w-[1058px] items-center justify-between">
         <Link
           aria-label="Kitadi — início"
-          className="text-[27px] font-bold leading-none tracking-[-1.2px]"
+          className="relative h-10 w-[124px] sm:h-12 sm:w-[146px]"
           href="/#inicio"
         >
-          Kitadi
+          <Image
+            alt="Kitadi"
+            className="object-contain"
+            fill
+            priority
+            sizes="(min-width: 640px) 146px, 124px"
+            src="/kitadi-logo.png"
+          />
         </Link>
 
         <nav

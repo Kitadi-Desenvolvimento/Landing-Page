@@ -1,8 +1,4 @@
-import ReferencesCarousel, {
-  otherSectorOrganizations,
-  oilAndGasOrganizations,
-  publicSectorOrganizations,
-} from "./references-carousel";
+import ReferencesCarousel from "./references-carousel";
 import SectionContainer from "./section-container";
 
 export default function Referencias() {
@@ -23,23 +19,8 @@ export default function Referencias() {
           Organizações que confiam na Kitadi
         </h2>
 
-        <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-2 lg:mt-[76px] lg:grid-cols-3 lg:gap-7">
+        <div className="mt-12 lg:mt-[76px]">
           <ReferencesCarousel />
-          <ReferencesCarousel
-            organizationLabel="Organizações de Oil & Gas"
-            organizations={oilAndGasOrganizations}
-            title="Oil & Gas"
-          />
-          <ReferencesCarousel
-            organizationLabel="Organizações do sector público"
-            organizations={publicSectorOrganizations}
-            title="Sector Público"
-          />
-          <ReferencesCarousel
-            organizationLabel="Organizações de outros sectores"
-            organizations={otherSectorOrganizations}
-            title="Outros sectores"
-          />
         </div>
       </SectionContainer>
     </section>

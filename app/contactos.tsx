@@ -5,9 +5,6 @@ const contactDetails = [
     label: "Telefone",
     content: (
       <>
-        <span aria-hidden="true" className="mx-3">
-          ·
-        </span>
         <a className="transition-colors hover:text-[#862f3b]" href="tel:+244936250151">
           +244 936 250 151
         </a>

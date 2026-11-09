@@ -12,22 +12,8 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/css/c1608cb6602bf26e.css",
+      "static/css/1848ecdb167d650a.css",
       "static/chunks/app/layout-f6b6230bf14e38e3.js"
-    ],
-    "/api/payments/webhook/route": [
-      "static/chunks/webpack-9d795f9e26b86992.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-73938ce8a8eac1ad.js",
-      "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/chunks/app/api/payments/webhook/route-4be5f06fd38ef20e.js"
-    ],
-    "/api/payments/charges/route": [
-      "static/chunks/webpack-9d795f9e26b86992.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-73938ce8a8eac1ad.js",
-      "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/chunks/app/api/payments/charges/route-4be5f06fd38ef20e.js"
     ],
     "/api/payments/charges/[paymentId]/route": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -36,13 +22,27 @@
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/app/api/payments/charges/[paymentId]/route-4be5f06fd38ef20e.js"
     ],
+    "/api/payments/charges/route": [
+      "static/chunks/webpack-9d795f9e26b86992.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-73938ce8a8eac1ad.js",
+      "static/chunks/main-app-b4ee8828cf0331b3.js",
+      "static/chunks/app/api/payments/charges/route-4be5f06fd38ef20e.js"
+    ],
+    "/api/payments/webhook/route": [
+      "static/chunks/webpack-9d795f9e26b86992.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-73938ce8a8eac1ad.js",
+      "static/chunks/main-app-b4ee8828cf0331b3.js",
+      "static/chunks/app/api/payments/webhook/route-4be5f06fd38ef20e.js"
+    ],
     "/formacoes/[slug]/inscricao/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/850-e2f4b8acb00a5fe7.js",
-      "static/chunks/app/formacoes/[slug]/inscricao/page-ba5926c4745050e9.js"
+      "static/chunks/app/formacoes/[slug]/inscricao/page-db70c3306db0cd8d.js"
     ],
     "/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -50,7 +50,7 @@
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/850-e2f4b8acb00a5fe7.js",
-      "static/chunks/app/page-204b4de18f6d27be.js"
+      "static/chunks/app/page-91b76365ec2c2336.js"
     ],
     "/formacoes/page": [
       "static/chunks/webpack-9d795f9e26b86992.js",

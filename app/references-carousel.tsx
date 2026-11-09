@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Organization =
   | {
@@ -92,19 +92,49 @@ export const otherSectorOrganizations: Organization[] = [
   { name: "Casais", logo: "/logos/casais.svg", width: 764, height: 104 },
 ];
 
-type ReferencesCarouselProps = {
-  title?: string;
-  organizations?: Organization[];
-  organizationLabel?: string;
-};
+const referenceSectors = [
+  {
+    title: "Finanças & Seguros",
+    organizations: financialOrganizations,
+  },
+  { title: "Oil & Gas", organizations: oilAndGasOrganizations },
+  { title: "Sector Público", organizations: publicSectorOrganizations },
+  { title: "Outros sectores", organizations: otherSectorOrganizations },
+];
 
-export default function ReferencesCarousel({
-  title = "Finanças & Seguros",
-  organizations = financialOrganizations,
-  organizationLabel = "Organizações de finanças e seguros",
-}: ReferencesCarouselProps = {}) {
+const allOrganizations = referenceSectors.flatMap((sector) =>
+  sector.organizations.map((organization) => ({
+    ...organization,
+    sector: sector.title,
+  })),
+);
+
+const sectorFilters = [
+  "Todos",
+  ...referenceSectors.map((sector) => sector.title),
+] as const;
+type SectorFilter = (typeof sectorFilters)[number];
+
+const darkLogoCardNames = new Set(["BODIVA", "ANPG", "DP World", "NORS", "Ascending"]);
+
+export default function ReferencesCarousel() {
+  const [activeSector, setActiveSector] = useState<SectorFilter>("Todos");
   const carouselRef = useRef<HTMLElement>(null);
-  const trackRef = useRef<HTMLUListElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const organizations =
+    activeSector === "Todos"
+      ? allOrganizations
+      : allOrganizations.filter(
+          (organization) => organization.sector === activeSector,
+        );
+  const pages = Array.from(
+    { length: Math.ceil(organizations.length / 10) },
+    (_, pageIndex) => organizations.slice(pageIndex * 10, pageIndex * 10 + 10),
+  );
+
+  useEffect(() => {
+    trackRef.current?.scrollTo({ left: 0 });
+  }, [activeSector]);
 
   useEffect(() => {
     const carousel = carouselRef.current;
@@ -133,11 +163,8 @@ export default function ReferencesCarousel({
         return;
       }
 
-      const firstCard = track.firstElementChild;
-      if (!(firstCard instanceof HTMLElement)) return;
-
       const gap = Number.parseFloat(window.getComputedStyle(track).columnGap);
-      const step = firstCard.offsetWidth + (Number.isNaN(gap) ? 0 : gap);
+      const step = track.clientWidth + (Number.isNaN(gap) ? 0 : gap);
       const isAtEnd =
         track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
 
@@ -158,23 +185,23 @@ export default function ReferencesCarousel({
     if (!track) return;
 
     track.scrollBy({
-      left: direction * track.clientWidth * 0.8,
+      left: direction * track.clientWidth,
       behavior: "smooth",
     });
   }
 
   return (
     <article
-      className="min-h-0 min-w-0 rounded-[28px] bg-[#faf9f8] p-6 sm:h-[330px] sm:p-[38px]"
+      className="min-h-0 min-w-0 rounded-[28px] bg-[#faf9f8] p-6 sm:p-[38px]"
       ref={carouselRef}
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[22px] font-semibold leading-[1.35] tracking-[-0.3px] sm:text-[27px]">
-          {title}
+          Organizações
         </h3>
         <div className="flex shrink-0 gap-2">
           <button
-            aria-label={`Ver referências anteriores de ${title}`}
+            aria-label="Ver organizações anteriores"
             className="flex size-9 items-center justify-center rounded-full border border-[#e7e1df] bg-white text-[#625c5c] transition-colors hover:border-[#ae7d32] hover:text-[#ae7d32] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ae7d32]"
             onClick={() => scroll(-1)}
             type="button"
@@ -196,7 +223,7 @@ export default function ReferencesCarousel({
             </svg>
           </button>
           <button
-            aria-label={`Ver mais referências de ${title}`}
+            aria-label="Ver mais organizações"
             className="flex size-9 items-center justify-center rounded-full border border-[#e7e1df] bg-white text-[#625c5c] transition-colors hover:border-[#ae7d32] hover:text-[#ae7d32] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ae7d32]"
             onClick={() => scroll(1)}
             type="button"
@@ -220,41 +247,70 @@ export default function ReferencesCarousel({
         </div>
       </div>
 
-      <ul
-        aria-label={organizationLabel}
-        className="references-carousel-track mt-6 flex snap-x snap-mandatory gap-[14px] overflow-x-auto scroll-smooth sm:mt-[30px]"
+      <div
+        aria-label="Filtrar organizações por sector"
+        className="mt-5 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        role="group"
+      >
+        {sectorFilters.map((sector) => (
+          <button
+            aria-pressed={activeSector === sector}
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ae7d32] ${
+              activeSector === sector
+                ? "border-[#76202e] bg-[#76202e] text-white"
+                : "border-[#e7e1df] bg-white text-[#625c5c] hover:border-[#ae7d32]"
+            }`}
+            key={sector}
+            onClick={() => setActiveSector(sector)}
+            type="button"
+          >
+            {sector}
+          </button>
+        ))}
+      </div>
+
+      <div
+        aria-label={`Organizações: ${activeSector}`}
+        className="references-carousel-track mt-4 flex snap-x snap-mandatory gap-[14px] overflow-x-auto scroll-smooth sm:mt-5"
+        role="region"
         ref={trackRef}
         tabIndex={0}
       >
-        {organizations.map((organization) => (
-          <li
-            className={`flex h-[120px] w-[78%] shrink-0 snap-start items-center justify-center rounded-[12px] border px-5 sm:w-[calc((100%-14px)/2)] ${
-              organization.name === "BODIVA"
-                ? "border-[#004969] bg-[#004969]"
-                : ["ANPG", "DP World", "NORS", "Ascending"].includes(
-                      organization.name,
-                    )
-                  ? "border-[#123d63] bg-[#123d63]"
-                  : "border-[#e7e1df] bg-white"
-            }`}
-            key={organization.name}
+        {pages.map((page, pageIndex) => (
+          <ul
+            aria-label={`Página ${pageIndex + 1} de ${pages.length}`}
+            className="grid w-full shrink-0 snap-start grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+            key={pageIndex}
           >
-            {organization.logo ? (
-              <Image
-                alt={organization.name}
-                className="h-auto max-h-[72px] w-auto max-w-full object-contain"
-                height={organization.height}
-                src={organization.logo}
-                width={organization.width}
-              />
-            ) : (
-              <span className="text-center text-sm font-semibold tracking-[0.08em] text-[#625c5c]">
-                {organization.name}
-              </span>
-            )}
-          </li>
+            {page.map((organization) => (
+              <li
+                className={`flex h-[82px] items-center justify-center rounded-[12px] border px-3 ${
+                  organization.name === "BODIVA"
+                    ? "border-[#004969] bg-[#004969]"
+                    : darkLogoCardNames.has(organization.name)
+                      ? "border-[#123d63] bg-[#123d63]"
+                      : "border-[#e7e1df] bg-white"
+                }`}
+                key={`${organization.sector}-${organization.name}`}
+              >
+                {organization.logo ? (
+                  <Image
+                    alt={organization.name}
+                    className="h-auto max-h-[42px] w-auto max-w-[140px] object-contain"
+                    height={organization.height}
+                    src={organization.logo}
+                    width={organization.width}
+                  />
+                ) : (
+                  <span className="text-center text-xs font-semibold tracking-[0.06em] text-[#625c5c]">
+                    {organization.name}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         ))}
-      </ul>
+      </div>
     </article>
   );
 }
