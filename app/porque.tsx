@@ -55,7 +55,7 @@ export default function PorqueEscolherKitadi() {
           "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)",
       }}
     >
-      <SectionContainer className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[minmax(0,1.14fr)_minmax(0,1fr)] lg:gap-16">
+      <SectionContainer className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[minmax(0,1.14fr)_minmax(0,1fr)] lg:items-start lg:gap-16">
         <div className="w-full max-w-[428px]">
           <p className="section-eyebrow text-[#cda45c]">
             Porquê escolher a Kitadi
@@ -80,43 +80,43 @@ export default function PorqueEscolherKitadi() {
           </div>
         </div>
 
-        <article className="content-card w-full max-w-[378px] justify-self-end bg-white p-8 text-[#211d1e]">
-          <div className="relative h-[260px] overflow-hidden rounded-[12px] bg-[#f5f2f1]">
+        <article className="content-card w-full max-w-[350px] justify-self-end bg-white p-4 text-[#211d1e] sm:p-4 lg:pb-10">
+          <div className="relative h-[270px] overflow-hidden rounded-[12px] bg-[#f5f2f1]">
             <Image
               alt="Neuza Pinto, educadora financeira"
-              className="object-cover object-top"
+              className="object-cover object-[center_35%]"
               fill
-              sizes="(min-width: 1024px) 314px, 263px"
+              sizes="(min-width: 1024px) 310px, 263px"
               src="/neuza-pinto.jpg"
             />
           </div>
-          <h3 className="content-card-title mt-[19px] text-[#cda45c]">
+          <h3 className="content-card-title mt-1 text-[#cda45c]">
             Neuza Pinto
           </h3>
-          <p className="section-eyebrow mt-[7px] text-[#625c5c]">
+          <p className="section-eyebrow text-[#625c5c]">
             Educadora financeira &amp; business designer
           </p>
-          <p className="content-card-copy mt-[19px] text-[#625c5c]">
+          <p className="content-card-copy mt-1 text-[14px] leading-[1.3] text-[#625c5c]">
             Com mais de 20 anos de experiência em gestão financeira,
             desenvolvimento humano e orientação estratégica, é uma referência
             consolidada em Angola na intersecção entre finanças pessoais e
             transformação de vida.
           </p>
 
-          <div className="mt-[37px] grid grid-cols-2 gap-6">
+          <div className="mt-2 grid grid-cols-2 gap-6">
             <div>
-              <p className="text-[36px] font-bold leading-none text-[#cda45c]">
+              <p className="text-[28px] font-bold leading-none text-[#cda45c]">
                 20+
               </p>
-              <p className="mt-[8px] text-[12px] text-[#625c5c]">
+              <p className="text-[12px] text-[#625c5c]">
                 Anos de experiência
               </p>
             </div>
             <div>
-              <p className="text-[36px] font-bold leading-none text-[#cda45c]">
+              <p className="text-[28px] font-bold leading-none text-[#cda45c]">
                 10K+
               </p>
-              <p className="mt-[8px] text-[12px] text-[#625c5c]">
+              <p className="text-[12px] text-[#625c5c]">
                 Clientes atendidos
               </p>
             </div>

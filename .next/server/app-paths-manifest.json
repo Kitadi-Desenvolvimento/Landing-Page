@@ -1,7 +1,7 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
-  "/api/payments/charges/[paymentId]/route": "app/api/payments/charges/[paymentId]/route.js",
   "/api/payments/charges/route": "app/api/payments/charges/route.js",
+  "/api/payments/charges/[paymentId]/route": "app/api/payments/charges/[paymentId]/route.js",
   "/api/payments/webhook/route": "app/api/payments/webhook/route.js",
   "/page": "app/page.js",
   "/formacoes/[slug]/inscricao/page": "app/formacoes/[slug]/inscricao/page.js",

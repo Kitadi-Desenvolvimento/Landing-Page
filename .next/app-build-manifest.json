@@ -12,15 +12,8 @@
       "static/chunks/4bd1b696-c023c6e3521b1417.js",
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/css/6340b2e78db6ed46.css",
+      "static/css/a29e3ea97a6c3cea.css",
       "static/chunks/app/layout-f6b6230bf14e38e3.js"
-    ],
-    "/api/payments/charges/[paymentId]/route": [
-      "static/chunks/webpack-9d795f9e26b86992.js",
-      "static/chunks/4bd1b696-c023c6e3521b1417.js",
-      "static/chunks/255-73938ce8a8eac1ad.js",
-      "static/chunks/main-app-b4ee8828cf0331b3.js",
-      "static/chunks/app/api/payments/charges/[paymentId]/route-4be5f06fd38ef20e.js"
     ],
     "/api/payments/charges/route": [
       "static/chunks/webpack-9d795f9e26b86992.js",
@@ -28,6 +21,13 @@
       "static/chunks/255-73938ce8a8eac1ad.js",
       "static/chunks/main-app-b4ee8828cf0331b3.js",
       "static/chunks/app/api/payments/charges/route-4be5f06fd38ef20e.js"
+    ],
+    "/api/payments/charges/[paymentId]/route": [
+      "static/chunks/webpack-9d795f9e26b86992.js",
+      "static/chunks/4bd1b696-c023c6e3521b1417.js",
+      "static/chunks/255-73938ce8a8eac1ad.js",
+      "static/chunks/main-app-b4ee8828cf0331b3.js",
+      "static/chunks/app/api/payments/charges/[paymentId]/route-4be5f06fd38ef20e.js"
     ],
     "/api/payments/webhook/route": [
       "static/chunks/webpack-9d795f9e26b86992.js",

@@ -2,7 +2,7 @@
 
 :root {
   color-scheme: dark;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Century Gothic", CenturyGothic, AppleGothic, sans-serif;
   background: #29070d;
   color: #fff;
   font-synthesis: none;
@@ -23,9 +23,17 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
+  font-family: inherit;
   background:
     linear-gradient(109deg, rgba(125, 20, 39, 0.96) 0%, rgba(84, 13, 27, 0.96) 43%, rgba(36, 5, 12, 0.98) 100%),
     #29070d;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 a {
