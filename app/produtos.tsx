@@ -131,12 +131,25 @@ export default function Produtos() {
           <div className="grid min-h-[560px] lg:grid-cols-[minmax(280px,0.68fr)_minmax(0,1.32fr)]">
             <div className="relative isolate aspect-[3/4] overflow-hidden bg-[#140308] sm:aspect-[4/5] lg:aspect-auto lg:min-h-[560px]">
               <Image
-                alt="Neuza Pinto, educadora financeira da Kitadi"
-                className="object-cover object-[center_30%] grayscale contrast-[1.45] brightness-[1.08]"
+                alt={
+                  product.imageMode === "object"
+                    ? product.alt
+                    : "Neuza Pinto, educadora financeira da Kitadi"
+                }
+                className={
+                  product.imageMode === "object"
+                    ? "object-cover object-center"
+                    : "object-cover object-[center_30%] grayscale contrast-[1.45] brightness-[1.08]"
+                }
                 fill
-                priority
+                key={product.slug}
+                priority={product.imageMode === "object"}
                 sizes="(min-width: 1024px) 380px, 100vw"
-                src="/neuza-pinto.jpg"
+                src={
+                  product.imageMode === "object"
+                    ? product.image
+                    : "/neuza-pinto.jpg"
+                }
               />
               <div
                 aria-hidden="true"
