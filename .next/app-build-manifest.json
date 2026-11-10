@@ -11,11 +11,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/formacoes/[slug]/inscricao/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/formacoes/[slug]/inscricao/page.js"
-    ],
     "/produtos/[slug]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
