@@ -3,8 +3,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
-  getCheckoutPath,
   getCourseBySlug,
+  getWhatsAppHref,
   courses,
   type Course,
 } from "../../course-data";
@@ -81,14 +81,19 @@ function PrimaryCta({
   href: string;
   children: string;
 }) {
+  const external = href.startsWith("http");
+
   return (
-    <Link
+    <a
       className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[#cda45c] px-8 text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
       href={href}
+      {...(external
+        ? { target: "_blank", rel: "noopener noreferrer" }
+        : {})}
     >
       {children}
       <ArrowIcon />
-    </Link>
+    </a>
   );
 }
 
@@ -178,15 +183,25 @@ function Hero({ course }: { course: Course }) {
             </dl>
 
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <PrimaryCta href="#investimento">Quero agendar a minha sessão</PrimaryCta>
+              <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
               <GhostCta href="#sobre">Saber mais</GhostCta>
             </div>
           </div>
 
-          <div className="relative mx-auto aspect-[4/5] w-full max-w-[460px] lg:max-w-none">
+          <div
+            className={`relative mx-auto w-full max-w-[460px] lg:max-w-none ${
+              course.imageMode === "photo"
+                ? "aspect-[4/5] overflow-hidden rounded-[24px]"
+                : "aspect-[4/5]"
+            }`}
+          >
             <Image
               alt={course.alt}
-              className="object-contain object-right drop-shadow-[0_24px_48px_rgba(0,0,0,0.35)]"
+              className={
+                course.imageMode === "photo"
+                  ? "object-cover"
+                  : "object-contain object-right drop-shadow-[0_24px_48px_rgba(0,0,0,0.35)]"
+              }
               fill
               priority
               sizes="(min-width: 1024px) 480px, 90vw"
@@ -230,9 +245,9 @@ function About({ course }: { course: Course }) {
   return (
     <section className="bg-white px-6 py-16 sm:py-20" id="sobre">
       <SectionContainer>
-        <p className="section-eyebrow text-[#ae7d32]">Sobre a consultoria</p>
+        <p className="section-eyebrow text-[#ae7d32]">{course.aboutEyebrow}</p>
         <h2 className="section-heading mt-5 max-w-[720px] text-[#211d1e]">
-          O que é a <span className="text-[#862f3b]">{course.title}</span>
+          {course.aboutHeading}
         </h2>
         <blockquote className="mt-8 max-w-[760px] border-l-4 border-[#cda45c] bg-[#510f1d] px-6 py-6 text-[16px] italic leading-[1.7] text-white sm:px-8">
           {course.aboutHighlight}
@@ -253,9 +268,9 @@ function Audience({ course }: { course: Course }) {
   return (
     <section className="px-6 py-16 text-white sm:py-20" style={burgundy}>
       <SectionContainer>
-        <p className="section-eyebrow text-[#cda45c]">Perfil do cliente</p>
+        <p className="section-eyebrow text-[#cda45c]">{course.audienceEyebrow}</p>
         <h2 className="section-heading mt-5 max-w-[720px]">
-          Para quem é esta consultoria
+          {course.audienceHeading}
         </h2>
         <p className="content-card-copy mt-5 max-w-[680px] text-white/80">
           {course.audienceIntro}
@@ -339,17 +354,19 @@ function Method({ course }: { course: Course }) {
             ))}
           </ol>
 
-          <aside className="rounded-[24px] border border-[#cda45c]/50 px-6 py-7">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#cda45c]">
-              Bónus exclusivo
-            </p>
-            <h3 className="mt-3 text-[20px] font-bold tracking-[0.04em]">
-              {course.bonusTitle}
-            </h3>
-            <p className="mt-3 text-[15px] italic leading-[1.65] text-white/80">
-              {course.bonusDescription}
-            </p>
-          </aside>
+          {course.bonusTitle ? (
+            <aside className="rounded-[24px] border border-[#cda45c]/50 px-6 py-7">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#cda45c]">
+                Bónus exclusivo
+              </p>
+              <h3 className="mt-3 text-[20px] font-bold tracking-[0.04em]">
+                {course.bonusTitle}
+              </h3>
+              <p className="mt-3 text-[15px] italic leading-[1.65] text-white/80">
+                {course.bonusDescription}
+              </p>
+            </aside>
+          ) : null}
         </div>
       </SectionContainer>
     </section>
@@ -364,35 +381,26 @@ function Investment({ course }: { course: Course }) {
       style={burgundy}
     >
       <SectionContainer>
-        <p className="section-eyebrow text-[#cda45c]">Investimento</p>
-        <h2 className="section-heading mt-5 max-w-[640px]">O seu investimento</h2>
+        <p className="section-eyebrow text-[#cda45c]">Aderir</p>
+        <h2 className="section-heading mt-5 max-w-[640px]">Fale connosco no WhatsApp</h2>
         <p className="content-card-copy mt-5 max-w-[620px] text-white/80">
           {course.investmentIntro}
         </p>
 
-        <div className="mt-10 grid gap-5 lg:grid-cols-2">
-          {course.variants.map((variant) => (
-            <article
-              className="flex flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8"
-              key={variant.id}
-            >
-              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
-                Valor total da consultoria
-              </p>
-              <p className="mt-4 text-[clamp(2rem,4vw,2.75rem)] font-bold leading-none tracking-[0.04em]">
-                {variant.price}
-              </p>
-              <p className="mt-3 text-[14px] text-white/70">
-                {variant.label} · {variant.detail}
-              </p>
-              <div className="mt-8">
-                <PrimaryCta href={getCheckoutPath(course, variant.id)}>
-                  Aderir agora
-                </PrimaryCta>
-              </div>
-            </article>
-          ))}
-        </div>
+        <article className="mt-10 flex max-w-[560px] flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
+            WhatsApp
+          </p>
+          <p className="mt-4 text-[clamp(1.6rem,3vw,2.2rem)] font-bold leading-none tracking-[0.04em]">
+            +244 936 250 151
+          </p>
+          <p className="mt-3 text-[14px] text-white/70">
+            {course.format} · {course.modality}
+          </p>
+          <div className="mt-8">
+            <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
+          </div>
+        </article>
 
         <div className="mt-8 rounded-[24px] border border-white/12 px-6 py-7 sm:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
@@ -426,7 +434,13 @@ function NextSteps({ course }: { course: Course }) {
         <p className="content-card-copy mt-4 max-w-[480px] text-[#625c5c]">
           O processo é simples e inteiramente orientado para si.
         </p>
-        <ol className="mt-12 grid gap-8 sm:grid-cols-5">
+        <ol
+          className={`mt-12 grid gap-8 ${
+            course.nextSteps.length === 5
+              ? "sm:grid-cols-5"
+              : "sm:grid-cols-2 lg:grid-cols-4"
+          }`}
+        >
           {course.nextSteps.map((step, index) => (
             <li className="text-center" key={step}>
               <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#510f1d] text-[16px] font-bold text-white">
@@ -453,7 +467,7 @@ function Closing({ course }: { course: Course }) {
         </p>
         <p className="content-card-copy mt-6 text-white/80">{course.closingNote}</p>
         <div className="mt-10">
-          <PrimaryCta href="#investimento">Quero agendar a minha sessão</PrimaryCta>
+          <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
         </div>
       </SectionContainer>
     </section>

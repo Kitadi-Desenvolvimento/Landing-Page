@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getCourseBySlug, getCourseVariant } from "../../../course-data";
+import { redirect } from "next/navigation";
+import {
+  getCourseBySlug,
+  getCourseVariant,
+  getProductPath,
+} from "../../../course-data";
 import Checkout from "./checkout";
 
 type CheckoutPageProps = {
@@ -33,6 +38,7 @@ export default async function CheckoutPage({
   const course = getCourseBySlug(slug);
 
   if (!course) notFound();
+  if (!course.variants.length) redirect(getProductPath(course));
 
   return <Checkout course={course} initialVariantId={variante} />;
 }

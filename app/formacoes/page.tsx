@@ -93,12 +93,12 @@ export default function FormacoesPage() {
                     {course.description}
                   </p>
                   <div className="mt-auto flex items-center justify-end gap-3 pt-6">
-                    <Link
+                    <a
                       className="inline-flex h-[42px] min-w-[92px] items-center justify-center rounded-full bg-[#cda45c] px-5 text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
                       href={getProductPath(course)}
                     >
                       Aderir
-                    </Link>
+                    </a>
                   </div>
                 </div>
               </article>
@@ -130,11 +130,10 @@ export default function FormacoesPage() {
               </svg>
               <div>
                 <p className="font-medium">
-                  Escolha. Pague. Comece a aprender.
+                  Escolha e fale connosco no WhatsApp.
                 </p>
                 <p className="content-card-copy mt-1 text-[14px] text-[#716a69]">
-                  Adira sem criar conta e pague em kwanzas com Multicaixa
-                  Express ou referência.
+                  A adesão é combinada directamente connosco, no +244 936 250 151.
                 </p>
               </div>
             </div>

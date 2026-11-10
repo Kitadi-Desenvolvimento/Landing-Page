@@ -1,6 +1,6 @@
 import Contactos from "./contactos";
 import PorqueEscolherKitadi from "./porque";
-// import Produtos from "./produtos";
+import Produtos from "./produtos";
 import Referencias from "./referencias";
 import SectionContainer from "./section-container";
 import SiteHeader from "./site-header";
@@ -178,7 +178,7 @@ export default function Home() {
         </SectionContainer>
       </section>
 
-      {/* <Produtos /> */}
+      <Produtos />
 
       <PorqueEscolherKitadi />
 

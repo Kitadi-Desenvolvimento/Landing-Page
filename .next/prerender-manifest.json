@@ -1,11 +1,1 @@
-{
-  "version": 4,
-  "routes": {},
-  "dynamicRoutes": {},
-  "notFoundRoutes": [],
-  "preview": {
-    "previewModeId": "f5faf8778cbceb6bcddc4147492cc930",
-    "previewModeSigningKey": "ca0eaec50015357d6d696de794bde62b3d4c90198b5d251ab66452b77a7ad298",
-    "previewModeEncryptionKey": "6ed28a6e8b3f42a33714e47596eb37b257a98efc84223559bddaf18c1be2f687"
-  }
-}
+{"version":4,"routes":{"/produtos/bussola-do-kitadi":{},"/produtos/tea-and-money-talks":{}},"dynamicRoutes":{"/produtos/[slug]":{"dataRoute":null,"dataRouteRegex":null,"fallback":null,"fallbackRevalidate":false,"fallbackSourceRoute":"/produtos/[slug]","routeRegex":"^\\/produtos\\/([^/]+?)(?:\\/)?$","allowHeader":[]}},"notFoundRoutes":[],"preview":{"previewModeId":"7b12f3a30e186372dfe9290c9630b7c6","previewModeSigningKey":"1b77ec4405e1b14df155f027d52ce1f96c73fe628b3fa42a6c33d533b038b9ce","previewModeEncryptionKey":"0798453266da7456f6050d8750e51fe765ed131191cfff705e04db91c6151c08"}}
