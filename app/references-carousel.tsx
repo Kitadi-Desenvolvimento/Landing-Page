@@ -196,7 +196,7 @@ export default function ReferencesCarousel() {
       ref={carouselRef}
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[22px] font-semibold leading-[1.35] tracking-[-0.3px] sm:text-[27px]">
+        <h3 className="text-[22px] font-bold leading-[1.35] tracking-[0.05em] sm:text-[27px]">
           Organizações
         </h3>
         <div className="flex shrink-0 gap-2">

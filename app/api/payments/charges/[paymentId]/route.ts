@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { courses } from "../../../../course-data";
+import { parseKitadiOrderId } from "../../../../course-data";
 
 const apiBaseUrl = "https://api.bluelemon.ao/v1";
 const uuidPattern =
@@ -7,10 +7,6 @@ const uuidPattern =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function getCourseFromOrderId(orderId: string) {
-  return courses.find((course) => orderId.startsWith(`KITADI-${course.slug}-`));
 }
 
 export async function GET(
@@ -79,10 +75,10 @@ export async function GET(
     typeof result.merchant_order_id === "string"
       ? result.merchant_order_id
       : "";
-  const course = getCourseFromOrderId(orderId);
-  const orderIdSuffix = course
-    ? orderId.slice(`KITADI-${course.slug}-`.length)
-    : "";
+  const order = parseKitadiOrderId(orderId);
+  const course = order?.course;
+  const variant = order?.variant;
+  const orderIdSuffix = order?.suffix ?? "";
   const amountMinor = Number(result.amount_minor);
   const status =
     typeof result.status === "string" ? result.status : "";
@@ -92,9 +88,10 @@ export async function GET(
   if (
     result.id !== paymentId ||
     !course ||
+    !variant ||
     !uuidPattern.test(orderIdSuffix) ||
     !Number.isSafeInteger(amountMinor) ||
-    amountMinor !== course.priceAmount * 100 ||
+    amountMinor !== variant.priceAmount * 100 ||
     result.currency !== "AOA" ||
     ![
       "requires_method",
@@ -124,7 +121,7 @@ export async function GET(
             status === "refunded"
           ? status
           : "pending",
-    amount: course.priceAmount,
+    amount: variant.priceAmount,
     currency: "AOA",
     expiresAt,
   });

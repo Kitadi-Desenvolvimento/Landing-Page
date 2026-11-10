@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { courses } from "../../../course-data";
+import { parseKitadiOrderId } from "../../../course-data";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -126,21 +126,20 @@ export async function POST(request: Request) {
   const paymentId = typeof data.payment_id === "string" ? data.payment_id : "";
   const amountMinor = Number(data.amount_minor);
   const paidAt = typeof data.paid_at === "string" ? data.paid_at : "";
-  const course = courses.find((item) =>
-    customId.startsWith(`KITADI-${item.slug}-`),
-  );
-  const orderIdSuffix = course
-    ? customId.slice(`KITADI-${course.slug}-`.length)
-    : "";
+  const order = parseKitadiOrderId(customId);
+  const course = order?.course;
+  const variant = order?.variant;
+  const orderIdSuffix = order?.suffix ?? "";
 
   if (
     !course ||
+    !variant ||
     !uuidPattern.test(orderIdSuffix) ||
     data.environment !== (body.livemode ? "live" : "test") ||
     data.status !== "succeeded" ||
     !uuidPattern.test(paymentId) ||
     !Number.isSafeInteger(amountMinor) ||
-    amountMinor !== course.priceAmount * 100 ||
+    amountMinor !== variant.priceAmount * 100 ||
     data.currency !== "AOA" ||
     !paidAt ||
     Number.isNaN(Date.parse(paidAt))

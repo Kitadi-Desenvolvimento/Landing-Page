@@ -61,10 +61,10 @@ export default function Contactos() {
           </div>
 
           <div className="rounded-[28px] border border-[#e7e1df] bg-white p-7 sm:p-10 lg:p-12">
-            <h3 className="text-[30px] font-bold leading-[1.2] tracking-[-0.04em] sm:text-[38px]">
+            <h3 className="text-[30px] font-bold leading-[1.2] tracking-[0.06em] sm:text-[38px]">
               Newsletter Kitadi
             </h3>
-            <p className="mt-6 max-w-[440px] text-[17px] leading-[1.6] text-[#6d6666] sm:mt-[30px] sm:text-[20px]">
+            <p className="mt-6 max-w-[440px] text-[17px] italic leading-[1.6] text-[#6d6666] sm:mt-[30px] sm:text-[20px]">
               Receba conteúdos de educação financeira directamente no seu
               email.
             </p>

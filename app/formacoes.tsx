@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
-import { courses } from "./course-data";
+import { courses, getProductPath } from "./course-data";
 import SectionContainer from "./section-container";
 
 export default function Formacoes() {
@@ -62,7 +62,7 @@ export default function Formacoes() {
         >
           {courses.map((course, index) => (
             <article
-              aria-label={`${course.title}, ${course.price}`}
+              aria-label={course.title}
               className="content-card flex h-[350px] w-full flex-none snap-start flex-col overflow-hidden border border-[#eeeae8] bg-white lg:min-w-0"
               key={course.title}
             >
@@ -83,13 +83,10 @@ export default function Formacoes() {
                 <p className="content-card-copy mt-[8px] text-[#716a69]">
                   {course.description}
                 </p>
-                <div className="mt-auto flex items-center justify-between gap-3 pt-2">
-                  <p className="text-[15px] font-medium text-[#862f3b]">
-                    {course.price}
-                  </p>
+                <div className="mt-auto flex items-center justify-end gap-3 pt-2">
                   <a
                     className="inline-flex h-[35px] min-w-[72px] items-center justify-center rounded-full bg-[#cda45c] px-4 text-[11px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
-                    href={`/formacoes/${course.slug}/inscricao`}
+                    href={getProductPath(course)}
                   >
                     Aderir
                   </a>
@@ -122,7 +119,10 @@ export default function Formacoes() {
         </nav>
 
         <div className="mt-[56px] flex items-center justify-between pr-6 text-[13px] text-[#716a69]">
-          <p>3 formações em destaque</p>
+          <p>
+            {courses.length}{" "}
+            {courses.length === 1 ? "produto em destaque" : "produtos em destaque"}
+          </p>
           <a className="text-[#2b2627] hover:text-[#862f3b]" href="/formacoes">
             Ver todos
           </a>

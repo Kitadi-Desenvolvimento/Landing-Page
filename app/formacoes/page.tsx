@@ -1,14 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { courses } from "../course-data";
+import { courses, getProductPath } from "../course-data";
 import SectionContainer from "../section-container";
 import SiteHeader from "../site-header";
 
 export const metadata: Metadata = {
-  title: "Todas as formações | Kitadi",
+  title: "Produtos | Kitadi",
   description:
-    "Escolha uma formação Kitadi e dê o próximo passo para uma vida financeira com propósito.",
+    "Conheça a Bússola do Kitadi e dê o próximo passo para uma vida financeira com propósito.",
 };
 
 export default function FormacoesPage() {
@@ -35,22 +35,22 @@ export default function FormacoesPage() {
               ›
             </span>
             <span aria-current="page" className="text-white">
-              Formações
+              Produtos
             </span>
           </nav>
 
           <p className="section-eyebrow mt-7 text-[#cda45c]">
-            Aprender para transformar
+            Consultoria estratégica
           </p>
           <h1
             className="section-heading mt-4 max-w-[800px]"
             id="courses-title"
           >
-            Todas as formações
+            Os nossos produtos
           </h1>
           <p className="content-card-copy mt-4 max-w-[620px] text-white/75">
             O próximo passo para uma vida financeira com propósito começa aqui.
-            Escolha a sua formação e dê um passo em poucos minutos.
+            Conheça a consultoria e adira quando estiver pronto.
           </p>
         </SectionContainer>
       </section>
@@ -61,18 +61,21 @@ export default function FormacoesPage() {
       >
         <SectionContainer>
           <div className="mb-7 flex flex-col gap-2 text-[14px] text-[#716a69] sm:flex-row sm:items-center sm:justify-between">
-            <p>{courses.length} formações disponíveis</p>
-            <p>Online · Ao seu ritmo · Pagamento único</p>
+            <p>
+              {courses.length}{" "}
+              {courses.length === 1 ? "produto disponível" : "produtos disponíveis"}
+            </p>
+            <p>Consultoria privada · Presencial ou online</p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
             {courses.map((course) => (
               <article
-                aria-label={`${course.title}, ${course.price}`}
+                aria-label={course.title}
                 className="content-card flex flex-col overflow-hidden border border-[#ece8e6] bg-white"
                 key={course.title}
               >
-                <div className="relative h-[180px] flex-none overflow-hidden sm:h-[165px]">
+                <div className="relative h-[180px] flex-none overflow-hidden bg-[#3b0a15] sm:h-[165px]">
                   <Image
                     alt={course.alt}
                     className="object-cover object-left"
@@ -89,13 +92,10 @@ export default function FormacoesPage() {
                   <p className="content-card-copy mt-2 text-[#716a69]">
                     {course.description}
                   </p>
-                  <div className="mt-auto flex items-center justify-between gap-3 pt-6">
-                    <p className="text-[17px] font-medium text-[#862f3b]">
-                      {course.price}
-                    </p>
+                  <div className="mt-auto flex items-center justify-end gap-3 pt-6">
                     <Link
                       className="inline-flex h-[42px] min-w-[92px] items-center justify-center rounded-full bg-[#cda45c] px-5 text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
-                      href={`/formacoes/${course.slug}/inscricao`}
+                      href={getProductPath(course)}
                     >
                       Aderir
                     </Link>

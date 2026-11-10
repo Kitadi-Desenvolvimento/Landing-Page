@@ -1,5 +1,6 @@
 import Contactos from "./contactos";
 import PorqueEscolherKitadi from "./porque";
+// import Produtos from "./produtos";
 import Referencias from "./referencias";
 import SectionContainer from "./section-container";
 import SiteHeader from "./site-header";
@@ -65,7 +66,7 @@ export default function Home() {
           </p>
 
           <h1
-            className="mt-[30px] max-w-[850px] text-[clamp(2.5rem,5vw,3.75rem)] font-bold leading-[1.13] tracking-[-1.8px] text-white"
+            className="mt-[30px] max-w-[850px] text-[clamp(2.5rem,5vw,3.75rem)] font-bold leading-[1.13] tracking-[0.06em] text-white"
             id="hero-title"
           >
             Transformamos a relação
@@ -75,7 +76,7 @@ export default function Home() {
             <span className="text-[#cda45c]">dinheiro</span>
           </h1>
 
-          <p className="mt-[31px] max-w-[620px] text-[16px] leading-[1.75] text-white/80 md:text-[17px]">
+          <p className="mt-[31px] max-w-[620px] text-[16px] italic leading-[1.75] text-white/80 md:text-[17px]">
             Educação financeira, programas corporativos e iniciativas de impacto
             <br className="hidden md:block" /> social concebidos para a realidade angolana.
           </p>
@@ -177,7 +178,7 @@ export default function Home() {
         </SectionContainer>
       </section>
 
-      {/* <Formacoes /> */}
+      {/* <Produtos /> */}
 
       <PorqueEscolherKitadi />
 

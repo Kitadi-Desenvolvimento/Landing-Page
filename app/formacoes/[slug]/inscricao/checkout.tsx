@@ -3,11 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
-import type { courses } from "../../../course-data";
+import {
+  getCourseVariant,
+  getProductPath,
+  type Course,
+} from "../../../course-data";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
-
-type Course = (typeof courses)[number];
 
 type EnrollmentDetails = {
   name: string;
@@ -196,7 +198,7 @@ function PaymentInstructions({
                 ? "Cobrança criada"
                 : "Pagamento não concluído"}
           </span>
-          <h2 aria-live="polite" className="mt-5 text-[20px] font-semibold">
+          <h2 aria-live="polite" className="mt-5 text-[20px] font-bold">
             {isPaid
               ? "Pagamento confirmado"
               : isPending
@@ -263,7 +265,7 @@ function PaymentInstructions({
 
       <div className="my-5 border-t border-[#e7e1df]" />
 
-      <h3 className="text-[18px] font-semibold">Próximos passos</h3>
+      <h3 className="text-[18px] font-bold">Próximos passos</h3>
       <ol className="mt-4 space-y-4">
         {instructions.map((instruction, index) => (
           <li className="flex items-start gap-3" key={instruction.title}>
@@ -291,10 +293,20 @@ function PaymentInstructions({
   );
 }
 
-export default function Checkout({ course }: { course: Course }) {
+export default function Checkout({
+  course,
+  initialVariantId,
+}: {
+  course: Course;
+  initialVariantId?: string;
+}) {
   const [paymentCharge, setPaymentCharge] = useState<ChargeDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [variantId, setVariantId] = useState(
+    getCourseVariant(course, initialVariantId).id,
+  );
+  const variant = getCourseVariant(course, variantId);
   const [enrollment, setEnrollment] = useState<EnrollmentDetails>({
     name: "",
     email: "",
@@ -355,6 +367,7 @@ export default function Checkout({ course }: { course: Course }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           courseSlug: course.slug,
+          variantId: variant.id,
           name: enrollment.name,
           email: enrollment.email,
           phone: enrollment.phone,
@@ -377,8 +390,8 @@ export default function Checkout({ course }: { course: Course }) {
         throw new Error("O serviço de pagamentos devolveu dados inválidos.");
       }
 
-      if (result.amount !== course.priceAmount) {
-        throw new Error("O valor devolvido não corresponde a esta formação.");
+      if (result.amount !== variant.priceAmount) {
+        throw new Error("O valor devolvido não corresponde a esta consultoria.");
       }
 
       setPaymentCharge(result);
@@ -395,7 +408,7 @@ export default function Checkout({ course }: { course: Course }) {
 
   const paymentHeading = paymentCharge
     ? "Pagamento seguro"
-    : "Inscrição da formação";
+    : "Inscrição da consultoria";
   const checkoutHeading =
     paymentCharge?.status === "paid"
       ? "Pagamento confirmado"
@@ -428,9 +441,9 @@ export default function Checkout({ course }: { course: Course }) {
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <Link
               className="text-sm font-medium text-white/80 transition-colors hover:text-[#cda45c]"
-              href="/formacoes"
+              href={getProductPath(course)}
             >
-              <span aria-hidden="true">←</span> Voltar às formações
+              <span aria-hidden="true">←</span> Voltar ao produto
             </Link>
 
             <ol
@@ -442,7 +455,7 @@ export default function Checkout({ course }: { course: Course }) {
               </li>
               <li aria-hidden="true" className="h-px w-8 bg-white/40" />
               <li className="whitespace-nowrap text-white/60">
-                2. Acesso à formação
+                2. Confirmação da sessão
               </li>
             </ol>
           </div>
@@ -460,8 +473,8 @@ export default function Checkout({ course }: { course: Course }) {
       <section
         aria-label={
           paymentCharge
-            ? "Instruções de pagamento e resumo da formação"
-            : "Dados de inscrição e resumo da formação"
+            ? "Instruções de pagamento e resumo da consultoria"
+            : "Dados de inscrição e resumo da consultoria"
         }
         className="bg-[#f5f2f1] px-6 py-10 sm:py-14"
       >
@@ -479,11 +492,52 @@ export default function Checkout({ course }: { course: Course }) {
               onSubmit={handleSubmit}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-[20px] font-semibold">Os seus dados</h2>
+                <h2 className="text-[20px] font-bold">Os seus dados</h2>
                 <p className="text-sm text-[#716a69]">
                   Não precisa de criar conta
                 </p>
               </div>
+
+              <fieldset className="mt-6">
+                <legend className="mb-3 text-sm font-medium">
+                  Formato da sessão
+                </legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {course.variants.map((option) => {
+                    const selected = option.id === variant.id;
+                    return (
+                      <label
+                        className={`flex cursor-pointer flex-col rounded-[18px] border px-4 py-4 transition-colors ${
+                          selected
+                            ? "border-[#862f3b] bg-[#f7efe0]"
+                            : "border-[#e7e1df] bg-[#faf9f8] hover:border-[#cda45c]"
+                        }`}
+                        key={option.id}
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            checked={selected}
+                            className="accent-[#862f3b]"
+                            name="variante"
+                            onChange={() => setVariantId(option.id)}
+                            type="radio"
+                            value={option.id}
+                          />
+                          <span className="text-sm font-medium">
+                            {option.label}
+                          </span>
+                        </span>
+                        <span className="mt-2 pl-6 text-xs text-[#716a69]">
+                          {option.detail}
+                        </span>
+                        <span className="mt-1 pl-6 text-sm font-semibold text-[#862f3b]">
+                          {option.price}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
 
               <div className="mt-6 space-y-5">
                 <div>
@@ -584,7 +638,7 @@ export default function Checkout({ course }: { course: Course }) {
               >
                 {isSubmitting
                   ? "A criar cobrança…"
-                  : `Continuar para pagamento · ${course.price}`}
+                  : `Continuar para pagamento · ${variant.price}`}
               </button>
 
               <p className="mt-4 text-xs leading-[1.6] text-[#716a69]">
@@ -595,10 +649,10 @@ export default function Checkout({ course }: { course: Course }) {
             )}
 
             <aside className="overflow-hidden rounded-[28px] border border-[#e7e1df] bg-white">
-              <div className="relative h-[210px] sm:h-[190px]">
+              <div className="relative h-[210px] bg-[#3b0a15] sm:h-[190px]">
                 <Image
                   alt={course.alt}
-                  className="object-cover object-left"
+                  className="object-contain object-center"
                   fill
                   priority
                   sizes="(min-width: 768px) 300px, (min-width: 640px) 100vw, 100vw"
@@ -607,7 +661,7 @@ export default function Checkout({ course }: { course: Course }) {
               </div>
               <div className="p-6 sm:p-7">
                 <p className="section-eyebrow text-[11px] text-[#ae7d32]">
-                  Formação online
+                  {course.category}
                 </p>
                 <h2 className="content-card-title mt-3">{course.title}</h2>
                 <p className="content-card-copy mt-3 text-[#716a69]">
@@ -617,14 +671,16 @@ export default function Checkout({ course }: { course: Course }) {
                 <div className="my-5 border-t border-[#e7e1df]" />
 
                 <div className="flex items-center justify-between text-sm text-[#716a69]">
-                  <span>Formação</span>
-                  <span className="text-[#211d1e]">{course.price}</span>
+                  <span>
+                    {variant.label} · {variant.detail}
+                  </span>
+                  <span className="text-[#211d1e]">{variant.price}</span>
                 </div>
 
                 <div className="mt-4 rounded-[16px] bg-[#f7efe0] p-5">
                   <p className="text-sm text-[#862f3b]">Total a pagar</p>
                   <p className="mt-1 text-[28px] font-bold leading-none text-[#862f3b]">
-                    {course.price}
+                    {variant.price}
                   </p>
                   <p className="mt-3 text-xs text-[#716a69]">
                     Pagamento único · Sem custos adicionais
@@ -632,11 +688,7 @@ export default function Checkout({ course }: { course: Course }) {
                 </div>
 
                 <ul className="mt-6 space-y-4">
-                  {[
-                    "Aprenda ao seu ritmo",
-                    "Materiais de apoio incluídos",
-                    "Acesso após confirmação do pagamento",
-                  ].map((benefit) => (
+                  {course.includes.map((benefit) => (
                     <li
                       className="flex items-start gap-2 text-sm leading-[1.5] text-[#716a69]"
                       key={benefit}

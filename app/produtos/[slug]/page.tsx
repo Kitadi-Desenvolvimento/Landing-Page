@@ -1,0 +1,461 @@
+import Image from "next/image";
+import Link from "next/link";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import {
+  getCheckoutPath,
+  getCourseBySlug,
+  courses,
+  type Course,
+} from "../../course-data";
+import SectionContainer from "../../section-container";
+import SiteHeader from "../../site-header";
+
+type ProductPageProps = {
+  params: Promise<{ slug: string }>;
+};
+
+export function generateStaticParams() {
+  return courses.map((course) => ({ slug: course.slug }));
+}
+
+export async function generateMetadata({
+  params,
+}: ProductPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const course = getCourseBySlug(slug);
+
+  return {
+    title: course ? `${course.title} | Kitadi` : "Produto não encontrado | Kitadi",
+    description: course?.description,
+  };
+}
+
+const burgundy = {
+  background:
+    "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)",
+} as const;
+
+function ArrowIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M5 12h14M13 6l6 6-6 6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = "text-[#cda45c]" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={`mt-0.5 h-4 w-4 flex-none ${className}`}
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <path
+        d="m3.2 8.1 3.1 3.1 6.5-6.6"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function PrimaryCta({
+  href,
+  children,
+}: {
+  href: string;
+  children: string;
+}) {
+  return (
+    <Link
+      className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[#cda45c] px-8 text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
+      href={href}
+    >
+      {children}
+      <ArrowIcon />
+    </Link>
+  );
+}
+
+function GhostCta({ href, children }: { href: string; children: string }) {
+  return (
+    <Link
+      className="inline-flex min-h-[52px] items-center justify-center rounded-full border border-white/85 px-8 text-[14px] font-medium text-white transition-colors hover:bg-white/10"
+      href={href}
+    >
+      {children}
+    </Link>
+  );
+}
+
+export default async function ProductPage({ params }: ProductPageProps) {
+  const { slug } = await params;
+  const course = getCourseBySlug(slug);
+
+  if (!course) notFound();
+
+  return (
+    <main className="min-h-svh bg-[#f5f2f1] text-[#211d1e]">
+      <Hero course={course} />
+      <Moment course={course} />
+      <About course={course} />
+      <Audience course={course} />
+      <Results course={course} />
+      <Method course={course} />
+      <Investment course={course} />
+      <NextSteps course={course} />
+      <Closing course={course} />
+    </main>
+  );
+}
+
+function Hero({ course }: { course: Course }) {
+  return (
+    <section className="relative overflow-hidden text-white" style={burgundy}>
+      <SiteHeader />
+      <SectionContainer className="px-6 pb-16 pt-28 sm:pb-20 sm:pt-32">
+        <nav aria-label="Navegação estrutural" className="text-sm text-white/70">
+          <Link className="transition-colors hover:text-white" href="/#inicio">
+            Início
+          </Link>
+          <span aria-hidden="true" className="mx-3 text-[#cda45c]">
+            ›
+          </span>
+          <Link className="transition-colors hover:text-white" href="/#produtos">
+            Produtos
+          </Link>
+          <span aria-hidden="true" className="mx-3 text-[#cda45c]">
+            ›
+          </span>
+          <span aria-current="page" className="text-white">
+            {course.title}
+          </span>
+        </nav>
+
+        <div className="mt-10 grid items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-8">
+          <div>
+            <p className="section-eyebrow text-[#cda45c]">{course.heroEyebrow}</p>
+            <h1 className="section-heading mt-5 max-w-[640px] text-white">
+              {course.title}
+            </h1>
+            <p className="content-card-copy mt-5 max-w-[520px] text-white/80">
+              {course.tagline}
+            </p>
+            <p className="mt-3 text-[15px] font-medium text-[#cda45c]">
+              {course.heroSubtitle}
+            </p>
+
+            <dl className="mt-8 grid gap-4 sm:grid-cols-3">
+              {[
+                ["Conduzida por", course.conductedBy],
+                ["Formato", course.format],
+                ["Modalidade", course.modality],
+              ].map(([label, value]) => (
+                <div className="border-t border-white/25 pt-4" key={label}>
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#cda45c]">
+                    {label}
+                  </dt>
+                  <dd className="mt-2 text-[14px] leading-[1.45] text-white/90">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+              <PrimaryCta href="#investimento">Quero agendar a minha sessão</PrimaryCta>
+              <GhostCta href="#sobre">Saber mais</GhostCta>
+            </div>
+          </div>
+
+          <div className="relative mx-auto aspect-[4/5] w-full max-w-[460px] lg:max-w-none">
+            <Image
+              alt={course.alt}
+              className="object-contain object-right drop-shadow-[0_24px_48px_rgba(0,0,0,0.35)]"
+              fill
+              priority
+              sizes="(min-width: 1024px) 480px, 90vw"
+              src={course.image}
+            />
+          </div>
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Moment({ course }: { course: Course }) {
+  return (
+    <section className="px-6 py-16 text-white sm:py-20" style={burgundy}>
+      <SectionContainer>
+        <p className="section-eyebrow text-[#cda45c]">{course.momentEyebrow}</p>
+        <h2 className="section-heading mt-5 max-w-[760px]">
+          {course.momentTitle}{" "}
+          <span className="text-[#cda45c]">{course.momentAccent}</span>
+        </h2>
+        <p className="content-card-copy mt-5 max-w-[640px] text-white/80">
+          {course.momentLead}
+        </p>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          {course.momentQuestions.map((question) => (
+            <p
+              className="rounded-[18px] border border-[#cda45c]/45 px-5 py-5 text-[15px] italic leading-[1.55] text-white/90"
+              key={question}
+            >
+              {question}
+            </p>
+          ))}
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function About({ course }: { course: Course }) {
+  return (
+    <section className="bg-white px-6 py-16 sm:py-20" id="sobre">
+      <SectionContainer>
+        <p className="section-eyebrow text-[#ae7d32]">Sobre a consultoria</p>
+        <h2 className="section-heading mt-5 max-w-[720px] text-[#211d1e]">
+          O que é a <span className="text-[#862f3b]">{course.title}</span>
+        </h2>
+        <blockquote className="mt-8 max-w-[760px] border-l-4 border-[#cda45c] bg-[#510f1d] px-6 py-6 text-[16px] italic leading-[1.7] text-white sm:px-8">
+          {course.aboutHighlight}
+        </blockquote>
+        <div className="mt-8 max-w-[720px] space-y-4">
+          {course.aboutBody.map((paragraph) => (
+            <p className="content-card-copy text-[#625c5c]" key={paragraph}>
+              {paragraph}
+            </p>
+          ))}
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Audience({ course }: { course: Course }) {
+  return (
+    <section className="px-6 py-16 text-white sm:py-20" style={burgundy}>
+      <SectionContainer>
+        <p className="section-eyebrow text-[#cda45c]">Perfil do cliente</p>
+        <h2 className="section-heading mt-5 max-w-[720px]">
+          Para quem é esta consultoria
+        </h2>
+        <p className="content-card-copy mt-5 max-w-[680px] text-white/80">
+          {course.audienceIntro}
+        </p>
+        <div className="mt-10 grid gap-px overflow-hidden rounded-[24px] border border-[#cda45c]/35 bg-[#cda45c]/35 sm:grid-cols-2 lg:grid-cols-3">
+          {course.audienceGroups.map((group) => (
+            <article className="bg-[#3b0a15] px-6 py-7" key={group.title}>
+              <h3 className="text-[17px] font-bold leading-[1.35] tracking-[0.04em] text-[#cda45c]">
+                {group.title}
+              </h3>
+              <p className="mt-3 text-[14px] italic leading-[1.6] text-white/80">
+                {group.description}
+              </p>
+            </article>
+          ))}
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Results({ course }: { course: Course }) {
+  return (
+    <section className="bg-[#f5f2f1] px-6 py-16 sm:py-20">
+      <SectionContainer>
+        <p className="section-eyebrow text-[#ae7d32]">Resultados esperados</p>
+        <h2 className="section-heading mt-5 max-w-[720px] text-[#211d1e]">
+          A transformação que irá experienciar
+        </h2>
+        <p className="content-card-copy mt-5 max-w-[620px] text-[#625c5c]">
+          {course.resultsIntro}
+        </p>
+        <ol className="mt-10 divide-y divide-[#e7e1df] border-y border-[#e7e1df]">
+          {course.results.map((result, index) => (
+            <li className="flex gap-5 py-5" key={result}>
+              <span className="w-10 flex-none text-[13px] font-bold tracking-[0.08em] text-[#862f3b]">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <p className="text-[16px] italic leading-[1.6] text-[#211d1e]">
+                {result}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Method({ course }: { course: Course }) {
+  return (
+    <section className="px-6 py-16 text-white sm:py-20" style={burgundy}>
+      <SectionContainer>
+        <p className="section-eyebrow text-[#cda45c]">A metodologia</p>
+        <h2 className="section-heading mt-5 max-w-[640px]">
+          Como será executado
+        </h2>
+        <p className="content-card-copy mt-5 max-w-[560px] text-white/80">
+          {course.methodIntro}
+        </p>
+
+        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-start">
+          <ol className="space-y-6">
+            {course.methodSteps.map((step) => (
+              <li className="flex gap-5" key={step.number}>
+                <span className="flex size-12 flex-none items-center justify-center rounded-full border border-[#cda45c] text-[15px] font-bold text-[#cda45c]">
+                  {Number(step.number)}
+                </span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
+                    {step.phase}
+                  </p>
+                  <h3 className="mt-1 text-[20px] font-bold tracking-[0.04em]">
+                    {step.title}
+                  </h3>
+                  <p className="mt-2 text-[15px] italic leading-[1.65] text-white/80">
+                    {step.description}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <aside className="rounded-[24px] border border-[#cda45c]/50 px-6 py-7">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#cda45c]">
+              Bónus exclusivo
+            </p>
+            <h3 className="mt-3 text-[20px] font-bold tracking-[0.04em]">
+              {course.bonusTitle}
+            </h3>
+            <p className="mt-3 text-[15px] italic leading-[1.65] text-white/80">
+              {course.bonusDescription}
+            </p>
+          </aside>
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Investment({ course }: { course: Course }) {
+  return (
+    <section
+      className="scroll-mt-24 px-6 py-16 text-white sm:py-20"
+      id="investimento"
+      style={burgundy}
+    >
+      <SectionContainer>
+        <p className="section-eyebrow text-[#cda45c]">Investimento</p>
+        <h2 className="section-heading mt-5 max-w-[640px]">O seu investimento</h2>
+        <p className="content-card-copy mt-5 max-w-[620px] text-white/80">
+          {course.investmentIntro}
+        </p>
+
+        <div className="mt-10 grid gap-5 lg:grid-cols-2">
+          {course.variants.map((variant) => (
+            <article
+              className="flex flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8"
+              key={variant.id}
+            >
+              <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
+                Valor total da consultoria
+              </p>
+              <p className="mt-4 text-[clamp(2rem,4vw,2.75rem)] font-bold leading-none tracking-[0.04em]">
+                {variant.price}
+              </p>
+              <p className="mt-3 text-[14px] text-white/70">
+                {variant.label} · {variant.detail}
+              </p>
+              <div className="mt-8">
+                <PrimaryCta href={getCheckoutPath(course, variant.id)}>
+                  Aderir agora
+                </PrimaryCta>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-8 rounded-[24px] border border-white/12 px-6 py-7 sm:px-8">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
+            Inclui
+          </p>
+          <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+            {course.includes.map((item) => (
+              <li
+                className="flex items-start gap-3 text-[15px] text-white/90"
+                key={item}
+              >
+                <CheckIcon />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function NextSteps({ course }: { course: Course }) {
+  return (
+    <section className="bg-white px-6 py-16 sm:py-20">
+      <SectionContainer>
+        <p className="section-eyebrow text-[#ae7d32]">Próximos passos</p>
+        <h2 className="section-heading mt-5 max-w-[640px] text-[#211d1e]">
+          Como começamos
+        </h2>
+        <p className="content-card-copy mt-4 max-w-[480px] text-[#625c5c]">
+          O processo é simples e inteiramente orientado para si.
+        </p>
+        <ol className="mt-12 grid gap-8 sm:grid-cols-5">
+          {course.nextSteps.map((step, index) => (
+            <li className="text-center" key={step}>
+              <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-[#510f1d] text-[16px] font-bold text-white">
+                {index + 1}
+              </span>
+              <p className="mt-4 text-[14px] italic leading-[1.5] text-[#211d1e]">
+                {step}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </SectionContainer>
+    </section>
+  );
+}
+
+function Closing({ course }: { course: Course }) {
+  return (
+    <section className="px-6 py-16 text-white sm:py-24" style={burgundy}>
+      <SectionContainer className="max-w-[760px] text-center">
+        <p className="section-heading">
+          {course.closingLead}
+          <span className="mt-3 block text-[#cda45c]">{course.closingAccent}</span>
+        </p>
+        <p className="content-card-copy mt-6 text-white/80">{course.closingNote}</p>
+        <div className="mt-10">
+          <PrimaryCta href="#investimento">Quero agendar a minha sessão</PrimaryCta>
+        </div>
+      </SectionContainer>
+    </section>
+  );
+}

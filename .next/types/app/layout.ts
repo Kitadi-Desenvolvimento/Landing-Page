@@ -1,4 +1,4 @@
-// File: C:\Users\Digital\OneDrive - Kitadi\Documentos\kitadi development\Landing Page\app\layout.tsx
+// File: /Users/itechzoneao/Documents/Landing-Page/app/layout.tsx
 import * as entry from '../../../app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

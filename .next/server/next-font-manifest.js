@@ -1,1 +1,1 @@
-self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{},"appUsingSizeAdjust":false,"pagesUsingSizeAdjust":false}';
+self.__NEXT_FONT_MANIFEST="{\"pages\":{},\"app\":{\"/Users/itechzoneao/Documents/Landing-Page/app/layout\":[\"static/media/fce1387930256782.p.otf\",\"static/media/df66b38514796b03.p.otf\",\"static/media/4ddc4dd923ae8f4e.p.otf\",\"static/media/41f18fce4ac0fc73.p.otf\"]},\"appUsingSizeAdjust\":false,\"pagesUsingSizeAdjust\":false}"

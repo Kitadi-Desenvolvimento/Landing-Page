@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { courses } from "../../../course-data";
+import { getCourseBySlug } from "../../../course-data";
 
 const apiBaseUrl = "https://api.bluelemon.ao/v1";
 
@@ -41,13 +41,20 @@ export async function POST(request: Request) {
   }
 
   const courseSlug = readString(body.courseSlug, 100);
+  const variantId = readString(body.variantId, 40);
   const name = readString(body.name, 120);
   const email = readString(body.email, 254);
   const phone = readString(body.phone, 24);
-  const course = courses.find((item) => item.slug === courseSlug);
+  const course = courseSlug ? getCourseBySlug(courseSlug) : undefined;
+  const variant = course
+    ? variantId
+      ? course.variants.find((item) => item.id === variantId)
+      : course.variants[0]
+    : undefined;
 
   if (
     !course ||
+    !variant ||
     !name ||
     !email ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
@@ -79,7 +86,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const customId = `KITADI-${course.slug}-${randomUUID()}`;
+  const customId = `KITADI-${course.slug}-${variant.id}-${randomUUID()}`;
 
   let providerResponse: Response;
   try {
@@ -90,10 +97,10 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        amount_minor: course.priceAmount * 100,
+        amount_minor: variant.priceAmount * 100,
         merchant_order_id: customId,
         currency: "AOA",
-        description: `Inscrição — ${course.title}`,
+        description: `Inscrição — ${course.title} (${variant.label})`,
         expiry_days: 3,
         customer: {
           name,
@@ -174,7 +181,7 @@ export async function POST(request: Request) {
     !paymentId ||
     merchantOrderId !== customId ||
     !Number.isSafeInteger(amountMinor) ||
-    amountMinor !== course.priceAmount * 100 ||
+    amountMinor !== variant.priceAmount * 100 ||
     currency !== "AOA" ||
     providerStatus !== "requires_method" ||
     !validCheckoutUrl ||
@@ -195,7 +202,7 @@ export async function POST(request: Request) {
       checkoutUrl,
       entity: null,
       reference: null,
-      amount: course.priceAmount,
+      amount: variant.priceAmount,
       currency,
       expiresAt,
     },

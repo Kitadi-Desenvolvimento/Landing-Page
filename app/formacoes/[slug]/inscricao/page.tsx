@@ -1,30 +1,38 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { courses } from "../../../course-data";
+import { getCourseBySlug, getCourseVariant } from "../../../course-data";
 import Checkout from "./checkout";
 
 type CheckoutPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ variante?: string }>;
 };
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: CheckoutPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = courses.find((item) => item.slug === slug);
+  const { variante } = await searchParams;
+  const course = getCourseBySlug(slug);
+  const variant = course ? getCourseVariant(course, variante) : null;
 
   return {
     title: course
-      ? `Inscrição — ${course.title} | Kitadi`
-      : "Formação não encontrada | Kitadi",
+      ? `Inscrição — ${course.title} (${variant?.label}) | Kitadi`
+      : "Produto não encontrado | Kitadi",
   };
 }
 
-export default async function CheckoutPage({ params }: CheckoutPageProps) {
+export default async function CheckoutPage({
+  params,
+  searchParams,
+}: CheckoutPageProps) {
   const { slug } = await params;
-  const course = courses.find((item) => item.slug === slug);
+  const { variante } = await searchParams;
+  const course = getCourseBySlug(slug);
 
   if (!course) notFound();
 
-  return <Checkout course={course} />;
+  return <Checkout course={course} initialVariantId={variante} />;
 }
