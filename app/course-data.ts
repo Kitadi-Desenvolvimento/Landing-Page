@@ -35,6 +35,8 @@ export type Course = {
   image: string;
   alt: string;
   statusLabel: string;
+  ctaLabel: string;
+  imageMode: "object" | "photo";
   conductedBy: string;
   format: string;
   modality: string;
@@ -45,6 +47,10 @@ export type Course = {
   momentAccent: string;
   momentLead: string;
   momentQuestions: string[];
+  aboutEyebrow: string;
+  aboutHeading: string;
+  audienceEyebrow: string;
+  audienceHeading: string;
   aboutHighlight: string;
   aboutBody: string[];
   audienceIntro: string;
@@ -101,6 +107,8 @@ export const courses: Course[] = [
     image: "/produtos/bussola.jpg",
     alt: "Bússola dourada da consultoria estratégica Kitadi",
     statusLabel: "Consultoria privada",
+    ctaLabel: "Quero agendar a minha sessão",
+    imageMode: "object",
     conductedBy: "Neuza Pinto",
     format: "Sessão privada · 2 horas",
     modality: "Presencial ou online",
@@ -119,6 +127,10 @@ export const courses: Course[] = [
       "Como garantir o futuro dos meus filhos? Que legado vou deixar?",
       "Como transformar rendimento em estabilidade, liberdade e paz?",
     ],
+    aboutEyebrow: "Sobre a consultoria",
+    aboutHeading: "O que é a Bússola do Kitadi",
+    audienceEyebrow: "Perfil do cliente",
+    audienceHeading: "Para quem é esta consultoria",
     aboutHighlight:
       "A Bússola do Kitadi não é uma consultoria financeira comum. É um espaço estratégico de clareza, direcção e estruturação, criado para quem precisa de tomar as decisões certas no momento exacto.",
     aboutBody: [
@@ -208,7 +220,7 @@ export const courses: Course[] = [
       "Confidencialidade total",
     ],
     nextSteps: [
-      "Confirmação do interesse e pagamento",
+      "Confirmação do interesse pelo WhatsApp",
       "Envio do formulário de anamnese",
       "Agendamento da sessão privada",
       "Realização da consultoria",
@@ -218,6 +230,141 @@ export const courses: Course[] = [
     closingAccent: "Outras mudam o futuro inteiro.",
     closingNote: "Esta pode ser uma delas.",
   },
+  {
+    slug: "tea-and-money-talks",
+    category: "Experiência Kitadi",
+    title: "Tea & Money Talks",
+    shortName: "TEA",
+    programTitle: "Tea & Money Talks",
+    description:
+      "Uma conversa à mesa com o dinheiro: as três fases da vida financeira e a preparação de 2027.",
+    longDescription:
+      "O Tea & Money Talks é uma experiência presencial em que o dinheiro se senta à mesa — sem julgamento, com honestidade e com decisões. Um espaço para compreender a sua fase financeira e preparar 2027 com clareza.",
+    audience:
+      "Quem quer olhar para o dinheiro com honestidade, identificar a fase prioritária e sair com um plano concreto para os próximos meses.",
+    highlight:
+      "Diagnóstico da fase financeira, calendário de 2027, orçamento e o plano ROTA para os próximos 7 dias.",
+    tagline: "À mesa com o dinheiro.",
+    price: "",
+    priceAmount: 0,
+    variants: [],
+    image: "/produtos/tea-money-talks.jpg",
+    alt: "Grupo à mesa no Tea & Money Talks da Kitadi",
+    statusLabel: "21 Nov 2026",
+    ctaLabel: "Quero participar",
+    imageMode: "photo",
+    conductedBy: "Neuza Pinto",
+    format: "Experiência presencial · 21 Novembro 2026",
+    modality: "Kitadi · Morro Bento",
+    heroEyebrow: "À mesa com o dinheiro",
+    heroSubtitle: "As 3 fases da vida financeira e a preparação de 2027",
+    momentEyebrow: "A experiência",
+    momentTitle: "Hoje, o dinheiro senta-se",
+    momentAccent: "à mesa",
+    momentLead:
+      "Sem julgamento. Com honestidade. E com decisões. Aqui, todas as perguntas são válidas — e o que é partilhado à mesa fica à mesa.",
+    momentQuestions: [
+      "Dinheiro e família",
+      "Dinheiro e casal",
+      "Dinheiro e filhos",
+      "Ajudas familiares e limites",
+      "Medo, culpa e vergonha financeira",
+      "Dívidas, poupança, investimentos e o futuro",
+    ],
+    aboutEyebrow: "Sobre a experiência",
+    aboutHeading: "O que é o Tea & Money Talks",
+    audienceEyebrow: "As três fases",
+    audienceHeading: "Por onde começa o seu percurso",
+    aboutHighlight:
+      "Aqui, ninguém precisa parecer bem resolvido. O pacto da mesa é confidencialidade, ausência de julgamento, honestidade com os números reais e responsabilidade pela parte que nos cabe.",
+    aboutBody: [
+      "As fases da vida financeira não dependem da idade: dependem da solidez da base que já construiu. Uma pessoa pode ganhar muito e ainda estar a construir a protecção; outra pode investir e, ao mesmo tempo, precisar de reforçar o rendimento.",
+      "A prioridade está na primeira fase que ainda não se sustenta. O Tea & Money Talks ajuda a reconhecê-la e a transformar essa leitura num plano para 2027.",
+    ],
+    audienceIntro:
+      "A fase prioritária depende da base que já construiu. O percurso começa na primeira fase que ainda não tem uma estrutura sólida.",
+    audienceGroups: [
+      {
+        title: "Ganhar mais",
+        description:
+          "Aumentar a capacidade de gerar rendimento quando o valor ainda limita as escolhas, a fonte é única ou o plano de crescimento não existe.",
+      },
+      {
+        title: "Proteger e manter",
+        description:
+          "Organizar o dinheiro e reduzir a vulnerabilidade: visibilidade, margem, reserva, protecção e controlo da dívida.",
+      },
+      {
+        title: "Multiplicar",
+        description:
+          "Investir o excedente com objectivos claros — só depois de haver margem, reserva e dívidas sob controlo.",
+      },
+    ],
+    resultsIntro:
+      "Sai da mesa com um diagnóstico honesto, um calendário realista e uma primeira acção marcada.",
+    results: [
+      "Clareza sobre a fase financeira em que está e a que precisa de atenção primeiro",
+      "Um diagnóstico individual da sua base: ganhar, proteger ou multiplicar",
+      "Um calendário financeiro para 2026 e 2027, com datas e decisões",
+      "Um orçamento pensado como decisão antecipada, não como lista de despesas",
+      "O plano ROTA — realidade, objectivos, trajecto e acompanhamento",
+      "Uma acção concreta para os próximos 7 dias",
+    ],
+    methodIntro:
+      "Um percurso à mesa, com exercícios e conversa, para ligar dinheiro, datas e decisões.",
+    methodSteps: [
+      {
+        number: "01",
+        phase: "40 min",
+        title: "As três fases",
+        description:
+          "Compreender onde o dinheiro ganha força ou se perde — ganhar, proteger e multiplicar.",
+      },
+      {
+        number: "02",
+        phase: "30 min",
+        title: "O meu diagnóstico",
+        description:
+          "Identificar a fase prioritária, as evidências e a decisão seguinte, sem expor valores que não queira revelar.",
+      },
+      {
+        number: "03",
+        phase: "50 min",
+        title: "Plano 2027",
+        description:
+          "Ligar objectivos, datas e dinheiro num calendário realista, para que o fim do ano deixe de ser improvisação.",
+      },
+      {
+        number: "04",
+        phase: "45 min",
+        title: "Conversa à mesa",
+        description:
+          "Partilhar dúvidas, experiências e compromissos — o que os números não dizem, com confidencialidade.",
+      },
+    ],
+    bonusTitle: "Método ROTA Financeira",
+    bonusDescription:
+      "Quatro perguntas para sair da mesa com um plano: onde estou, aonde quero chegar, como vou chegar lá e como saberei se estou no caminho certo.",
+    investmentIntro:
+      "Uma experiência presencial na Kitadi, em Morro Bento. Para garantir o seu lugar, fale connosco.",
+    includes: [
+      "Diagnóstico da fase financeira",
+      "Calendário financeiro de 2027",
+      "Exercício de orçamento",
+      "Plano ROTA Financeira",
+      "Conversa à mesa, com confidencialidade",
+      "Primeira acção para os próximos 7 dias",
+    ],
+    nextSteps: [
+      "Confirmar o interesse connosco",
+      "Reservar o lugar na sessão de 21 de Novembro",
+      "Participar na experiência em Morro Bento",
+      "Sair com o plano dos próximos 7 dias",
+    ],
+    closingLead: "Faz a tua parte.",
+    closingAccent: "Porque a tua parte ninguém vai fazer.",
+    closingNote: "Nem mesmo Deus.",
+  },
 ];
 
 export function getCourseBySlug(slug: string) {
@@ -225,13 +372,24 @@ export function getCourseBySlug(slug: string) {
 }
 
 export function getCourseVariant(course: Course, variantId?: string | null) {
+  if (!course.variants.length) return undefined;
   return (
     course.variants.find((item) => item.id === variantId) ?? course.variants[0]
   );
 }
 
+export const kitadiWhatsAppNumber = "244936250151";
+
 export function getProductPath(course: Course) {
   return `/produtos/${course.slug}`;
+}
+
+export function getWhatsAppHref(course?: Pick<Course, "title">) {
+  const text = course
+    ? `Olá, quero aderir a ${course.title}.`
+    : "Olá, quero saber mais sobre os produtos da Kitadi.";
+
+  return `https://wa.me/${kitadiWhatsAppNumber}?text=${encodeURIComponent(text)}`;
 }
 
 export function getCheckoutPath(course: Course, variantId?: string) {

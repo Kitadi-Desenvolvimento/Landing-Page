@@ -304,9 +304,10 @@ export default function Checkout({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState(
-    getCourseVariant(course, initialVariantId).id,
+    getCourseVariant(course, initialVariantId)?.id ?? course.variants[0]?.id ?? "",
   );
-  const variant = getCourseVariant(course, variantId);
+  const variant =
+    getCourseVariant(course, variantId) ?? course.variants[0];
   const [enrollment, setEnrollment] = useState<EnrollmentDetails>({
     name: "",
     email: "",
@@ -405,6 +406,8 @@ export default function Checkout({
       setIsSubmitting(false);
     }
   }
+
+  if (!variant) return null;
 
   const paymentHeading = paymentCharge
     ? "Pagamento seguro"

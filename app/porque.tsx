@@ -117,7 +117,7 @@ export default function PorqueEscolherKitadi() {
                 10K+
               </p>
               <p className="text-[12px] text-[#625c5c]">
-                Clientes atendidos
+                Clientes atendido
               </p>
             </div>
           </div>
