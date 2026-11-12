@@ -57,6 +57,10 @@ export default function Home() {
         aria-labelledby="hero-title"
         className="flex min-h-svh flex-col"
         id="inicio"
+        style={{
+          background:
+            "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)",
+        }}
       >
         <SiteHeader />
 
@@ -135,6 +139,8 @@ export default function Home() {
         </SectionContainer>
       </section>
 
+      <Produtos />
+
       <section
         aria-labelledby="audiences-title"
         className="flex min-h-svh items-center bg-[#f5f2f1] px-6 py-16 text-[#1f1b1c] sm:py-20 lg:py-10"
@@ -177,8 +183,6 @@ export default function Home() {
           </div>
         </SectionContainer>
       </section>
-
-      <Produtos />
 
       <PorqueEscolherKitadi />
 

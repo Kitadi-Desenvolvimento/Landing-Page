@@ -141,7 +141,7 @@ function Hero({ course }: { course: Course }) {
           <span aria-hidden="true" className="mx-3 text-[#cda45c]">
             ›
           </span>
-          <Link className="transition-colors hover:text-white" href="/#produtos">
+          <Link className="transition-colors hover:text-white" href="/produtos">
             Produtos
           </Link>
           <span aria-hidden="true" className="mx-3 text-[#cda45c]">

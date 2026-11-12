@@ -93,78 +93,10 @@ h3,
   display: none;
 }
 
-.product-showcase {
-  background:
-    radial-gradient(ellipse 70% 55% at 100% 0%, rgba(205, 164, 92, 0.12), transparent 58%),
-    radial-gradient(ellipse 55% 45% at 80% 100%, rgba(134, 47, 59, 0.28), transparent 55%),
-    linear-gradient(160deg, #3a0a14 0%, #1a0509 100%);
+.product-carousel-track {
+  scrollbar-width: none;
 }
 
-.product-showcase-copy {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600' preserveAspectRatio='none'%3E%3Cpath fill='none' stroke='%23cda45c' stroke-opacity='0.08' stroke-width='1.2' d='M520 0c40 90 90 140 180 180 110 50 140 110 100 220-30 85-10 140 80 200'/%3E%3Cpath fill='none' stroke='%23cda45c' stroke-opacity='0.06' stroke-width='1.2' d='M580-20c50 110 70 170 170 220 90 45 130 120 90 210'/%3E%3C/svg%3E");
-  background-position: right center;
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
-.product-ribbon {
-  position: absolute;
-  top: 36px;
-  left: -56px;
-  z-index: 20;
-  width: 250px;
-  padding: 9px 0;
-  background: #862f3b;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  line-height: 1;
-  text-align: center;
-  text-transform: uppercase;
-  transform: rotate(-32deg);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-}
-
-@keyframes product-fade {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-.product-slide {
-  animation: product-fade 0.55s ease;
-}
-
-@keyframes product-progress {
-  from {
-    transform: scaleX(0);
-  }
-
-  to {
-    transform: scaleX(1);
-  }
-}
-
-.product-progress-fill {
-  animation: product-progress 5s linear forwards;
-}
-
-.product-progress-fill.is-paused {
-  animation-play-state: paused;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .product-slide,
-  .product-progress-fill {
-    animation: none;
-  }
-
-  .product-progress-fill {
-    transform: scaleX(1);
-  }
+.product-carousel-track::-webkit-scrollbar {
+  display: none;
 }
