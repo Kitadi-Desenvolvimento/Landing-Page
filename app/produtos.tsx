@@ -77,7 +77,7 @@ export default function Produtos() {
             </h2>
           </div>
           <a
-            className="inline-flex min-h-[48px] shrink-0 items-center justify-center rounded-full border border-[#cda45c] px-6 text-[14px] font-medium text-[#cda45c] transition-colors hover:bg-[#cda45c] hover:text-[#2b160f]"
+            className="inline-flex min-h-[52px] shrink-0 items-center justify-center rounded-full bg-[#cda45c] px-7 text-[15px] font-medium !text-[#2b160f] shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-colors hover:bg-[#dab76e]"
             href="/produtos"
           >
             Ver todos os produtos
@@ -99,10 +99,10 @@ export default function Produtos() {
         </ul>
 
         {canScroll ? (
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="mt-6 flex justify-end gap-3">
             <button
               aria-label="Produtos anteriores"
-              className="flex size-9 items-center justify-center rounded-full border border-white/25 text-white/80 transition-colors hover:border-[#cda45c] hover:text-[#cda45c]"
+              className="flex size-12 items-center justify-center rounded-full bg-[#cda45c] text-[#2b160f] shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-colors hover:bg-[#dab76e]"
               onClick={() => move(-1)}
               type="button"
             >
@@ -110,7 +110,7 @@ export default function Produtos() {
             </button>
             <button
               aria-label="Produtos seguintes"
-              className="flex size-9 items-center justify-center rounded-full border border-white/25 text-white/80 transition-colors hover:border-[#cda45c] hover:text-[#cda45c]"
+              className="flex size-12 items-center justify-center rounded-full bg-[#cda45c] text-[#2b160f] shadow-[0_8px_20px_rgba(0,0,0,0.22)] transition-colors hover:bg-[#dab76e]"
               onClick={() => move(1)}
               type="button"
             >
@@ -158,7 +158,7 @@ function cardStep(track: HTMLElement) {
 
 function Chevron({ direction }: { direction: "left" | "right" }) {
   return (
-    <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+    <svg aria-hidden="true" fill="none" height="22" viewBox="0 0 24 24" width="22">
       <path
         d={direction === "left" ? "m15 18-6-6 6-6" : "m9 18 6-6-6-6"}
         stroke="currentColor"
