@@ -3,8 +3,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
+  getCheckoutPath,
   getCourseBySlug,
   getWhatsAppHref,
+  offersCheckout,
   courses,
   type Course,
 } from "../../course-data";
@@ -85,7 +87,7 @@ function PrimaryCta({
 
   return (
     <a
-      className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[#cda45c] px-8 text-[14px] font-medium text-[#2b160f] transition-colors hover:bg-[#dab76e]"
+      className="inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[#cda45c] px-8 text-[14px] font-medium !text-[#2b160f] transition-colors hover:bg-[#dab76e]"
       href={href}
       {...(external
         ? { target: "_blank", rel: "noopener noreferrer" }
@@ -94,6 +96,28 @@ function PrimaryCta({
       {children}
       <ArrowIcon />
     </a>
+  );
+}
+
+function JoinCta({
+  course,
+  centered = false,
+}: {
+  course: Course;
+  centered?: boolean;
+}) {
+  const checkout = offersCheckout(course);
+
+  return (
+    <div
+      className={`flex flex-col gap-3 sm:flex-row ${centered ? "justify-center" : ""}`}
+    >
+      {checkout ? (
+        <PrimaryCta href={getCheckoutPath(course)}>Ir para o checkout</PrimaryCta>
+      ) : (
+        <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
+      )}
+    </div>
   );
 }
 
@@ -182,9 +206,16 @@ function Hero({ course }: { course: Course }) {
               ))}
             </dl>
 
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
-              <GhostCta href="#sobre">Saber mais</GhostCta>
+            <div className="mt-10 flex flex-col gap-3">
+              {offersCheckout(course) ? (
+                <p className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold leading-none tracking-[0.04em] text-white">
+                  {course.price}
+                </p>
+              ) : null}
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <JoinCta course={course} />
+                <GhostCta href="#sobre">Saber mais</GhostCta>
+              </div>
             </div>
           </div>
 
@@ -390,23 +421,25 @@ function Investment({ course }: { course: Course }) {
     >
       <SectionContainer>
         <p className="section-eyebrow text-[#cda45c]">Aderir</p>
-        <h2 className="section-heading mt-5 max-w-[640px]">Fale connosco no WhatsApp</h2>
+        <h2 className="section-heading mt-5 max-w-[640px]">
+          {offersCheckout(course) ? "Inscreva-se" : "Fale connosco no WhatsApp"}
+        </h2>
         <p className="content-card-copy mt-5 max-w-[620px] text-white/80">
           {course.investmentIntro}
         </p>
 
         <article className="mt-10 flex max-w-[560px] flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
-            WhatsApp
+            {offersCheckout(course) ? "Investimento" : "WhatsApp"}
           </p>
           <p className="mt-4 text-[clamp(1.6rem,3vw,2.2rem)] font-bold leading-none tracking-[0.04em]">
-            +244 936 250 151
+            {offersCheckout(course) ? course.price : "+244 936 250 151"}
           </p>
           <p className="mt-3 text-[14px] text-white/70">
             {course.format} · {course.modality}
           </p>
           <div className="mt-8">
-            <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
+            <JoinCta course={course} />
           </div>
         </article>
 
@@ -475,7 +508,7 @@ function Closing({ course }: { course: Course }) {
         </p>
         <p className="content-card-copy mt-6 text-white/80">{course.closingNote}</p>
         <div className="mt-10">
-          <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
+          <JoinCta centered course={course} />
         </div>
       </SectionContainer>
     </section>

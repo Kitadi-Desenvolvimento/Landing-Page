@@ -1,1 +1,11 @@
-{"version":4,"routes":{"/produtos/bussola-do-kitadi":{},"/produtos/tea-and-money-talks":{},"/produtos/desafio-aprendiz":{},"/produtos/finance-date":{}},"dynamicRoutes":{"/produtos/[slug]":{"dataRoute":null,"dataRouteRegex":null,"fallback":null,"fallbackRevalidate":false,"fallbackSourceRoute":"/produtos/[slug]","routeRegex":"^\\/produtos\\/([^/]+?)(?:\\/)?$","allowHeader":[]}},"notFoundRoutes":[],"preview":{"previewModeId":"9738e244bc6fe969510e7a444e014a51","previewModeSigningKey":"35f05ca4e8804a1aacf0b9292727d5ddbd139cf7c4f25e8e5432a4fc65fa8f84","previewModeEncryptionKey":"ec5e1ba1804e222519dc843edf07d315c606e8f76b5ecaad5b845c75b6e08b1d"}}
+{
+  "version": 4,
+  "routes": {},
+  "dynamicRoutes": {},
+  "notFoundRoutes": [],
+  "preview": {
+    "previewModeId": "9deee4a97fed29e769067e034b38147f",
+    "previewModeSigningKey": "1ae2513dae98863d5df4cbb80849499fa289912bb995dd1a106769144437c07c",
+    "previewModeEncryptionKey": "27621f2a8ac37394117b3c41384aa8ff9a05009388ab7d08de8e0ba03e6a52f8"
+  }
+}

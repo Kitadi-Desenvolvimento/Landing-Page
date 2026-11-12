@@ -47,6 +47,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 }
 
 
+// Validate ../../app/checkout/retorno/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/checkout/retorno">> = Specific
+  const handler = {} as typeof import("../../app/checkout/retorno/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/formacoes/[slug]/inscricao/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/formacoes/[slug]/inscricao">> = Specific
@@ -110,10 +119,28 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/payments/orders/[reference]/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/orders/[reference]">> = Specific
+  const handler = {} as typeof import("../../app/api/payments/orders/[reference]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/payments/webhook/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/webhook">> = Specific
   const handler = {} as typeof import("../../app/api/payments/webhook/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/webhooks/wipay/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/wipay">> = Specific
+  const handler = {} as typeof import("../../app/api/webhooks/wipay/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

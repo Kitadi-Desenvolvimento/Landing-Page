@@ -5,6 +5,7 @@ import {
   getCourseBySlug,
   getCourseVariant,
   getProductPath,
+  offersCheckout,
 } from "../../../course-data";
 import Checkout from "./checkout";
 
@@ -38,7 +39,7 @@ export default async function CheckoutPage({
   const course = getCourseBySlug(slug);
 
   if (!course) notFound();
-  if (!course.variants.length) redirect(getProductPath(course));
+  if (!offersCheckout(course)) redirect(getProductPath(course));
 
   return <Checkout course={course} initialVariantId={variante} />;
 }

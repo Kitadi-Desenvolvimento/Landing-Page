@@ -248,9 +248,17 @@ export const courses: Course[] = [
     highlight:
       "Diagnóstico da fase financeira, calendário de 2027, orçamento e o plano ROTA para os próximos 7 dias.",
     tagline: "À mesa com o dinheiro.",
-    price: "",
-    priceAmount: 0,
-    variants: [],
+    price: "88.000 Kz",
+    priceAmount: 88000,
+    variants: [
+      {
+        id: "participacao",
+        label: "Participação",
+        detail: "1 lugar · 21 Novembro 2026",
+        price: "88.000 Kz",
+        priceAmount: 88000,
+      },
+    ],
     image: "/produtos/tea-money-talks.jpg",
     coverImage: "/produtos/tea-capa.jpg",
     alt: "Grupo à mesa no Tea & Money Talks da Kitadi",
@@ -384,9 +392,17 @@ export const courses: Course[] = [
     highlight:
       "100% via WhatsApp, com desafios diários, exercícios práticos e acompanhamento em grupo com a formadora Neuza Pinto.",
     tagline: "15 dias de organização financeira.",
-    price: "",
-    priceAmount: 0,
-    variants: [],
+    price: "16.989 Kz",
+    priceAmount: 16899,
+    variants: [
+      {
+        id: "participacao",
+        label: "Participação",
+        detail: "15 dias · 30 Novembro 2026",
+        price: "16.989 Kz",
+        priceAmount: 16899,
+      },
+    ],
     image: "/produtos/desafio-aprendiz.jpg",
     coverImage: "/produtos/desafio-aprendiz.jpg",
     alt: "Neuza Pinto no cartaz do Desafio Aprendiz, 15 dias de organização financeira",
@@ -612,6 +628,19 @@ export function getCourseVariant(course: Course, variantId?: string | null) {
 }
 
 export const kitadiWhatsAppNumber = "244936250151";
+export const checkoutPriceLimit = 100_000;
+
+export function offersCheckout(course: Course) {
+  return (
+    course.priceAmount > 0 &&
+    course.priceAmount < checkoutPriceLimit &&
+    course.variants.length > 0 &&
+    course.variants.every(
+      (variant) =>
+        variant.priceAmount > 0 && variant.priceAmount < checkoutPriceLimit,
+    )
+  );
+}
 
 export function getProductPath(course: Course) {
   return `/produtos/${course.slug}`;

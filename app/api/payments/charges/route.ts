@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getCourseBySlug } from "../../../course-data";
-
-const apiBaseUrl = "https://api.bluelemon.ao/v1";
+import { getCourseBySlug, offersCheckout } from "../../../course-data";
+import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
+import { createWipayHostedPayment, isWipayConfigured, WipayError } from "../../../lib/payments/wipay";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -12,6 +11,12 @@ function readString(value: unknown, maxLength: number) {
   return typeof value === "string" && value.trim().length <= maxLength
     ? value.trim()
     : null;
+}
+
+function siteOrigin(request: Request) {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  return new URL(request.url).origin;
 }
 
 export async function POST(request: Request) {
@@ -54,6 +59,7 @@ export async function POST(request: Request) {
 
   if (
     !course ||
+    !offersCheckout(course) ||
     !variant ||
     !name ||
     !email ||
@@ -66,145 +72,68 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const normalizedPhone = phone.replace(/\s+/g, "");
 
-  const apiKey = process.env.BLUELEMON_API_KEY_SECRET;
-  if (!apiKey) {
-    console.error("Blue Lemon API key is not configured.");
+  if (!isWipayConfigured()) {
+    console.error("WiPay credentials are not configured.");
     return NextResponse.json(
       { error: "O serviço de pagamentos ainda não está configurado." },
       { status: 503 },
     );
   }
 
-  const baseUrl = process.env.BLUELEMON_API_BASE_URL ?? apiBaseUrl;
-  if (baseUrl !== apiBaseUrl) {
-    console.error("Only the configured Blue Lemon API endpoint is enabled.");
-    return NextResponse.json(
-      { error: "A configuração do serviço de pagamentos é inválida." },
-      { status: 500 },
-    );
-  }
+  const reference = newKitadiReference();
+  const now = new Date().toISOString();
+  await saveOrder({
+    reference,
+    amountKz: variant.priceAmount,
+    courseSlug: course.slug,
+    variantId: variant.id,
+    name,
+    email,
+    phone: phone.replace(/\s+/g, ""),
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  });
 
-  const customId = `KITADI-${course.slug}-${variant.id}-${randomUUID()}`;
-
-  let providerResponse: Response;
+  const origin = siteOrigin(request);
+  let checkoutUrl: string;
   try {
-    providerResponse = await fetch(`${baseUrl}/payments`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        amount_minor: variant.priceAmount * 100,
-        merchant_order_id: customId,
-        currency: "AOA",
-        description: `Inscrição — ${course.title} (${variant.label})`,
-        expiry_days: 3,
-        customer: {
-          name,
-          email,
-          phone: normalizedPhone,
-        },
-      }),
-      signal: AbortSignal.timeout(15_000),
+    const payment = await createWipayHostedPayment({
+      amountKz: variant.priceAmount,
+      customer: email,
+      reference,
+      successUrl: `${origin}/checkout/retorno?status=success&reference=${reference}`,
+      failureUrl: `${origin}/checkout/retorno?status=error&reference=${reference}`,
     });
+    checkoutUrl = payment.checkoutUrl;
   } catch (error) {
-    console.error(
-      "Blue Lemon charge request failed.",
-      error instanceof Error ? error.message : "Unknown network error",
-    );
+    const code = error instanceof WipayError ? error.code : "unknown";
+    console.error("WiPay hosted payment failed.", code);
+    await updateOrder(reference, { status: "rejected", reason: code });
+    const status = code === "config_missing" ? 503 : 502;
     return NextResponse.json(
-      { error: "Não foi possível contactar o serviço de pagamentos. Tente novamente." },
-      { status: 502 },
-    );
-  }
-
-  let providerBody: unknown;
-  try {
-    providerBody = await providerResponse.json();
-  } catch {
-    console.error(
-      `Blue Lemon returned an invalid response (HTTP ${providerResponse.status}).`,
-    );
-    return NextResponse.json(
-      { error: "O serviço de pagamentos devolveu uma resposta inválida." },
-      { status: 502 },
-    );
-  }
-
-  if (!providerResponse.ok || !isRecord(providerBody)) {
-    console.error(
-      `Blue Lemon charge request failed with HTTP ${providerResponse.status}.`,
-    );
-    return NextResponse.json(
-      { error: "Não foi possível criar a cobrança. Tente novamente." },
-      { status: 502 },
-    );
-  }
-
-  const providerPayment = isRecord(providerBody.payment)
-    ? providerBody.payment
-    : null;
-  const paymentId = providerPayment
-    ? readString(providerPayment.id, 100)
-    : null;
-  const merchantOrderId = providerPayment
-    ? readString(providerPayment.merchant_order_id, 100)
-    : null;
-  const amountMinor = providerPayment
-    ? Number(providerPayment.amount_minor)
-    : Number.NaN;
-  const currency = providerPayment?.currency;
-  const expiresAt = providerPayment
-    ? readString(providerPayment.expires_at, 100)
-    : null;
-  const providerStatus =
-    typeof providerPayment?.status === "string"
-      ? providerPayment.status
-      : "";
-  const checkoutUrl = readString(providerBody.checkout_url, 2048);
-  let validCheckoutUrl = false;
-  if (checkoutUrl) {
-    try {
-      const url = new URL(checkoutUrl);
-      validCheckoutUrl =
-        url.protocol === "https:" &&
-        url.hostname === "checkout.bluelemon.ao";
-    } catch {
-      validCheckoutUrl = false;
-    }
-  }
-
-  if (
-    !paymentId ||
-    merchantOrderId !== customId ||
-    !Number.isSafeInteger(amountMinor) ||
-    amountMinor !== variant.priceAmount * 100 ||
-    currency !== "AOA" ||
-    providerStatus !== "requires_method" ||
-    !validCheckoutUrl ||
-    (expiresAt !== null && Number.isNaN(Date.parse(expiresAt)))
-  ) {
-    console.error("Blue Lemon returned an incomplete or mismatched payment.");
-    return NextResponse.json(
-      { error: "A cobrança devolvida pelo serviço não pôde ser validada." },
-      { status: 502 },
+      {
+        error:
+          code === "config_missing"
+            ? "O serviço de pagamentos ainda não está configurado."
+            : "Não foi possível criar a cobrança. Tente novamente.",
+      },
+      { status },
     );
   }
 
   return NextResponse.json(
     {
-      customId,
-      chargeId: paymentId,
+      customId: reference,
+      chargeId: reference,
       status: "pending",
       checkoutUrl,
       entity: null,
-      reference: null,
+      reference,
       amount: variant.priceAmount,
-      currency,
-      expiresAt,
+      currency: "AOA",
+      expiresAt: null,
     },
     { status: 201 },
   );

@@ -53,7 +53,7 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
         const url = new URL(charge.checkoutUrl);
         return (
           url.protocol === "https:" &&
-          url.hostname === "checkout.bluelemon.ao"
+          (url.hostname === "hosted.wipay.ao" || url.hostname === "pay.wiza.ao")
         );
       } catch {
         return false;
@@ -150,9 +150,9 @@ function PaymentInstructions({
   const isPending = charge.status === "pending";
   const instructions = [
     {
-      title: "Abra o checkout seguro da Blue Lemon",
+      title: "Abra o checkout seguro da WiPay",
       description:
-        "No checkout, escolha Multicaixa Express ou pagamento por referência.",
+        "No checkout da WiPay, confirme o pagamento com o método disponível.",
     },
     {
       title: "Confirme o valor",
@@ -162,7 +162,7 @@ function PaymentInstructions({
     {
       title: "Aguarde a confirmação",
       description:
-        "Esta página será atualizada quando a Blue Lemon confirmar o pagamento.",
+        "Depois do pagamento, a WiPay devolve-o à Kitadi com a confirmação.",
     },
   ];
 
@@ -210,9 +210,9 @@ function PaymentInstructions({
 
       <p className="content-card-copy mt-3 text-sm text-[#716a69]">
         {isPaid
-          ? "A Blue Lemon confirmou o pagamento desta inscrição."
+          ? "A WiPay confirmou o pagamento desta inscrição."
           : isPending
-            ? "A cobrança foi criada. Escolha o método de pagamento no checkout seguro da Blue Lemon."
+            ? "A cobrança foi criada. Continue para o checkout seguro da WiPay."
             : `O estado atual do pagamento é: ${charge.status}.`}
       </p>
 
@@ -392,10 +392,10 @@ export default function Checkout({
       }
 
       if (result.amount !== variant.priceAmount) {
-        throw new Error("O valor devolvido não corresponde a esta consultoria.");
+        throw new Error("O valor devolvido não corresponde a esta inscrição.");
       }
 
-      setPaymentCharge(result);
+      window.location.assign(result.checkoutUrl);
     } catch (error) {
       setPaymentError(
         error instanceof Error
@@ -422,11 +422,11 @@ export default function Checkout({
         : "Está a um passo de começar";
   const checkoutDescription =
     paymentCharge?.status === "paid"
-      ? "A Blue Lemon confirmou o pagamento desta inscrição."
+      ? "A WiPay confirmou o pagamento desta inscrição."
       : paymentCharge && paymentCharge.status !== "pending"
         ? `O estado atual do pagamento é: ${paymentCharge.status}.`
       : paymentCharge
-        ? "A cobrança foi criada. O estado é consultado diretamente na Blue Lemon."
+        ? "A cobrança foi criada. Continue para o checkout seguro da WiPay."
         : "Preencha os seus dados e escolha como pagar. Sem carrinho, sem complicações.";
 
   return (
@@ -597,8 +597,8 @@ export default function Checkout({
                   Métodos disponíveis
                 </p>
                 <p className="mt-1 text-sm leading-[1.5] text-[#716a69]">
-                  No checkout seguro da Blue Lemon poderá escolher Multicaixa
-                  Express ou pagamento por referência.
+                  No checkout seguro da WiPay confirma o pagamento do valor
+                  indicado nesta inscrição.
                 </p>
               </div>
 
