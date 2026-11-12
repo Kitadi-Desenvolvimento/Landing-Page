@@ -5,7 +5,7 @@ import { courses } from "./course-data";
 import ProductCoverCard from "./product-cover-card";
 import SectionContainer from "./section-container";
 
-const AUTO_PLAY_MS = 5 * 60 * 1000;
+const AUTO_PLAY_MS = 5 * 1000;
 
 export default function Produtos() {
   const trackRef = useRef<HTMLUListElement>(null);

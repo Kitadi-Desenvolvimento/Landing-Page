@@ -120,7 +120,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       <Moment course={course} />
       <About course={course} />
       <Audience course={course} />
-      <Results course={course} />
+      {course.results.length > 0 ? <Results course={course} /> : null}
       <Method course={course} />
       <Investment course={course} />
       <NextSteps course={course} />
@@ -226,16 +226,18 @@ function Moment({ course }: { course: Course }) {
         <p className="content-card-copy mt-5 max-w-[640px] text-white/80">
           {course.momentLead}
         </p>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2">
-          {course.momentQuestions.map((question) => (
-            <p
-              className="rounded-[18px] border border-[#cda45c]/45 px-5 py-5 text-[15px] italic leading-[1.55] text-white/90"
-              key={question}
-            >
-              {question}
-            </p>
-          ))}
-        </div>
+        {course.momentQuestions.length > 0 ? (
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+            {course.momentQuestions.map((question) => (
+              <p
+                className="rounded-[18px] border border-[#cda45c]/45 px-5 py-5 text-[15px] italic leading-[1.55] text-white/90"
+                key={question}
+              >
+                {question}
+              </p>
+            ))}
+          </div>
+        ) : null}
       </SectionContainer>
     </section>
   );
@@ -252,13 +254,15 @@ function About({ course }: { course: Course }) {
         <blockquote className="mt-8 max-w-[760px] border-l-4 border-[#cda45c] bg-[#510f1d] px-6 py-6 text-[16px] italic leading-[1.7] text-white sm:px-8">
           {course.aboutHighlight}
         </blockquote>
-        <div className="mt-8 max-w-[720px] space-y-4">
-          {course.aboutBody.map((paragraph) => (
-            <p className="content-card-copy text-[#625c5c]" key={paragraph}>
-              {paragraph}
-            </p>
-          ))}
-        </div>
+        {course.aboutBody.length > 0 ? (
+          <div className="mt-8 max-w-[720px] space-y-4">
+            {course.aboutBody.map((paragraph) => (
+              <p className="content-card-copy text-[#625c5c]" key={paragraph}>
+                {paragraph}
+              </p>
+            ))}
+          </div>
+        ) : null}
       </SectionContainer>
     </section>
   );
@@ -272,9 +276,11 @@ function Audience({ course }: { course: Course }) {
         <h2 className="section-heading mt-5 max-w-[720px]">
           {course.audienceHeading}
         </h2>
-        <p className="content-card-copy mt-5 max-w-[680px] text-white/80">
-          {course.audienceIntro}
-        </p>
+        {course.audienceIntro ? (
+          <p className="content-card-copy mt-5 max-w-[680px] text-white/80">
+            {course.audienceIntro}
+          </p>
+        ) : null}
         <div className="mt-10 grid gap-px overflow-hidden rounded-[24px] border border-[#cda45c]/35 bg-[#cda45c]/35 sm:grid-cols-2 lg:grid-cols-3">
           {course.audienceGroups.map((group) => (
             <article className="bg-[#3b0a15] px-6 py-7" key={group.title}>
@@ -324,9 +330,11 @@ function Method({ course }: { course: Course }) {
   return (
     <section className="px-6 py-16 text-white sm:py-20" style={burgundy}>
       <SectionContainer>
-        <p className="section-eyebrow text-[#cda45c]">A metodologia</p>
+        <p className="section-eyebrow text-[#cda45c]">
+          {course.methodEyebrow ?? "A metodologia"}
+        </p>
         <h2 className="section-heading mt-5 max-w-[640px]">
-          Como será executado
+          {course.methodHeading ?? "Como será executado"}
         </h2>
         <p className="content-card-copy mt-5 max-w-[560px] text-white/80">
           {course.methodIntro}

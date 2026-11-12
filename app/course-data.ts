@@ -33,6 +33,7 @@ export type Course = {
   priceAmount: number;
   variants: CourseVariant[];
   image: string;
+  coverImage?: string;
   alt: string;
   statusLabel: string;
   ctaLabel: string;
@@ -58,6 +59,8 @@ export type Course = {
   resultsIntro: string;
   results: string[];
   methodIntro: string;
+  methodEyebrow?: string;
+  methodHeading?: string;
   methodSteps: CourseMethodStep[];
   bonusTitle: string;
   bonusDescription: string;
@@ -249,6 +252,7 @@ export const courses: Course[] = [
     priceAmount: 0,
     variants: [],
     image: "/produtos/tea-money-talks.jpg",
+    coverImage: "/produtos/tea-capa.jpg",
     alt: "Grupo à mesa no Tea & Money Talks da Kitadi",
     statusLabel: "21 Nov 2026",
     ctaLabel: "Quero participar",
@@ -365,6 +369,235 @@ export const courses: Course[] = [
     closingAccent: "Porque a tua parte ninguém vai fazer.",
     closingNote: "Nem mesmo Deus.",
   },
+  {
+    slug: "desafio-aprendiz",
+    category: "Desafio Kitadi",
+    title: "Desafio Aprendiz",
+    shortName: "APRENDIZ",
+    programTitle: "Desafio Aprendiz",
+    description:
+      "Aprendiz é um programa prático de educação financeira, com duração de 15 dias, criado para ajudar a desenvolver uma relação mais consciente e organizada com o dinheiro.",
+    longDescription:
+      "Aprendiz é um programa prático de educação financeira, com duração de 15 dias, criado para ajudar a desenvolver uma relação mais consciente e organizada com o dinheiro. O objectivo é ajudá-la a sair da intenção de organizar as suas finanças para a prática, criando hábitos financeiros mais saudáveis e sustentáveis.",
+    audience:
+      "Quem quer passar da intenção de organizar as finanças para a prática, com hábitos mais conscientes e sustentáveis.",
+    highlight:
+      "100% via WhatsApp, com desafios diários, exercícios práticos e acompanhamento em grupo com a formadora Neuza Pinto.",
+    tagline: "15 dias de organização financeira.",
+    price: "",
+    priceAmount: 0,
+    variants: [],
+    image: "/produtos/desafio-aprendiz.jpg",
+    coverImage: "/produtos/desafio-aprendiz.jpg",
+    alt: "Neuza Pinto no cartaz do Desafio Aprendiz, 15 dias de organização financeira",
+    statusLabel: "30 Nov 2026",
+    ctaLabel: "Quero participar",
+    imageMode: "object",
+    conductedBy: "Neuza Pinto",
+    format: "15 dias · 30 Novembro 2026",
+    modality: "100% via WhatsApp",
+    heroEyebrow: "Programa prático de educação financeira",
+    heroSubtitle: "100% via WhatsApp",
+    momentEyebrow: "O programa",
+    momentTitle: "Uma relação mais consciente",
+    momentAccent: "com o dinheiro",
+    momentLead:
+      "Aprendiz é um programa prático de educação financeira, com duração de 15 dias, criado para ajudar a desenvolver uma relação mais consciente e organizada com o dinheiro.",
+    momentQuestions: [],
+    aboutEyebrow: "O objectivo",
+    aboutHeading: "Da intenção para a prática",
+    audienceEyebrow: "O que vai aprender",
+    audienceHeading: "O que vai aprender e desenvolver?",
+    aboutHighlight:
+      "O objectivo é ajudá-la a sair da intenção de organizar as suas finanças para a prática, criando hábitos financeiros mais saudáveis e sustentáveis.",
+    aboutBody: [],
+    audienceIntro: "",
+    audienceGroups: [
+      {
+        title: "Organização financeira",
+        description: "Aprender a gerir melhor as suas receitas e despesas.",
+      },
+      {
+        title: "Controlo de gastos",
+        description:
+          "Identificar despesas desnecessárias e fugas financeiras.",
+      },
+      {
+        title: "Poupança",
+        description: "Desenvolver hábitos para poupar de forma consistente.",
+      },
+      {
+        title: "Definição de objectivos",
+        description:
+          "Estabelecer metas financeiras claras e realistas.",
+      },
+      {
+        title: "Planeamento financeiro",
+        description:
+          "Tomar decisões mais conscientes e preparar-se melhor para os seus compromissos.",
+      },
+      {
+        title: "Acção prática",
+        description:
+          "Aplicar os conhecimentos no seu dia-a-dia através de desafios, exercícios e reflexões.",
+      },
+    ],
+    resultsIntro: "",
+    results: [],
+    methodEyebrow: "Como funciona",
+    methodHeading: "100% via WhatsApp",
+    methodIntro:
+      "100% via WhatsApp, com desafios diários, exercícios práticos e acompanhamento em grupo com a formadora Neuza Pinto.",
+    methodSteps: [
+      {
+        number: "01",
+        phase: "No WhatsApp",
+        title: "Desafios diários",
+        description: "Desafios diários durante os 15 dias do programa.",
+      },
+      {
+        number: "02",
+        phase: "No WhatsApp",
+        title: "Exercícios práticos",
+        description:
+          "Exercícios práticos para aplicar os conhecimentos no dia-a-dia.",
+      },
+      {
+        number: "03",
+        phase: "Em grupo",
+        title: "Acompanhamento em grupo",
+        description:
+          "Acompanhamento em grupo com a formadora Neuza Pinto.",
+      },
+    ],
+    bonusTitle: "",
+    bonusDescription: "",
+    investmentIntro:
+      "O Aprendiz decorre 100% via WhatsApp, com desafios diários, exercícios práticos e acompanhamento em grupo com a formadora Neuza Pinto. O início é a 30 de Novembro de 2026. Para reservar o lugar, fale connosco.",
+    includes: [
+      "Organização financeira",
+      "Controlo de gastos",
+      "Poupança",
+      "Definição de objectivos",
+      "Planeamento financeiro",
+      "Acção prática com desafios, exercícios e reflexões",
+      "Acompanhamento em grupo com Neuza Pinto",
+      "Percurso 100% via WhatsApp",
+    ],
+    nextSteps: [
+      "Confirmar o interesse connosco",
+      "Entrar no grupo de WhatsApp",
+      "Seguir os desafios diários durante 15 dias",
+      "Aplicar os exercícios no dia-a-dia",
+    ],
+    closingLead: "Da intenção",
+    closingAccent: "para a prática.",
+    closingNote:
+      "O objectivo é ajudá-la a sair da intenção de organizar as suas finanças para a prática, criando hábitos financeiros mais saudáveis e sustentáveis.",
+  },
+  {
+    slug: "finance-date",
+    category: "Experiência Kitadi",
+    title: "Finance Date",
+    shortName: "DATE",
+    programTitle: "Finance Date",
+    description:
+      "Finance Date é um encontro presencial imersivo de finanças para casais.",
+    longDescription:
+      "Finance Date é um encontro presencial imersivo de finanças para casais. Um tempo a dois para olhar para o dinheiro no mesmo espaço.",
+    audience:
+      "Casais que querem tratar as finanças em conjunto, num encontro presencial e imersivo.",
+    highlight: "Encontro presencial imersivo de finanças para casais.",
+    tagline: "Finanças para casais.",
+    price: "",
+    priceAmount: 0,
+    variants: [],
+    image: "/produtos/finance-date.jpg",
+    coverImage: "/produtos/finance-date.jpg",
+    alt: "Casal no cartaz do Finance Date, finanças para casais",
+    statusLabel: "Presencial",
+    ctaLabel: "Quero participar",
+    imageMode: "object",
+    conductedBy: "Neuza Pinto",
+    format: "Encontro presencial imersivo",
+    modality: "Presencial",
+    heroEyebrow: "Encontro presencial imersivo",
+    heroSubtitle: "Finanças para casais",
+    momentEyebrow: "O encontro",
+    momentTitle: "Finanças para casais",
+    momentAccent: "no mesmo espaço",
+    momentLead:
+      "Finance Date é um encontro presencial imersivo de finanças para casais.",
+    momentQuestions: [],
+    aboutEyebrow: "O encontro",
+    aboutHeading: "Finanças para casais",
+    audienceEyebrow: "Para quem é",
+    audienceHeading: "Um encontro para os dois",
+    aboutHighlight:
+      "Um encontro presencial imersivo para o casal olhar para o dinheiro em conjunto.",
+    aboutBody: [
+      "Finance Date junta o casal no mesmo espaço, com tempo dedicado às finanças dos dois.",
+    ],
+    audienceIntro:
+      "É para casais. O encontro é presencial e imersivo.",
+    audienceGroups: [
+      {
+        title: "Casais",
+        description: "Finanças tratadas a dois, no mesmo encontro.",
+      },
+      {
+        title: "Presencial",
+        description: "Um encontro com presença, no mesmo espaço.",
+      },
+      {
+        title: "Imersivo",
+        description: "Tempo reservado para esta conversa.",
+      },
+    ],
+    resultsIntro: "",
+    results: [],
+    methodEyebrow: "Como funciona",
+    methodHeading: "Encontro presencial imersivo",
+    methodIntro:
+      "Finance Date é um encontro presencial imersivo de finanças para casais. Para reservar o lugar, fale connosco.",
+    methodSteps: [
+      {
+        number: "01",
+        phase: "A dois",
+        title: "Casais",
+        description: "O encontro é para os dois falarem de dinheiro em conjunto.",
+      },
+      {
+        number: "02",
+        phase: "No mesmo espaço",
+        title: "Presencial",
+        description: "Acontece com presença, fora do ecrã.",
+      },
+      {
+        number: "03",
+        phase: "Com tempo",
+        title: "Imersivo",
+        description: "O tempo do encontro fica dedicado às finanças do casal.",
+      },
+    ],
+    bonusTitle: "",
+    bonusDescription: "",
+    investmentIntro:
+      "O Finance Date é um encontro presencial imersivo de finanças para casais. Para reservar o lugar, fale connosco.",
+    includes: [
+      "Encontro presencial",
+      "Finanças para casais",
+      "Experiência imersiva",
+    ],
+    nextSteps: [
+      "Confirmar o interesse connosco",
+      "Reservar o lugar do casal",
+      "Participar no encontro presencial",
+    ],
+    closingLead: "Finance Date.",
+    closingAccent: "Finanças para casais.",
+    closingNote: "Um encontro presencial imersivo.",
+  },
 ];
 
 export function getCourseBySlug(slug: string) {
@@ -390,6 +623,10 @@ export function getWhatsAppHref(course?: Pick<Course, "title">) {
     : "Olá, quero saber mais sobre os produtos da Kitadi.";
 
   return `https://wa.me/${kitadiWhatsAppNumber}?text=${encodeURIComponent(text)}`;
+}
+
+export function getHelpWhatsAppHref() {
+  return `https://wa.me/${kitadiWhatsAppNumber}?text=${encodeURIComponent("Olá, preciso de ajuda.")}`;
 }
 
 export function getCheckoutPath(course: Course, variantId?: string) {
