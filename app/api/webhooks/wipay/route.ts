@@ -1,7 +1,16 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { courses, offersCheckout } from "../../../course-data";
 import { getOrder, isKitadiReference, updateOrder } from "../../../lib/payments/orders";
 import { getWipaySignatureToken } from "../../../lib/payments/wipay";
+
+function isKnownCheckoutAmount(amount: number) {
+  return courses.some(
+    (course) =>
+      offersCheckout(course) &&
+      course.variants.some((variant) => variant.priceAmount === amount),
+  );
+}
 
 function isValidSignature(rawBody: string, signature: string | null, token: string) {
   if (!signature || !/^[a-f\d]{64}$/i.test(signature)) return false;
@@ -40,14 +49,17 @@ export async function POST(request: Request) {
 
   const status = typeof body.status === "string" ? body.status.toLowerCase() : "";
   const order = await getOrder(reference);
+  const amount = Number(body.amount);
+  const currency = String(body.currency ?? "").toLowerCase();
   if (!order) {
+    if (currency === "aoa" && isKnownCheckoutAmount(amount)) {
+      console.error("[wipay:webhook] signed payment has no local order", { reference, status });
+      return NextResponse.json({ ok: true, status, stored: false });
+    }
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }
 
-  if (
-    Number(body.amount) !== order.amountKz ||
-    String(body.currency ?? "").toLowerCase() !== "aoa"
-  ) {
+  if (amount !== order.amountKz || currency !== "aoa") {
     return NextResponse.json({ error: "payment_details_mismatch" }, { status: 400 });
   }
 

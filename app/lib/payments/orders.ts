@@ -16,21 +16,40 @@ export type KitadiOrder = {
   updatedAt: string;
 };
 
-const filePath = path.join(process.cwd(), ".data", "payments.json");
+const memory = new Map<string, KitadiOrder>();
+
+function filePath() {
+  const directory = process.env.VERCEL ? "/tmp" : path.join(process.cwd(), ".data");
+  return path.join(directory, "payments.json");
+}
 
 async function readAll(): Promise<KitadiOrder[]> {
   try {
-    const raw = await readFile(filePath, "utf8");
+    const raw = await readFile(filePath(), "utf8");
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as KitadiOrder[]) : [];
+    if (Array.isArray(parsed)) {
+      for (const order of parsed as KitadiOrder[]) {
+        if (order?.reference) memory.set(order.reference.toLowerCase(), order);
+      }
+    }
   } catch {
-    return [];
+    // O ficheiro ainda não existe, ou a Vercel não o partilha entre pedidos.
   }
+  return [...memory.values()];
 }
 
 async function writeAll(orders: KitadiOrder[]) {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, JSON.stringify(orders, null, 2));
+  for (const order of orders) memory.set(order.reference.toLowerCase(), order);
+  try {
+    const target = filePath();
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, JSON.stringify(orders, null, 2));
+  } catch (error) {
+    console.error(
+      "[payments] order file was not saved",
+      error instanceof Error ? error.message : "unknown",
+    );
+  }
 }
 
 export function newKitadiReference() {

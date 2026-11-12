@@ -14,9 +14,15 @@ function readString(value: unknown, maxLength: number) {
 }
 
 function siteOrigin(request: Request) {
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const hostname = forwardedHost || new URL(request.url).hostname;
+  const protocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+  if (hostname === "localhost" || hostname.endsWith("kitadi.co.ao")) {
+    const localProtocol = hostname === "localhost" ? "http" : protocol;
+    return `${localProtocol}://${hostname}`;
+  }
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (configured) return configured.replace(/\/$/, "");
-  return new URL(request.url).origin;
+  return configured ? configured.replace(/\/$/, "") : new URL(request.url).origin;
 }
 
 export async function POST(request: Request) {
@@ -105,6 +111,7 @@ export async function POST(request: Request) {
       reference,
       successUrl: `${origin}/checkout/retorno?status=success&reference=${reference}`,
       failureUrl: `${origin}/checkout/retorno?status=error&reference=${reference}`,
+      callbackUrl: origin.startsWith("https://") ? `${origin}/api/webhooks/wipay` : undefined,
     });
     checkoutUrl = payment.checkoutUrl;
   } catch (error) {
