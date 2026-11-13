@@ -72,7 +72,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }
 
-  if (!Number.isFinite(amount) || amount !== order.amountKz || currency !== "aoa") {
+  if (
+    !Number.isFinite(amount) ||
+    amount !== order.amountKz ||
+    (currency !== "" && currency !== "aoa")
+  ) {
     console.error("[wipay:webhook] callback details do not match the order", {
       reference,
       expectedAmount: order.amountKz,
