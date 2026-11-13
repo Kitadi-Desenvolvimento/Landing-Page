@@ -47,6 +47,42 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 }
 
 
+// Validate ../../app/backoffice/acesso-negado/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/backoffice/acesso-negado">> = Specific
+  const handler = {} as typeof import("../../app/backoffice/acesso-negado/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/backoffice/definir-senha/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/backoffice/definir-senha">> = Specific
+  const handler = {} as typeof import("../../app/backoffice/definir-senha/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/backoffice/login/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/backoffice/login">> = Specific
+  const handler = {} as typeof import("../../app/backoffice/login/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/backoffice/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/backoffice">> = Specific
+  const handler = {} as typeof import("../../app/backoffice/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/checkout/retorno/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/checkout/retorno">> = Specific
@@ -101,6 +137,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/backoffice/invites/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/invites">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/invites/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/payments/charges/[paymentId]/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/charges/[paymentId]">> = Specific
@@ -141,6 +186,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/wipay">> = Specific
   const handler = {} as typeof import("../../app/api/webhooks/wipay/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/auth/callback/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/auth/callback">> = Specific
+  const handler = {} as typeof import("../../app/auth/callback/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

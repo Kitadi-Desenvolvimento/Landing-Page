@@ -1,20 +1,35 @@
 {
   "pages": {
-    "/api/payments/charges/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/payments/charges/route.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/formacoes/[slug]/inscricao/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/formacoes/[slug]/inscricao/page.js"
+      "static/chunks/app/page.js"
+    ],
+    "/backoffice/definir-senha/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/backoffice/definir-senha/page.js"
+    ],
+    "/backoffice/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/backoffice/page.js"
+    ],
+    "/api/backoffice/invites/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/invites/route.js"
+    ],
+    "/backoffice/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/backoffice/login/page.js"
     ]
   }
 }

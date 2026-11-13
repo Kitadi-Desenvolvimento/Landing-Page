@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Course } from "../course-data";
+import type { ProductListing } from "../course-data";
 import ProductCoverCard from "../product-cover-card";
 
 const ALL = "todos";
 
-export default function ProductCatalog({ courses }: { courses: Course[] }) {
+export default function ProductCatalog({
+  courses,
+}: {
+  courses: ProductListing[];
+}) {
   const [category, setCategory] = useState(ALL);
   const [modality, setModality] = useState(ALL);
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { courses } from "./course-data";
+import { productListings } from "./course-data";
 import ProductCoverCard from "./product-cover-card";
 import SectionContainer from "./section-container";
 
@@ -88,7 +88,7 @@ export default function Produtos() {
           className="product-carousel-track mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth"
           ref={trackRef}
         >
-          {courses.map((course, index) => (
+          {productListings.map((course, index) => (
             <li
               className="w-[86%] shrink-0 snap-start sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
               key={course.slug}

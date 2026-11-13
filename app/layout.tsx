@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import SiteFooter from "./site-footer";
-import WhatsAppHelp from "./whatsapp-help";
+import SiteChrome from "./site-chrome";
 import "./globals.css";
 
 const centuryGothic = localFont({
@@ -67,8 +66,7 @@ export default function RootLayout({
     <html lang="pt" className={centuryGothic.className}>
       <body>
         {children}
-        <WhatsAppHelp />
-        <SiteFooter />
+        <SiteChrome />
       </body>
     </html>
   );

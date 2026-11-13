@@ -1,25 +1,77 @@
 import Image from "next/image";
 import Link from "next/link";
-import { getProductPath, type Course } from "./course-data";
+import {
+  getProductPath,
+  getWhatsAppHref,
+  type ProductListing,
+} from "./course-data";
 
 export default function ProductCoverCard({
   course,
   priority = false,
 }: {
-  course: Course;
+  course: ProductListing;
   priority?: boolean;
 }) {
   const poster = course.coverImage;
   const portrait = course.imageMode === "photo";
+  const cardClass = `group relative block aspect-[3/5] overflow-hidden rounded-[32px] !text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cda45c] ${
+    portrait && !poster ? "bg-[#6a6a70]" : "bg-[#3b0a15]"
+  }`;
 
   return (
-    <Link
-      aria-label={poster ? `${course.statusLabel}. ${course.title}` : undefined}
-      className={`group relative block aspect-[3/5] overflow-hidden rounded-[32px] !text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#cda45c] ${
-        portrait && !poster ? "bg-[#6a6a70]" : "bg-[#3b0a15]"
-      }`}
-      href={getProductPath(course)}
-    >
+    <div className="relative">
+      {course.whatsappOnly ? (
+        <div aria-label={course.title} className={cardClass} role="group">
+          <CardArtwork
+            course={course}
+            poster={poster}
+            portrait={portrait}
+            priority={priority}
+          />
+        </div>
+      ) : (
+        <Link
+          aria-label={poster ? `${course.statusLabel}. ${course.title}` : undefined}
+          className={cardClass}
+          href={getProductPath(course)}
+        >
+          <CardArtwork
+            course={course}
+            poster={poster}
+            portrait={portrait}
+            priority={priority}
+          />
+        </Link>
+      )}
+      {course.whatsappCta ? (
+        <a
+          className="absolute inset-x-4 bottom-4 z-[5] inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 text-center text-[14px] font-semibold !text-[#12321d] shadow-[0_8px_20px_rgba(0,0,0,0.28)] transition-colors hover:bg-[#49df7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          href={getWhatsAppHref(course)}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          <WhatsAppIcon />
+          Falar com o comercial
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function CardArtwork({
+  course,
+  poster,
+  portrait,
+  priority,
+}: {
+  course: ProductListing;
+  poster?: string;
+  portrait: boolean;
+  priority: boolean;
+}) {
+  return (
+    <>
       {poster ? (
         <Image
           alt=""
@@ -84,6 +136,29 @@ export default function ProductCoverCard({
           </span>
         </div>
       )}
-    </Link>
+    </>
+  );
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5 shrink-0"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M20 11.7a8.2 8.2 0 0 1-12.1 7.2L4 20l1.2-3.7A8.2 8.2 0 1 1 20 11.7Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M9 8.5c.3-.4.6-.4.9-.1l1 1.4c.2.3.2.5 0 .8l-.5.6c.6 1.1 1.4 1.8 2.5 2.4l.6-.6c.2-.2.5-.2.8-.1l1.3.7c.4.2.5.5.3.9-.4.8-1 1.2-1.8 1.2-2.7-.2-5.8-3.1-6-5.6 0-.7.3-1.2.9-1.6Z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }

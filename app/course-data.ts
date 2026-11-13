@@ -72,6 +72,24 @@ export type Course = {
   closingNote: string;
 };
 
+export type ProductListing = Pick<
+  Course,
+  | "slug"
+  | "category"
+  | "title"
+  | "shortName"
+  | "tagline"
+  | "image"
+  | "coverImage"
+  | "alt"
+  | "statusLabel"
+  | "imageMode"
+  | "modality"
+> & {
+  whatsappCta?: boolean;
+  whatsappOnly?: boolean;
+};
+
 export const courses: Course[] = [
   {
     slug: "bussola-do-kitadi",
@@ -616,6 +634,29 @@ export const courses: Course[] = [
   },
 ];
 
+export const productListings: ProductListing[] = [
+  ...courses.map((course) => ({
+    ...course,
+    whatsappCta: course.slug === "finance-date",
+    whatsappOnly: course.slug === "finance-date",
+  })),
+  {
+    slug: "o-negocio-e-meu",
+    category: "Imersão Kitadi",
+    title: "O Negócio é Meu!",
+    shortName: "O NEGÓCIO É MEU!",
+    tagline: "O teu negócio. As tuas prioridades. O teu plano para 2027.",
+    image: "/produtos/o-negocio-e-meu.png",
+    coverImage: "/produtos/o-negocio-e-meu.png",
+    alt: "Cartaz da imersão O Negócio é Meu, com oito horas de imersão presencial",
+    statusLabel: "8 horas de imersão",
+    imageMode: "object",
+    modality: "Presencial",
+    whatsappCta: true,
+    whatsappOnly: true,
+  },
+];
+
 export function getCourseBySlug(slug: string) {
   return courses.find((item) => item.slug === slug);
 }
@@ -642,7 +683,7 @@ export function offersCheckout(course: Course) {
   );
 }
 
-export function getProductPath(course: Course) {
+export function getProductPath(course: Pick<Course, "slug">) {
   return `/produtos/${course.slug}`;
 }
 

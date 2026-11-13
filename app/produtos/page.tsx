@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { courses } from "../course-data";
+import { productListings } from "../course-data";
 import SectionContainer from "../section-container";
 import SiteHeader from "../site-header";
 import ProductCatalog from "./catalog";
@@ -55,7 +55,7 @@ export default function ProductsPage() {
         className="bg-[#f5f2f1] px-6 py-16 sm:py-20"
       >
         <SectionContainer>
-          <ProductCatalog courses={courses} />
+          <ProductCatalog courses={productListings} />
         </SectionContainer>
       </section>
     </main>
