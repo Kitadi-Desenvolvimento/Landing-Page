@@ -31,12 +31,10 @@ type ChargeDetails = {
 
 type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "canceled" | "refunded";
 
-type PaymentStatusResult = {
-  chargeId: string;
-  status: PaymentStatus;
-  amount: number;
-  currency: "AOA";
-  expiresAt: string | null;
+type OrderStatusResult = {
+  reference: string;
+  status: "pending" | "accepted" | "rejected" | "expired" | "canceled" | "refunded";
+  amountKz: number;
 };
 
 function isChargeDetails(value: unknown): value is ChargeDetails {
@@ -78,16 +76,19 @@ function isPaymentStatus(value: unknown): value is PaymentStatus {
   );
 }
 
-function isPaymentStatusResult(value: unknown): value is PaymentStatusResult {
+function isOrderStatusResult(value: unknown): value is OrderStatusResult {
   if (typeof value !== "object" || value === null) return false;
   const result = value as Record<string, unknown>;
 
   return (
-    typeof result.chargeId === "string" &&
-    isPaymentStatus(result.status) &&
-    typeof result.amount === "number" &&
-    result.currency === "AOA" &&
-    (typeof result.expiresAt === "string" || result.expiresAt === null)
+    typeof result.reference === "string" &&
+    (result.status === "pending" ||
+      result.status === "accepted" ||
+      result.status === "rejected" ||
+      result.status === "expired" ||
+      result.status === "canceled" ||
+      result.status === "refunded") &&
+    typeof result.amountKz === "number"
   );
 }
 
@@ -321,12 +322,17 @@ export default function Checkout({
     const intervalId = window.setInterval(async () => {
       try {
         const response = await fetch(
-          `/api/payments/charges/${encodeURIComponent(paymentCharge.chargeId)}`,
+          `/api/payments/orders/${encodeURIComponent(paymentCharge.chargeId)}`,
           { cache: "no-store" },
         );
         const result: unknown = await response.json();
 
-        if (!response.ok || !isPaymentStatusResult(result)) {
+        if (
+          !response.ok ||
+          !isOrderStatusResult(result) ||
+          result.reference !== paymentCharge.chargeId ||
+          result.amountKz !== paymentCharge.amount
+        ) {
           throw new Error("Não foi possível consultar o estado do pagamento.");
         }
 
@@ -335,8 +341,13 @@ export default function Checkout({
             current
               ? {
                   ...current,
-                  status: result.status,
-                  expiresAt: result.expiresAt,
+                  status:
+                    result.status === "accepted"
+                      ? "paid"
+                      : result.status === "rejected"
+                        ? "failed"
+                        : result.status,
+                  expiresAt: null,
                 }
               : current,
           );
