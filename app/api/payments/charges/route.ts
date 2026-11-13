@@ -131,8 +131,8 @@ export async function POST(request: Request) {
       amountKz: variant.priceAmount,
       customer: email,
       reference,
-      successUrl: `${origin}/checkout/retorno?reference=${reference}`,
-      failureUrl: `${origin}/checkout/retorno?reference=${reference}`,
+      successUrl: `${origin}/checkout/retorno?status=success&reference=${reference}`,
+      failureUrl: `${origin}/checkout/retorno?status=error&reference=${reference}`,
       callbackUrl: origin.startsWith("https://") ? `${origin}/api/webhooks/wipay` : undefined,
     });
     checkoutUrl = payment.checkoutUrl;
