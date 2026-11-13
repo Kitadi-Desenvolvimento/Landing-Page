@@ -47,8 +47,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_reference" }, { status: 400 });
   }
 
-  const status =
-    typeof body.status === "string" ? body.status.trim().toLowerCase() : "";
+  const providerStatus =
+    typeof body.status === "string" || typeof body.status === "number"
+      ? String(body.status).trim().toLowerCase()
+      : "";
+  const statusCode = getStatusReasonCode(body) || (/^\d{4}$/.test(providerStatus) ? providerStatus : "");
+  const normalizedStatus = getNormalizedStatus(providerStatus, statusCode);
   let order;
   try {
     order = await getOrder(reference);
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
   if (!order) {
     console.error("[wipay:webhook] callback has no matching local order", {
       reference,
-      status: status || "missing",
+      status: providerStatus || "missing",
     });
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }
@@ -78,18 +82,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "payment_details_mismatch" }, { status: 400 });
   }
 
-  if (
-    order.status === "accepted" &&
-    ["rejected", "expired", "canceled", "cancelled", "pending", "pending_confirmation", "processing"].includes(status)
-  ) {
+  if (order.status === "accepted" && normalizedStatus !== "accepted") {
     return NextResponse.json({ ok: true, ignored: true });
   }
 
-  if (status === "accepted") {
+  if (normalizedStatus === "accepted") {
     const metadata = getProviderMetadata(body);
     const saved = await updateWebhookUpdate(reference, {
       status: "accepted",
-      providerStatus: status,
+      providerStatus: statusCode || providerStatus,
       ...metadata,
       reason: null,
       paidAt: order.paidAt ?? getProviderEventAt(body) ?? new Date().toISOString(),
@@ -98,43 +99,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, status: "accepted" });
   }
 
-  if (status === "rejected") {
-    const reasonCode = getStatusReasonCode(body);
-    const expired = reasonCode === "3003" || reasonCode === "4004";
+  if (normalizedStatus === "rejected" || normalizedStatus === "expired") {
     const metadata = getProviderMetadata(body);
     const saved = await updateWebhookUpdate(reference, {
-      status: expired ? "expired" : "rejected",
-      providerStatus: status,
+      status: normalizedStatus,
+      providerStatus: statusCode || providerStatus,
       ...metadata,
-      reason: getStatusReason(reasonCode),
+      reason: getStatusReason(statusCode),
     });
     if (!saved) return paymentStorageError();
-    return NextResponse.json({ ok: true, status: "rejected" });
+    return NextResponse.json({ ok: true, status: normalizedStatus });
   }
 
-  if (["pending", "pending_confirmation", "processing"].includes(status)) {
+  if (["pending", "pending_confirmation", "processing"].includes(providerStatus)) {
     const metadata = getProviderMetadata(body);
     const saved = await updateWebhookUpdate(reference, {
       status: "pending",
-      providerStatus: status,
+      providerStatus: providerStatus || statusCode,
       ...metadata,
     });
     if (!saved) return paymentStorageError();
     return NextResponse.json({ ok: true, status: "pending" });
   }
 
-  if (["expired", "canceled", "cancelled", "refunded"].includes(status)) {
+  if (["canceled", "cancelled", "refunded"].includes(providerStatus)) {
     const normalizedStatus: KitadiOrder["status"] =
-      status === "expired"
-        ? "expired"
-        : status === "refunded"
-          ? "refunded"
-          : "canceled";
+      providerStatus === "refunded" ? "refunded" : "canceled";
     const saved = await updateWebhookUpdate(reference, {
       status: normalizedStatus,
-      providerStatus: status,
+      providerStatus: providerStatus || statusCode,
       ...getProviderMetadata(body),
-      reason: getStatusReason(getStatusReasonCode(body)),
+      reason: getStatusReason(statusCode),
     });
     if (!saved) return paymentStorageError();
     return NextResponse.json({ ok: true, status: normalizedStatus });
@@ -142,13 +137,13 @@ export async function POST(request: Request) {
 
   console.warn("[wipay:webhook] callback contains an undocumented status", {
     reference,
-    status: status || "missing",
+    status: statusCode || providerStatus || "missing",
   });
   const saved = await updateWebhookUpdate(reference, {
     status: "pending",
-    providerStatus: status || "missing",
+    providerStatus: statusCode || providerStatus || "missing",
     ...getProviderMetadata(body),
-    reason: `Estado WiPay não reconhecido: ${status || "ausente"}`.slice(0, 500),
+    reason: `Estado WiPay não reconhecido: ${statusCode || providerStatus || "ausente"}`.slice(0, 500),
   });
   if (!saved) return paymentStorageError();
   return NextResponse.json({ ok: true, status: "pending", unrecognized: true });
@@ -222,6 +217,24 @@ function getStatusReasonCode(body: Record<string, unknown>) {
   return typeof reason === "number" && Number.isSafeInteger(reason)
     ? String(reason)
     : "";
+}
+
+function getNormalizedStatus(
+  status: string,
+  code: string,
+): KitadiOrder["status"] | null {
+  if (code === "2000") return "accepted";
+  if (code === "3003" || code === "4004" || status === "expired") {
+    return "expired";
+  }
+  if (
+    ["3000", "3001", "3002", "3004", "3005", "3006", "4000", "4003", "9000"].includes(code) ||
+    status === "rejected"
+  ) {
+    return "rejected";
+  }
+  if (status === "accepted") return "accepted";
+  return null;
 }
 
 function getProviderEventAt(body: Record<string, unknown>) {
