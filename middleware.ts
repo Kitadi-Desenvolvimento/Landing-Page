@@ -78,7 +78,9 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    if (!accessResponse.ok) {
+    if (accessResponse.status === 404) {
+      // Deleted Auth users can still present an unexpired access token.
+    } else if (!accessResponse.ok) {
       console.error("[backoffice] current role lookup failed", accessResponse.status);
       return NextResponse.json(
         { error: "backoffice_access_unavailable" },
@@ -86,19 +88,21 @@ export async function middleware(request: NextRequest) {
       );
     }
 
-    const accessData: unknown = await accessResponse.json();
-    const currentUser = typeof accessData === "object" && accessData !== null && "user" in accessData
-      ? accessData.user
-      : accessData;
-    const currentRole = typeof currentUser === "object" && currentUser !== null &&
-      "app_metadata" in currentUser &&
-      typeof currentUser.app_metadata === "object" && currentUser.app_metadata !== null &&
-      "role" in currentUser.app_metadata
-      ? currentUser.app_metadata.role
-      : null;
+    if (accessResponse.status !== 404) {
+      const accessData: unknown = await accessResponse.json();
+      const currentUser = typeof accessData === "object" && accessData !== null && "user" in accessData
+        ? accessData.user
+        : accessData;
+      const currentRole = typeof currentUser === "object" && currentUser !== null &&
+        "app_metadata" in currentUser &&
+        typeof currentUser.app_metadata === "object" && currentUser.app_metadata !== null &&
+        "role" in currentUser.app_metadata
+        ? currentUser.app_metadata.role
+        : null;
 
-    if (currentRole === "admin" || currentRole === "manager" || currentRole === "collaborator") {
-      return response;
+      if (currentRole === "admin" || currentRole === "manager" || currentRole === "collaborator") {
+        return response;
+      }
     }
   }
 

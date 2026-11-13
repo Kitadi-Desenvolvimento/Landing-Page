@@ -191,3 +191,64 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
+
+export async function DELETE(request: NextRequest) {
+  if (request.headers.get("origin") !== request.nextUrl.origin ||
+      !request.headers.get("content-type")?.startsWith("application/json") ||
+      Number(request.headers.get("content-length") ?? 0) > 8192) {
+    return failure("invalid_request", 400);
+  }
+
+  const authorization = await requireBackofficeUser();
+  if (!authorization.authorized) {
+    return failure(
+      authorization.reason === "unauthenticated" ? "unauthorized" :
+        authorization.reason === "unavailable" ? "area_access_unavailable" : "forbidden",
+      authorization.reason === "unauthenticated" ? 401 :
+        authorization.reason === "unavailable" ? 503 : 403,
+    );
+  }
+  if (authorization.role !== "admin") return failure("forbidden", 403);
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return failure("invalid_json", 400);
+  }
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload) ||
+      !("userId" in payload) || typeof payload.userId !== "string" ||
+      !uuidPattern.test(payload.userId)) {
+    return failure("invalid_team_delete", 400);
+  }
+  if (payload.userId === authorization.user.id) return failure("cannot_delete_self", 400);
+
+  const admin = createSupabaseAdminClient();
+  const { data: target, error: targetError } = await admin.auth.admin.getUserById(payload.userId);
+  if (targetError || !target.user) {
+    if (targetError) console.error("[backoffice] team delete lookup failed", targetError.code);
+    return failure(targetError ? "team_unavailable" : "user_not_found", targetError ? 503 : 404);
+  }
+
+  if (target.user.app_metadata.role === "admin") {
+    let adminCount = 0;
+    for (let page = 1; ; page += 1) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) {
+        console.error("[backoffice] team delete admin count failed", error.code);
+        return failure("team_unavailable", 503);
+      }
+      adminCount += data.users.filter((user) => user.app_metadata.role === "admin").length;
+      if (data.users.length < 1000) break;
+    }
+    if (adminCount <= 1) return failure("cannot_delete_last_admin", 409);
+  }
+
+  const { error: deleteError } = await admin.auth.admin.deleteUser(payload.userId);
+  if (deleteError) {
+    console.error("[backoffice] team account deletion failed", deleteError.code);
+    return failure("account_delete_failed", 503);
+  }
+
+  return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+}

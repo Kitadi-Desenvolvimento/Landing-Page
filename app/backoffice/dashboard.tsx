@@ -2043,7 +2043,7 @@ function TeamMemberEditor({
   const [areaIds, setAreaIds] = useState(memberships.map((membership) => membership.area_id));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [revoking, setRevoking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -2067,34 +2067,34 @@ function TeamMemberEditor({
     }
   }
 
-  async function revokeAccess() {
-    if (!window.confirm(`Revogar o acesso ao backoffice de ${user.email}? A conta e o histórico serão mantidos.`)) {
+  async function deleteAccount() {
+    if (!window.confirm(`Apagar permanentemente a conta de ${user.email}? Esta acção não pode ser desfeita.`)) {
       return;
     }
-    setRevoking(true);
+    setDeleting(true);
     setError("");
     try {
       const response = await fetch("/api/backoffice/team", {
-        method: "PATCH",
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, role: "none", areaIds: [] }),
+        body: JSON.stringify({ userId: user.id }),
       });
       const result: unknown = await response.json();
       if (!response.ok) {
         const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
         throw new Error(
-          code === "cannot_revoke_last_admin"
-            ? "Não é possível remover o último administrador."
-            : code === "cannot_revoke_self"
-              ? "Não pode remover o seu próprio acesso."
-              : "Não foi possível revogar o acesso desta pessoa.",
+          code === "cannot_delete_last_admin"
+            ? "Não é possível apagar o último administrador."
+            : code === "cannot_delete_self"
+              ? "Não pode apagar a sua própria conta."
+              : "Não foi possível apagar a conta desta pessoa.",
         );
       }
       onSaved();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível revogar o acesso.");
+      setError(cause instanceof Error ? cause.message : "Não foi possível apagar a conta.");
     } finally {
-      setRevoking(false);
+      setDeleting(false);
     }
   }
 
@@ -2133,19 +2133,17 @@ function TeamMemberEditor({
       </div>
       {error ? <p className="mt-2 text-[10px] text-red-700" role="alert">{error}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button className="min-h-8 rounded-full border border-[#e9e3e0] px-4 text-[10px] font-semibold text-[#6d605b] disabled:opacity-50" disabled={saving || revoking} onClick={() => void save()} type="button">
+        <button className="min-h-8 rounded-full border border-[#e9e3e0] px-4 text-[10px] font-semibold text-[#6d605b] disabled:opacity-50" disabled={saving || deleting} onClick={() => void save()} type="button">
           {saving ? "A guardar…" : "Guardar acessos"}
         </button>
-        {role === "admin" &&
-        user.role !== "none" &&
-        user.email.toLowerCase() !== currentEmail.toLowerCase() ? (
+        {role === "admin" && user.email.toLowerCase() !== currentEmail.toLowerCase() ? (
           <button
             className="min-h-8 rounded-full border border-red-200 px-4 text-[10px] font-semibold text-red-700 disabled:opacity-50"
-            disabled={saving || revoking}
-            onClick={() => void revokeAccess()}
+            disabled={saving || deleting}
+            onClick={() => void deleteAccount()}
             type="button"
           >
-            {revoking ? "A revogar…" : "Remover do backoffice"}
+            {deleting ? "A apagar…" : "Apagar conta"}
           </button>
         ) : null}
       </div>
