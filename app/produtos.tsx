@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { productListings } from "./course-data";
+import type { ProductData } from "./product-types";
 import ProductCoverCard from "./product-cover-card";
 import SectionContainer from "./section-container";
 
 const AUTO_PLAY_MS = 5 * 1000;
 
-export default function Produtos() {
+export default function Produtos({ products }: { products: ProductData[] }) {
   const trackRef = useRef<HTMLUListElement>(null);
   const [paused, setPaused] = useState(false);
   const [canScroll, setCanScroll] = useState(false);
@@ -88,7 +88,7 @@ export default function Produtos() {
           className="product-carousel-track mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth"
           ref={trackRef}
         >
-          {productListings.map((course, index) => (
+          {products.map((course, index) => (
             <li
               className="w-[86%] shrink-0 snap-start sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
               key={course.slug}

@@ -4,28 +4,25 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   getCheckoutPath,
-  getCourseBySlug,
   getWhatsAppHref,
   offersCheckout,
-  courses,
   type Course,
 } from "../../course-data";
+import { getPublishedCourseBySlug } from "../../lib/products";
 import SectionContainer from "../../section-container";
 import SiteHeader from "../../site-header";
+
+export const dynamic = "force-dynamic";
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export function generateStaticParams() {
-  return courses.map((course) => ({ slug: course.slug }));
-}
-
 export async function generateMetadata({
   params,
 }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = getCourseBySlug(slug);
+  const course = await getPublishedCourseBySlug(slug);
 
   return {
     title: course ? `${course.title} | Kitadi` : "Produto não encontrado | Kitadi",
@@ -134,7 +131,7 @@ function GhostCta({ href, children }: { href: string; children: string }) {
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const course = getCourseBySlug(slug);
+  const course = await getPublishedCourseBySlug(slug);
 
   if (!course) notFound();
 

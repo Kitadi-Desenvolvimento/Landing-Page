@@ -1,7 +1,4 @@
 {
-  "/api/backoffice/invites/route": "app/api/backoffice/invites/route.js",
   "/backoffice/page": "app/backoffice/page.js",
-  "/backoffice/definir-senha/page": "app/backoffice/definir-senha/page.js",
-  "/page": "app/page.js",
-  "/backoffice/login/page": "app/backoffice/login/page.js"
+  "/page": "app/page.js"
 }

@@ -10,18 +10,22 @@
       "page": "/",
       "matchers": [
         {
-          "regexp": "^/.*$",
-          "originalSource": "/:path*"
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/backoffice(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json|\\.rsc|\\.segments\\/.+\\.segment\\.rsc)?[\\/#\\?]?$",
+          "originalSource": "/backoffice/:path*"
+        },
+        {
+          "regexp": "^(?:\\/(_next\\/data\\/[^/]{1,}))?\\/api\\/backoffice(?:\\/((?:[^\\/#\\?]+?)(?:\\/(?:[^\\/#\\?]+?))*))?(\\.json|\\.rsc|\\.segments\\/.+\\.segment\\.rsc)?[\\/#\\?]?$",
+          "originalSource": "/api/backoffice/:path*"
         }
       ],
       "wasm": [],
       "assets": [],
       "env": {
-        "__NEXT_BUILD_ID": "development",
+        "__NEXT_BUILD_ID": "06YI9cm_0ojURTReVR5Gq",
         "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": "E3IBFMkgFpkn7hMxHx9fGFjuuxptPVxxhADRs7itfI8=",
-        "__NEXT_PREVIEW_MODE_ID": "3102c21df0349a740ede0604992bf9ef",
-        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "5cefca7ea39e46e904eeb9c2a1fdddb19347db992e33033465c5cae7aaff8665",
-        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "a6748b87773d5bf4069f26f8aad4a3d886a7144b916a61be39708eb7125ca20c"
+        "__NEXT_PREVIEW_MODE_ID": "ac64a9f8d012c79dd7641741be32039f",
+        "__NEXT_PREVIEW_MODE_SIGNING_KEY": "e8d39ee8b69f256a23b3984e20b7d9fa206abe8f6a0ca0791dc697e1594a9d85",
+        "__NEXT_PREVIEW_MODE_ENCRYPTION_KEY": "15e799af2badca4a4e06aa7141e740955ee3c8d8da4afb8f1aad59976307d8b2"
       }
     }
   },

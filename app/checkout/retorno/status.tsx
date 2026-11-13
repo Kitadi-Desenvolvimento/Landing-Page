@@ -42,8 +42,15 @@ export default function PaymentStatus({
         if (!response.ok) return;
         const body = (await response.json()) as { status?: string };
         if (stopped) return;
-        if (body.status === "accepted" || body.status === "rejected") {
-          setStatus(body.status);
+        if (
+          body.status === "accepted" ||
+          body.status === "rejected" ||
+          body.status === "expired" ||
+          body.status === "canceled"
+        ) {
+          setStatus(
+            body.status === "accepted" ? "accepted" : "rejected",
+          );
         }
       } catch {
         // A próxima tentativa volta a consultar o estado.

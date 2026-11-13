@@ -12,10 +12,11 @@ export default async function CheckoutReturnPage({
   const params = await searchParams;
   const reference = params.reference?.trim() ?? "";
   const order = isKitadiReference(reference) ? await getOrder(reference) : null;
-  const returnedError = params.status === "error";
-  const returnedSuccess = params.status === "success";
-  const confirmed = order?.status === "accepted" || (returnedSuccess && order?.status !== "rejected");
-  const rejected = returnedError || order?.status === "rejected";
+  const confirmed = order?.status === "accepted";
+  const rejected =
+    order?.status === "rejected" ||
+    order?.status === "expired" ||
+    order?.status === "canceled";
 
   const initialStatus = confirmed ? "accepted" : rejected ? "rejected" : "pending";
 

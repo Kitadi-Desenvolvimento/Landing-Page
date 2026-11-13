@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { redirect } from "next/navigation";
 import {
-  getCourseBySlug,
   getCourseVariant,
   getProductPath,
   offersCheckout,
 } from "../../../course-data";
+import { getPublishedCourseBySlug } from "../../../lib/products";
 import Checkout from "./checkout";
 
 type CheckoutPageProps = {
@@ -20,7 +20,7 @@ export async function generateMetadata({
 }: CheckoutPageProps): Promise<Metadata> {
   const { slug } = await params;
   const { variante } = await searchParams;
-  const course = getCourseBySlug(slug);
+  const course = await getPublishedCourseBySlug(slug);
   const variant = course ? getCourseVariant(course, variante) : null;
 
   return {
@@ -36,7 +36,7 @@ export default async function CheckoutPage({
 }: CheckoutPageProps) {
   const { slug } = await params;
   const { variante } = await searchParams;
-  const course = getCourseBySlug(slug);
+  const course = await getPublishedCourseBySlug(slug);
 
   if (!course) notFound();
   if (!offersCheckout(course)) redirect(getProductPath(course));

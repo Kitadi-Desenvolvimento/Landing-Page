@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "backoffice:invite-admin": "node --env-file=.env.local scripts/invite-initial-admin.mjs",
     "backoffice:generate-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link",
-    "backoffice:generate-local-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link --local"
+    "backoffice:generate-local-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link --local",
+    "backoffice:seed-products": "node --experimental-strip-types --env-file=.env.local scripts/seed-products.mjs",
+    "backoffice:import-legacy-payments": "node --experimental-strip-types --env-file=.env.local scripts/import-legacy-payments.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

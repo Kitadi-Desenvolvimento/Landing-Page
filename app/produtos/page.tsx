@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { productListings } from "../course-data";
+import { getPublishedProducts } from "../lib/products";
 import SectionContainer from "../section-container";
 import SiteHeader from "../site-header";
 import ProductCatalog from "./catalog";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Produtos | Kitadi",
@@ -11,7 +13,9 @@ export const metadata: Metadata = {
     "Veja todos os produtos da Kitadi e filtre por categoria e modalidade.",
 };
 
-export default function ProductsPage() {
+export default async function ProductsPage() {
+  const products = await getPublishedProducts();
+
   return (
     <main className="min-h-svh text-[#211d1e]">
       <section
@@ -55,7 +59,7 @@ export default function ProductsPage() {
         className="bg-[#f5f2f1] px-6 py-16 sm:py-20"
       >
         <SectionContainer>
-          <ProductCatalog courses={productListings} />
+          <ProductCatalog courses={products.map((product) => product.data)} />
         </SectionContainer>
       </section>
     </main>

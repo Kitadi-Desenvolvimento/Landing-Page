@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { getOrder, isKitadiReference } from "../../../../lib/payments/orders";
+import {
+  getOrder,
+  isKitadiReference,
+  PaymentLedgerNotMigratedError,
+} from "../../../../lib/payments/orders";
 
 export async function GET(
   _request: Request,
@@ -10,7 +14,21 @@ export async function GET(
     return NextResponse.json({ error: "invalid_reference" }, { status: 400 });
   }
 
-  const order = await getOrder(reference);
+  let order;
+  try {
+    order = await getOrder(reference);
+  } catch (error) {
+    if (error instanceof PaymentLedgerNotMigratedError) {
+      return NextResponse.json(
+        { error: "payment_ledger_not_configured" },
+        { status: 503 },
+      );
+    }
+    return NextResponse.json(
+      { error: "payment_status_unavailable" },
+      { status: 503 },
+    );
+  }
   if (!order) {
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }

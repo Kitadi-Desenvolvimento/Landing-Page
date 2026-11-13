@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getCourseBySlug, offersCheckout } from "../../../course-data";
+import { offersCheckout } from "../../../course-data";
+import { getPublishedCourseBySlug } from "../../../lib/products";
 import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
 import { createWipayHostedPayment, isWipayConfigured, WipayError } from "../../../lib/payments/wipay";
 
@@ -56,7 +57,9 @@ export async function POST(request: Request) {
   const name = readString(body.name, 120);
   const email = readString(body.email, 254);
   const phone = readString(body.phone, 24);
-  const course = courseSlug ? getCourseBySlug(courseSlug) : undefined;
+  const course = courseSlug
+    ? await getPublishedCourseBySlug(courseSlug)
+    : undefined;
   const variant = course
     ? variantId
       ? course.variants.find((item) => item.id === variantId)
@@ -89,18 +92,37 @@ export async function POST(request: Request) {
 
   const reference = newKitadiReference();
   const now = new Date().toISOString();
-  await saveOrder({
-    reference,
-    amountKz: variant.priceAmount,
-    courseSlug: course.slug,
-    variantId: variant.id,
-    name,
-    email,
-    phone: phone.replace(/\s+/g, ""),
-    status: "pending",
-    createdAt: now,
-    updatedAt: now,
-  });
+  try {
+    await saveOrder({
+      reference,
+      amountKz: variant.priceAmount,
+      courseSlug: course.slug,
+      productTitle: course.title,
+      variantId: variant.id,
+      variantLabel: variant.label,
+      name,
+      email,
+      phone: phone.replace(/\s+/g, ""),
+      status: "pending",
+      paymentProvider: "wipay",
+      paymentMethod: null,
+      providerStatus: null,
+      providerTransactionId: null,
+      reason: null,
+      createdAt: now,
+      updatedAt: now,
+      paidAt: null,
+    });
+  } catch (error) {
+    console.error(
+      "[payments] could not persist order before checkout",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return NextResponse.json(
+      { error: "Não foi possível registar o pagamento. Tente novamente." },
+      { status: 503 },
+    );
+  }
 
   const origin = siteOrigin(request);
   let checkoutUrl: string;
@@ -117,7 +139,11 @@ export async function POST(request: Request) {
   } catch (error) {
     const code = error instanceof WipayError ? error.code : "unknown";
     console.error("WiPay hosted payment failed.", code);
-    await updateOrder(reference, { status: "rejected", reason: code });
+    await updateOrder(reference, {
+      status: "rejected",
+      providerStatus: code,
+      reason: code,
+    });
     const status = code === "config_missing" ? 503 : 502;
     return NextResponse.json(
       {

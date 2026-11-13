@@ -4,6 +4,9 @@ import Produtos from "./produtos";
 import Referencias from "./referencias";
 import SectionContainer from "./section-container";
 import SiteHeader from "./site-header";
+import { getPublishedProducts } from "./lib/products";
+
+export const dynamic = "force-dynamic";
 
 const serviceAreas = [
   {
@@ -50,7 +53,9 @@ const audiences = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const products = await getPublishedProducts();
+
   return (
     <main className="min-h-svh overflow-x-hidden">
       <section
@@ -139,7 +144,7 @@ export default function Home() {
         </SectionContainer>
       </section>
 
-      <Produtos />
+      <Produtos products={products.map((product) => product.data)} />
 
       <section
         aria-labelledby="audiences-title"

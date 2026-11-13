@@ -146,6 +146,24 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/backoffice/products/[slug]/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/products/[slug]">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/products/[slug]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/backoffice/products/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/products">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/products/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/payments/charges/[paymentId]/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/payments/charges/[paymentId]">> = Specific

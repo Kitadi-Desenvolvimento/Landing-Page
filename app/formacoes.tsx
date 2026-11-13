@@ -2,10 +2,10 @@
 
 import Image from "next/image";
 import { useRef, useState } from "react";
-import { courses, getProductPath } from "./course-data";
+import { getProductPath, type Course } from "./course-data";
 import SectionContainer from "./section-container";
 
-export default function Formacoes() {
+export default function Formacoes({ courses }: { courses: Course[] }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [currentPage, setCurrentPage] = useState(0);
 
