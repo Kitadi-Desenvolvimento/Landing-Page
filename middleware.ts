@@ -50,10 +50,57 @@ export async function middleware(request: NextRequest) {
   const isApi = pathname.startsWith("/api/backoffice/");
   const isLogin = pathname === "/backoffice/login";
   const isDenied = pathname === "/backoffice/acesso-negado";
-  const isAdmin = user?.app_metadata.role === "admin";
 
   if (isLogin || isDenied) return response;
-  if (isAdmin) return response;
+  if (user) {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+    if (!serviceRoleKey) {
+      return NextResponse.json(
+        { error: "backoffice_access_unavailable" },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    let accessResponse: Response;
+    try {
+      accessResponse = await fetch(`${url}/auth/v1/admin/users/${user.id}`, {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+        cache: "no-store",
+      });
+    } catch (error) {
+      console.error("[backoffice] current role lookup failed", error);
+      return NextResponse.json(
+        { error: "backoffice_access_unavailable" },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (!accessResponse.ok) {
+      console.error("[backoffice] current role lookup failed", accessResponse.status);
+      return NextResponse.json(
+        { error: "backoffice_access_unavailable" },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    const accessData: unknown = await accessResponse.json();
+    const currentUser = typeof accessData === "object" && accessData !== null && "user" in accessData
+      ? accessData.user
+      : accessData;
+    const currentRole = typeof currentUser === "object" && currentUser !== null &&
+      "app_metadata" in currentUser &&
+      typeof currentUser.app_metadata === "object" && currentUser.app_metadata !== null &&
+      "role" in currentUser.app_metadata
+      ? currentUser.app_metadata.role
+      : null;
+
+    if (currentRole === "admin" || currentRole === "manager" || currentRole === "collaborator") {
+      return response;
+    }
+  }
 
   if (isApi) {
     const deniedResponse = NextResponse.json(
