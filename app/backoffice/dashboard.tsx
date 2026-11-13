@@ -1851,6 +1851,7 @@ function Team({ email, role }: { email: string; role: BackofficeRole }) {
             {data?.users.map((user) => (
               <TeamMemberEditor
                 areas={data.areas}
+                currentEmail={email}
                 key={user.id}
                 memberships={data.memberships.filter((membership) => membership.user_id === user.id)}
                 onSaved={loadTeam}
@@ -2026,12 +2027,14 @@ function TeamMemberEditor({
   areas,
   memberships,
   role,
+  currentEmail,
   onSaved,
 }: {
   user: TeamData["users"][number];
   areas: TeamData["areas"];
   memberships: TeamData["memberships"];
   role: BackofficeRole;
+  currentEmail: string;
   onSaved: () => void;
 }) {
   const [selectedRole, setSelectedRole] = useState(
@@ -2040,6 +2043,7 @@ function TeamMemberEditor({
   const [areaIds, setAreaIds] = useState(memberships.map((membership) => membership.area_id));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [revoking, setRevoking] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -2063,6 +2067,37 @@ function TeamMemberEditor({
     }
   }
 
+  async function revokeAccess() {
+    if (!window.confirm(`Revogar o acesso ao backoffice de ${user.email}? A conta e o histórico serão mantidos.`)) {
+      return;
+    }
+    setRevoking(true);
+    setError("");
+    try {
+      const response = await fetch("/api/backoffice/team", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, role: "none", areaIds: [] }),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
+        throw new Error(
+          code === "cannot_revoke_last_admin"
+            ? "Não é possível remover o último administrador."
+            : code === "cannot_revoke_self"
+              ? "Não pode remover o seu próprio acesso."
+              : "Não foi possível revogar o acesso desta pessoa.",
+        );
+      }
+      onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível revogar o acesso.");
+    } finally {
+      setRevoking(false);
+    }
+  }
+
   return (
     <article className="rounded-2xl border border-[#eee9e6] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2072,7 +2107,7 @@ function TeamMemberEditor({
         </div>
         {role === "admin" ? (
           <select aria-label={`Função de ${user.email}`} className="min-h-9 rounded-lg border border-[#e9e3e0] bg-white px-2 text-[10px]" onChange={(event) => setSelectedRole(event.target.value)} value={selectedRole}>
-            <option value="none">Sem acesso</option>
+            {user.role === "none" ? <option disabled value="none">Sem acesso</option> : null}
             <option value="collaborator">Colaborador</option>
             <option value="manager">Gestor</option>
             <option value="admin">Administrador</option>
@@ -2097,9 +2132,23 @@ function TeamMemberEditor({
         {areas.length === 0 ? <span className="text-[10px] text-[#928884]">Sem áreas atribuídas para gerir.</span> : null}
       </div>
       {error ? <p className="mt-2 text-[10px] text-red-700" role="alert">{error}</p> : null}
-      <button className="mt-3 min-h-8 rounded-full border border-[#e9e3e0] px-4 text-[10px] font-semibold text-[#6d605b] disabled:opacity-50" disabled={saving} onClick={() => void save()} type="button">
-        {saving ? "A guardar…" : "Guardar acessos"}
-      </button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button className="min-h-8 rounded-full border border-[#e9e3e0] px-4 text-[10px] font-semibold text-[#6d605b] disabled:opacity-50" disabled={saving || revoking} onClick={() => void save()} type="button">
+          {saving ? "A guardar…" : "Guardar acessos"}
+        </button>
+        {role === "admin" &&
+        user.role !== "none" &&
+        user.email.toLowerCase() !== currentEmail.toLowerCase() ? (
+          <button
+            className="min-h-8 rounded-full border border-red-200 px-4 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+            disabled={saving || revoking}
+            onClick={() => void revokeAccess()}
+            type="button"
+          >
+            {revoking ? "A revogar…" : "Remover do backoffice"}
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }

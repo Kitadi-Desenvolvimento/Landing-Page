@@ -119,6 +119,25 @@ export async function PATCH(request: NextRequest) {
     return failure(targetError ? "team_unavailable" : "user_not_found", targetError ? 503 : 404);
   }
 
+  if ("role" in payload && payload.role === "none") {
+    if (authorization.role !== "admin") return failure("role_change_forbidden", 403);
+    if (payload.userId === authorization.user.id) return failure("cannot_revoke_self", 400);
+
+    if (target.user.app_metadata.role === "admin") {
+      let adminCount = 0;
+      for (let page = 1; ; page += 1) {
+        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+        if (error) {
+          console.error("[backoffice] team admin count failed", error.code);
+          return failure("team_unavailable", 503);
+        }
+        adminCount += data.users.filter((user) => user.app_metadata.role === "admin").length;
+        if (data.users.length < 1000) break;
+      }
+      if (adminCount <= 1) return failure("cannot_revoke_last_admin", 409);
+    }
+  }
+
   if ("areaIds" in payload) {
     const desiredAreaIds = [...new Set(payload.areaIds as string[])];
     const editableAreaIds = authorization.role === "admin"
