@@ -33,9 +33,20 @@ export async function GET(
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    reference: order.reference,
-    status: order.status,
-    amountKz: order.amountKz,
-  });
+  return NextResponse.json(
+    {
+      reference: order.reference,
+      status: order.status,
+      amountKz: order.amountKz,
+      ticket: order.status === "accepted" ? {
+        customerName: order.name,
+        productTitle: order.productTitle,
+        edition: order.edition,
+        variantLabel: order.variantLabel,
+        paidAt: order.paidAt,
+        amountKz: order.amountKz,
+      } : null,
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

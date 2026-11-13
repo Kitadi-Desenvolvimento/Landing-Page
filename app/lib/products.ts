@@ -55,6 +55,7 @@ function parseProduct(value: unknown): ProductRecord {
   if (
     typeof slug !== "string" ||
     requiredStrings.some((key) => typeof data[key] !== "string") ||
+    (data.edition !== undefined && typeof data.edition !== "string") ||
     typeof published !== "boolean" ||
     typeof sortOrder !== "number"
   ) {
@@ -123,10 +124,14 @@ export async function getPublishedProducts(): Promise<ProductRecord[]> {
 export async function getPublishedCourseBySlug(
   slug: string,
 ): Promise<Course | undefined> {
-  const product = (await getPublishedProducts()).find(
-    (item) => item.slug === slug,
-  );
+  const product = await getPublishedProductBySlug(slug);
   return product?.data.course ?? undefined;
+}
+
+export async function getPublishedProductBySlug(
+  slug: string,
+): Promise<ProductRecord | undefined> {
+  return (await getPublishedProducts()).find((item) => item.slug === slug);
 }
 
 export async function getAdminProducts(): Promise<ProductRecord[]> {

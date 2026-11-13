@@ -42,7 +42,7 @@ export default function BackofficeLoginForm() {
         return;
       }
 
-      if (data.user.app_metadata.role !== "admin") {
+      if (!["admin", "manager", "collaborator"].includes(data.user.app_metadata.role)) {
         const { error: signOutError } = await supabase.auth.signOut();
         if (signOutError) {
           setErrorMessage("Esta conta não tem acesso. Não foi possível terminar a sessão; tente novamente.");
@@ -51,7 +51,6 @@ export default function BackofficeLoginForm() {
         setErrorMessage("Esta conta não tem permissão para aceder ao back office.");
         return;
       }
-      router.replace(nextPath);
       router.replace(nextPath);
     } catch {
       setErrorMessage("Não foi possível iniciar sessão. Verifique os dados e tente novamente.");

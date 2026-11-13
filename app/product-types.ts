@@ -4,6 +4,7 @@ export type ProductData = ProductListing & {
   course?: Course | null;
   price?: string;
   priceAmount?: number;
+  edition?: string;
 };
 
 export type ProductRecord = {

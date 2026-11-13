@@ -1,3 +1,6 @@
 {
-  "/backoffice/page": "app/backoffice/page.js"
+  "/api/site-analytics/route": "app/api/site-analytics/route.js",
+  "/produtos/[slug]/page": "app/produtos/[slug]/page.js",
+  "/backoffice/page": "app/backoffice/page.js",
+  "/page": "app/page.js"
 }

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import {
   getCourseVariant,
   getProductPath,
-  offersCheckout,
+  offersPublicCheckout,
 } from "../../../course-data";
 import { getPublishedCourseBySlug } from "../../../lib/products";
 import Checkout from "./checkout";
@@ -39,7 +39,7 @@ export default async function CheckoutPage({
   const course = await getPublishedCourseBySlug(slug);
 
   if (!course) notFound();
-  if (!offersCheckout(course)) redirect(getProductPath(course));
+  if (!offersPublicCheckout(course)) redirect(getProductPath(course));
 
   return <Checkout course={course} initialVariantId={variante} />;
 }

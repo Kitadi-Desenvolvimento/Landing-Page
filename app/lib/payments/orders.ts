@@ -18,6 +18,7 @@ export type KitadiOrder = {
   productTitle: string;
   variantId: string;
   variantLabel: string;
+  edition: string | null;
   name: string;
   email: string;
   phone: string;
@@ -30,6 +31,11 @@ export type KitadiOrder = {
   createdAt: string;
   updatedAt: string;
   paidAt: string | null;
+  checkedIn: boolean;
+  checkedInAt: string | null;
+  checkedInBy: string | null;
+  analyticsSessionId?: string | null;
+  customerCompany?: string | null;
 };
 
 export type PaymentSummary = {
@@ -43,6 +49,12 @@ export type PaymentSummary = {
   refundedAmountKz: number;
   successRate: number;
   averageTicketKz: number;
+};
+
+export type WeeklyPaymentRevenue = {
+  day: string;
+  current: number;
+  previous: number;
 };
 
 export class PaymentLedgerNotMigratedError extends Error {
@@ -66,7 +78,11 @@ const emptyPaymentSummary: PaymentSummary = {
 };
 
 function isMissingLedger(error: { code?: string }) {
-  return error.code === "PGRST205" || error.code === "PGRST202";
+  return (
+    error.code === "PGRST204" ||
+    error.code === "PGRST205" ||
+    error.code === "PGRST202"
+  );
 }
 
 function throwDatabaseError(operation: string, error: { code?: string }) {
@@ -83,6 +99,7 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
     productTitle: row.product_title as string,
     variantId: row.variant_id as string,
     variantLabel: row.variant_label as string,
+    edition: typeof row.edition === "string" ? row.edition : null,
     name: row.customer_name as string,
     email: row.customer_email as string,
     phone: row.customer_phone as string,
@@ -95,6 +112,15 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
     paidAt: row.paid_at as string | null,
+    checkedIn: row.checked_in === true,
+    checkedInAt: typeof row.checked_in_at === "string" ? row.checked_in_at : null,
+    checkedInBy: typeof row.checked_in_by === "string" ? row.checked_in_by : null,
+    analyticsSessionId: typeof row.analytics_session_id === "string"
+      ? row.analytics_session_id
+      : null,
+    customerCompany: typeof row.customer_company === "string"
+      ? row.customer_company
+      : null,
   };
 }
 
@@ -107,6 +133,7 @@ function toDatabase(order: KitadiOrder) {
     product_title: order.productTitle,
     variant_id: order.variantId,
     variant_label: order.variantLabel,
+    edition: order.edition,
     customer_name: order.name,
     customer_email: order.email,
     customer_phone: order.phone,
@@ -119,6 +146,11 @@ function toDatabase(order: KitadiOrder) {
     created_at: order.createdAt,
     updated_at: order.updatedAt,
     paid_at: order.paidAt,
+    checked_in: order.checkedIn,
+    checked_in_at: order.checkedInAt,
+    checked_in_by: order.checkedInBy,
+    analytics_session_id: order.analyticsSessionId ?? null,
+    customer_company: order.customerCompany ?? null,
   };
 }
 
@@ -130,9 +162,11 @@ function toDatabasePatch(patch: Partial<KitadiOrder>) {
     ["productTitle", "product_title"],
     ["variantId", "variant_id"],
     ["variantLabel", "variant_label"],
+    ["edition", "edition"],
     ["name", "customer_name"],
     ["email", "customer_email"],
     ["phone", "customer_phone"],
+    ["customerCompany", "customer_company"],
     ["status", "status"],
     ["paymentProvider", "payment_provider"],
     ["paymentMethod", "payment_method"],
@@ -140,6 +174,9 @@ function toDatabasePatch(patch: Partial<KitadiOrder>) {
     ["providerTransactionId", "provider_transaction_id"],
     ["reason", "reason"],
     ["paidAt", "paid_at"],
+    ["checkedIn", "checked_in"],
+    ["checkedInAt", "checked_in_at"],
+    ["checkedInBy", "checked_in_by"],
   ];
 
   for (const [key, column] of columns) {
@@ -203,6 +240,110 @@ export async function getRecentPaymentOrders(limit = 100) {
 
   if (error) throwDatabaseError("listing orders", error);
   return (data ?? []).map((row) => fromDatabase(row));
+}
+
+export async function getAcceptedOrders(filters: {
+  startDate?: string;
+  endDate?: string;
+  courseSlug?: string;
+  edition?: string;
+}) {
+  const admin = createSupabaseAdminClient();
+  const pageSize = 1000;
+  const orders: KitadiOrder[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    let query = admin
+      .from("payment_orders")
+      .select("reference,amount_kz,course_slug,product_title,variant_id,variant_label,edition,customer_name,customer_email,customer_phone,status,payment_provider,payment_method,provider_status,provider_transaction_id,reason,created_at,updated_at,paid_at,checked_in,checked_in_at,checked_in_by")
+      .eq("status", "accepted")
+      .order("paid_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (filters.startDate) query = query.gte("paid_at", `${filters.startDate}T00:00:00.000Z`);
+    if (filters.endDate) query = query.lte("paid_at", `${filters.endDate}T23:59:59.999Z`);
+    if (filters.courseSlug) query = query.eq("course_slug", filters.courseSlug);
+    if (filters.edition) query = query.eq("edition", filters.edition);
+
+    const { data, error } = await query;
+    if (error) throwDatabaseError("listing accepted attendees", error);
+    const page = data ?? [];
+    orders.push(...page.map((row) => fromDatabase(row)));
+    if (page.length < pageSize) return orders;
+  }
+}
+
+export async function getAcceptedOrderSalesByProduct() {
+  const admin = createSupabaseAdminClient();
+  const pageSize = 1000;
+  const salesByProduct: Record<string, { sales: number; revenueKz: number }> = {};
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from("payment_orders")
+      .select("course_slug,amount_kz")
+      .eq("status", "accepted")
+      .order("paid_at", { ascending: false })
+      .order("reference", { ascending: false })
+      .range(from, from + pageSize - 1);
+
+    if (error) throwDatabaseError("aggregating accepted sales by product", error);
+    const page = data ?? [];
+
+    for (const order of page) {
+      const product = salesByProduct[order.course_slug] ?? { sales: 0, revenueKz: 0 };
+      product.sales += 1;
+      product.revenueKz += Number(order.amount_kz);
+      salesByProduct[order.course_slug] = product;
+    }
+
+    if (page.length < pageSize) return salesByProduct;
+  }
+}
+
+export async function getWeeklyPaymentRevenue(): Promise<WeeklyPaymentRevenue[]> {
+  const now = new Date();
+  const currentWeekStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daysSinceMonday = (currentWeekStart.getUTCDay() + 6) % 7;
+  currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - daysSinceMonday);
+  const previousWeekStart = new Date(currentWeekStart);
+  previousWeekStart.setUTCDate(previousWeekStart.getUTCDate() - 7);
+  const dayLabels = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+  const totals = new Map<string, number>();
+  const pageSize = 1000;
+  const admin = createSupabaseAdminClient();
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await admin
+      .from("payment_orders")
+      .select("paid_at,amount_kz")
+      .eq("status", "accepted")
+      .gte("paid_at", previousWeekStart.toISOString())
+      .lt("paid_at", now.toISOString())
+      .order("paid_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throwDatabaseError("loading weekly revenue", error);
+    const page = data ?? [];
+    for (const order of page) {
+      if (typeof order.paid_at !== "string" || typeof order.amount_kz !== "number") continue;
+      const date = order.paid_at.slice(0, 10);
+      totals.set(date, (totals.get(date) ?? 0) + order.amount_kz);
+    }
+    if (page.length < pageSize) break;
+  }
+
+  return dayLabels.map((day, index) => {
+    const currentDate = new Date(currentWeekStart);
+    currentDate.setUTCDate(currentDate.getUTCDate() + index);
+    const previousDate = new Date(previousWeekStart);
+    previousDate.setUTCDate(previousDate.getUTCDate() + index);
+    return {
+      day,
+      current: totals.get(currentDate.toISOString().slice(0, 10)) ?? 0,
+      previous: totals.get(previousDate.toISOString().slice(0, 10)) ?? 0,
+    };
+  });
 }
 
 export async function getPaymentSummary(): Promise<PaymentSummary> {

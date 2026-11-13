@@ -8,6 +8,7 @@ import {
   getProductPath,
   type Course,
 } from "../../../course-data";
+import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
 
@@ -15,6 +16,7 @@ type EnrollmentDetails = {
   name: string;
   email: string;
   phone: string;
+  companyName: string;
 };
 
 type ChargeDetails = {
@@ -313,6 +315,7 @@ export default function Checkout({
     name: "",
     email: "",
     phone: "",
+    companyName: "",
   });
 
   useEffect(() => {
@@ -383,6 +386,8 @@ export default function Checkout({
           name: enrollment.name,
           email: enrollment.email,
           phone: enrollment.phone,
+          companyName: enrollment.companyName,
+          analyticsSessionId: getSiteAnalyticsSessionId(),
         }),
       });
       const result: unknown = await response.json();
@@ -633,6 +638,25 @@ export default function Checkout({
                   required
                   type="tel"
                   value={enrollment.phone}
+                />
+              </div>
+              <div className="mt-5">
+                <label
+                  className="mb-2 block text-sm font-medium"
+                  htmlFor="company-name"
+                >
+                  Empresa (opcional)
+                </label>
+                <input
+                  autoComplete="organization"
+                  className="h-[50px] w-full rounded-full border border-[#e7e1df] bg-[#faf9f8] px-5 text-base outline-none transition focus:border-[#862f3b]"
+                  id="company-name"
+                  name="companyName"
+                  onChange={(event) =>
+                    setEnrollment({ ...enrollment, companyName: event.target.value })
+                  }
+                  placeholder="Nome da empresa, se aplicável"
+                  value={enrollment.companyName}
                 />
               </div>
 

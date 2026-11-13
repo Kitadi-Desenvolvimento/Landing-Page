@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import {
   getCheckoutPath,
   getWhatsAppHref,
-  offersCheckout,
+  offersPublicCheckout,
   type Course,
 } from "../../course-data";
 import { getPublishedCourseBySlug } from "../../lib/products";
@@ -103,7 +103,7 @@ function JoinCta({
   course: Course;
   centered?: boolean;
 }) {
-  const checkout = offersCheckout(course);
+  const checkout = offersPublicCheckout(course);
 
   return (
     <div
@@ -204,7 +204,7 @@ function Hero({ course }: { course: Course }) {
             </dl>
 
             <div className="mt-10 flex flex-col gap-3">
-              {offersCheckout(course) ? (
+              {offersPublicCheckout(course) ? (
                 <p className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold leading-none tracking-[0.04em] text-white">
                   {course.price}
                 </p>
@@ -419,7 +419,7 @@ function Investment({ course }: { course: Course }) {
       <SectionContainer>
         <p className="section-eyebrow text-[#cda45c]">Aderir</p>
         <h2 className="section-heading mt-5 max-w-[640px]">
-          {offersCheckout(course) ? "Inscreva-se" : "Fale connosco no WhatsApp"}
+          {offersPublicCheckout(course) ? "Inscreva-se" : "Fale connosco no WhatsApp"}
         </h2>
         <p className="content-card-copy mt-5 max-w-[620px] text-white/80">
           {course.investmentIntro}
@@ -427,10 +427,10 @@ function Investment({ course }: { course: Course }) {
 
         <article className="mt-10 flex max-w-[560px] flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
-            {offersCheckout(course) ? "Investimento" : "WhatsApp"}
+            {offersPublicCheckout(course) ? "Investimento" : "WhatsApp"}
           </p>
           <p className="mt-4 text-[clamp(1.6rem,3vw,2.2rem)] font-bold leading-none tracking-[0.04em]">
-            {offersCheckout(course) ? course.price : "+244 936 250 151"}
+            {offersPublicCheckout(course) ? course.price : "+244 936 250 151"}
           </p>
           <p className="mt-3 text-[14px] text-white/70">
             {course.format} · {course.modality}

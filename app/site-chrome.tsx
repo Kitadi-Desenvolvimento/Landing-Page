@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SiteFooter from "./site-footer";
 import { createSupabaseBrowserClient } from "./lib/supabase/browser";
+import SiteAnalytics from "./site-analytics";
 import WhatsAppHelp from "./whatsapp-help";
 
 export default function SiteChrome() {
@@ -74,6 +75,7 @@ export default function SiteChrome() {
 
   return (
     <>
+      <SiteAnalytics />
       {callbackError ? (
         <p
           className="fixed inset-x-4 top-4 z-[100] mx-auto max-w-xl rounded-2xl bg-red-50 px-5 py-4 text-sm text-red-800 shadow-lg"

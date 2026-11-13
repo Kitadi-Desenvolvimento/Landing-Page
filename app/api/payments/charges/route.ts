@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { offersCheckout } from "../../../course-data";
-import { getPublishedCourseBySlug } from "../../../lib/products";
+import { getPublishedProductBySlug } from "../../../lib/products";
 import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
 import { createWipayHostedPayment, isWipayConfigured, WipayError } from "../../../lib/payments/wipay";
 
@@ -57,9 +57,18 @@ export async function POST(request: Request) {
   const name = readString(body.name, 120);
   const email = readString(body.email, 254);
   const phone = readString(body.phone, 24);
-  const course = courseSlug
-    ? await getPublishedCourseBySlug(courseSlug)
+  const companyName = typeof body.companyName === "string"
+    ? body.companyName.trim()
+    : "";
+  const analyticsSessionId =
+    typeof body.analyticsSessionId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.analyticsSessionId)
+      ? body.analyticsSessionId
+      : null;
+  const product = courseSlug
+    ? await getPublishedProductBySlug(courseSlug)
     : undefined;
+  const course = product?.data.course;
   const variant = course
     ? variantId
       ? course.variants.find((item) => item.id === variantId)
@@ -74,7 +83,9 @@ export async function POST(request: Request) {
     !email ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
     !phone ||
-    !/^\+?[0-9 ]{9,17}$/.test(phone)
+    !/^\+?[0-9 ]{9,17}$/.test(phone) ||
+    companyName.length > 160 ||
+    (body.companyName !== undefined && typeof body.companyName !== "string")
   ) {
     return NextResponse.json(
       { error: "Verifique o curso e os dados de contacto antes de continuar." },
@@ -100,9 +111,11 @@ export async function POST(request: Request) {
       productTitle: course.title,
       variantId: variant.id,
       variantLabel: variant.label,
+      edition: product?.data.edition?.trim() || null,
       name,
       email,
       phone: phone.replace(/\s+/g, ""),
+      customerCompany: companyName || null,
       status: "pending",
       paymentProvider: "wipay",
       paymentMethod: null,
@@ -112,6 +125,10 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
       paidAt: null,
+      checkedIn: false,
+      checkedInAt: null,
+      checkedInBy: null,
+      analyticsSessionId,
     });
   } catch (error) {
     console.error(

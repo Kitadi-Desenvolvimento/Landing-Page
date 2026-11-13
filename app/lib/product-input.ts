@@ -13,6 +13,7 @@ export type ProductInput = {
   image: string;
   statusLabel: string;
   modality: string;
+  edition: string;
   published: boolean;
   priceAmount: number | null;
   variants: ProductVariantInput[];
@@ -49,6 +50,10 @@ export function parseProductInput(value: unknown): ProductInput | null {
         input[key].trim().length > (key === "tagline" ? 300 : 160),
     ) ||
     typeof input.published !== "boolean"
+    || !(
+      input.edition === undefined ||
+      (typeof input.edition === "string" && input.edition.trim().length <= 120)
+    )
     || !(
       priceAmount === null ||
       (Number.isSafeInteger(priceAmount) &&
@@ -99,6 +104,7 @@ export function parseProductInput(value: unknown): ProductInput | null {
     image,
     statusLabel: (input.statusLabel as string).trim(),
     modality: (input.modality as string).trim(),
+    edition: typeof input.edition === "string" ? input.edition.trim() : "",
     published: input.published,
     priceAmount,
     variants: validVariants,
@@ -132,6 +138,7 @@ export function makeProductData(
     statusLabel: input.statusLabel,
     imageMode: existing?.imageMode ?? "object",
     modality: input.modality,
+    edition: input.edition || undefined,
     whatsappCta: existing?.whatsappCta ?? true,
     whatsappOnly: existing?.whatsappOnly ?? !existing?.course,
   };

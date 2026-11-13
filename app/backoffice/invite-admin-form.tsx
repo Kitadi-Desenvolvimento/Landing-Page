@@ -2,8 +2,21 @@
 
 import { useState, type FormEvent } from "react";
 
-export default function InviteAdminForm() {
+type InviteRole = "admin" | "manager" | "collaborator";
+type InviteArea = { id: string; name: string };
+
+export default function InviteAdminForm({
+  areas,
+  role,
+  onInvited,
+}: {
+  areas: InviteArea[];
+  role: "admin" | "manager";
+  onInvited: () => void;
+}) {
   const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<InviteRole>("collaborator");
+  const [areaIds, setAreaIds] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [inviteLink, setInviteLink] = useState("");
   const [copied, setCopied] = useState(false);
@@ -22,7 +35,11 @@ export default function InviteAdminForm() {
       const response = await fetch("/api/backoffice/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          role: role === "admin" ? inviteRole : "collaborator",
+          areaIds,
+        }),
       });
       const result = (await response.json()) as {
         error?: string;
@@ -36,7 +53,11 @@ export default function InviteAdminForm() {
           invite_link_missing: "O Supabase não devolveu o link. Tente novamente.",
           supabase_not_configured: "O serviço de convites não está configurado no servidor.",
           invite_role_update_failed:
-            "Não foi possível atribuir acesso de administrador. Contacte o suporte antes de gerar outro link.",
+            "Não foi possível atribuir a função à pessoa convidada. Contacte o suporte antes de gerar outro link.",
+          invite_areas_update_failed:
+            "O link foi gerado, mas não foi possível atribuir as áreas. Reveja os acessos da equipa.",
+          area_membership_forbidden:
+            "Só pode atribuir pessoas às áreas que gere.",
         };
         setIsError(true);
         setMessage(
@@ -55,9 +76,12 @@ export default function InviteAdminForm() {
 
       setEmail("");
       setInviteLink(result.link);
+      setAreaIds([]);
+      setInviteRole("collaborator");
       setMessage(
         "Link gerado. Partilhe-o diretamente com a pessoa convidada; não foi enviado nenhum e-mail. O link só pode ser usado uma vez.",
       );
+      onInvited();
     } catch {
       setIsError(true);
       setMessage("Não foi possível gerar o link. Verifique a ligação e tente novamente.");
@@ -108,6 +132,40 @@ export default function InviteAdminForm() {
           {message}
         </p>
       ) : null}
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {role === "admin" ? (
+          <label className="block text-xs font-semibold text-[#554b4b]">
+            Função
+            <select className="mt-2 min-h-11 w-full rounded-xl border border-[#ded7d4] bg-white px-3 text-xs" onChange={(event) => setInviteRole(event.target.value as InviteRole)} value={inviteRole}>
+              <option value="collaborator">Colaborador</option>
+              <option value="manager">Gestor</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </label>
+        ) : (
+          <p className="self-end text-xs text-[#817773]">Os convites de gestor criam colaboradores para as áreas escolhidas.</p>
+        )}
+        <fieldset className="rounded-xl border border-[#eee9e6] p-3">
+          <legend className="px-1 text-[10px] font-semibold text-[#817773]">Áreas atribuídas (opcional)</legend>
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {areas.map((area) => (
+              <label className="flex items-center gap-1.5 text-[10px] text-[#766d69]" key={area.id}>
+                <input
+                  checked={areaIds.includes(area.id)}
+                  onChange={(event) => setAreaIds((current) =>
+                    event.target.checked
+                      ? [...current, area.id]
+                      : current.filter((id) => id !== area.id),
+                  )}
+                  type="checkbox"
+                />
+                {area.name}
+              </label>
+            ))}
+            {areas.length === 0 ? <span className="text-[10px] text-[#928884]">Crie ou atribua uma área primeiro.</span> : null}
+          </div>
+        </fieldset>
+      </div>
       {inviteLink ? (
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input

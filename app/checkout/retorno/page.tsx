@@ -52,6 +52,16 @@ export default async function CheckoutReturnPage({
           <PaymentStatus
             initialStatus={initialStatus}
             reference={order?.reference ?? ""}
+            ticket={order
+              ? {
+                  customerName: order.name,
+                  productTitle: order.productTitle,
+                  edition: order.edition,
+                  variantLabel: order.variantLabel,
+                  paidAt: order.paidAt,
+                  amountKz: order.amountKz,
+                }
+              : null}
           />
         </div>
       </section>
