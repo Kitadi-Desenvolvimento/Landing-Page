@@ -20,11 +20,17 @@ export default function SiteChrome() {
       const query = new URLSearchParams(window.location.search);
       const hash = new URLSearchParams(window.location.hash.slice(1));
       const code = query.get("code");
+      const tokenHash = query.get("token_hash");
+      const requestedType = query.get("type");
+      const verificationType =
+        requestedType === "invite" || requestedType === "magiclink"
+          ? requestedType
+          : null;
       const accessToken = hash.get("access_token");
       const refreshToken = hash.get("refresh_token");
       const authError =
-        query.get("error_description") ?? hash.get("error_description");
-      if (!code && !(accessToken && refreshToken) && !authError) return;
+        query.get("error_description") ?? hash.get("error_description") ?? query.get("error");
+      if (!code && !tokenHash && !(accessToken && refreshToken) && !authError) return;
 
       const clearCallbackUrl = () => {
         window.history.replaceState({}, "", window.location.pathname);
@@ -40,12 +46,16 @@ export default function SiteChrome() {
 
       try {
         const auth = createSupabaseBrowserClient().auth;
-        const { error } = code
-          ? await auth.exchangeCodeForSession(code)
-          : await auth.setSession({
-              access_token: accessToken!,
-              refresh_token: refreshToken!,
-            });
+        const { error } = tokenHash
+          ? verificationType
+            ? await auth.verifyOtp({ token_hash: tokenHash, type: verificationType })
+            : { error: new Error("Unsupported invitation link type") }
+          : code
+            ? await auth.exchangeCodeForSession(code)
+            : await auth.setSession({
+                access_token: accessToken!,
+                refresh_token: refreshToken!,
+              });
         if (!active) return;
         clearCallbackUrl();
         if (error) {

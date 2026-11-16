@@ -79,21 +79,16 @@ export async function POST(request: NextRequest) {
   }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || request.nextUrl.origin;
-  const callbackUrl = new URL("/auth/callback", siteUrl);
-  callbackUrl.searchParams.set("next", "/backoffice/definir-senha");
-  const redirectTo = callbackUrl.toString();
   let linkType: "invite" | "magiclink" = "invite";
   let result = await admin.auth.admin.generateLink({
     type: "invite",
     email,
-    options: { redirectTo },
   });
   if (result.error && ["email_exists", "user_already_exists"].includes(result.error.code ?? "")) {
     linkType = "magiclink";
     result = await admin.auth.admin.generateLink({
       type: "magiclink",
       email,
-      options: { redirectTo },
     });
   }
   const { data, error } = result;
@@ -101,29 +96,15 @@ export async function POST(request: NextRequest) {
     console.error("[backoffice] invite link generation failed", { code: error?.code ?? "missing_user" });
     return jsonError("invite_unavailable", 502);
   }
-  if (!data.properties.action_link) {
-    console.error("[backoffice] invite link missing from Supabase response", { type: linkType });
+  if (!data.properties.hashed_token ||
+      !["invite", "magiclink"].includes(data.properties.verification_type)) {
+    console.error("[backoffice] invite verification token missing from Supabase response", { type: linkType });
     return jsonError("invite_link_missing", 502);
   }
-  let redirectMatches = false;
-  try {
-    const generatedLink = new URL(data.properties.action_link);
-    const effectiveRedirect = generatedLink.searchParams.get("redirect_to");
-    if (effectiveRedirect) {
-      const actualRedirect = new URL(effectiveRedirect);
-      redirectMatches = actualRedirect.origin === callbackUrl.origin &&
-        actualRedirect.pathname === callbackUrl.pathname;
-    }
-  } catch {
-    redirectMatches = false;
-  }
-  if (!redirectMatches) {
-    console.error("[backoffice] invite link redirect mismatch", {
-      expectedOrigin: callbackUrl.origin,
-      expectedPath: callbackUrl.pathname,
-    });
-    return jsonError("invite_redirect_mismatch", 502);
-  }
+  const inviteUrl = new URL("/", siteUrl);
+  inviteUrl.searchParams.set("token_hash", data.properties.hashed_token);
+  inviteUrl.searchParams.set("type", data.properties.verification_type);
+  inviteUrl.searchParams.set("next", "/backoffice/definir-senha");
 
   if (areaIds.length > 0) {
     const { error: membershipError } = await admin.from("objective_area_members").upsert(
@@ -149,7 +130,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { ok: true, link: data.properties.action_link, type: linkType },
+    { ok: true, link: inviteUrl.toString(), type: linkType },
     { status: 201, headers: { "Cache-Control": "no-store" } },
   );
 }

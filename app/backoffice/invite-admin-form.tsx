@@ -51,8 +51,6 @@ export default function InviteAdminForm({
           invite_exists: "Não foi possível convidar esse endereço. Verifique se já tem conta.",
           invite_unavailable: "Não foi possível gerar o link. Verifique a configuração do Supabase e tente novamente.",
           invite_link_missing: "O Supabase não devolveu o link. Tente novamente.",
-          invite_redirect_mismatch:
-            "O Supabase não está configurado para devolver os convites ao endereço correcto. Confirme a URL /auth/callback em Authentication > URL Configuration.",
           supabase_not_configured: "O serviço de convites não está configurado no servidor.",
           invite_role_update_failed:
             "Não foi possível atribuir a função à pessoa convidada. Contacte o suporte antes de gerar outro link.",
