@@ -8,6 +8,7 @@ export default function BackofficeLoginForm() {
   const router = useRouter();
   const [nextPath, setNextPath] = useState("/backoffice");
   const [hasConfigError, setHasConfigError] = useState(false);
+  const [hasInviteError, setHasInviteError] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -16,6 +17,7 @@ export default function BackofficeLoginForm() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setHasConfigError(params.get("error") === "config");
+    setHasInviteError(params.get("error") === "invite");
     const next = params.get("next");
     if (
       (next === "/backoffice" || next?.startsWith("/backoffice/")) &&
@@ -86,6 +88,11 @@ export default function BackofficeLoginForm() {
       {hasConfigError ? (
         <p className="text-sm text-red-700" role="alert">
           O serviço de autenticação ainda não está configurado.
+        </p>
+      ) : null}
+      {hasInviteError ? (
+        <p className="text-sm text-red-700" role="alert">
+          Não foi possível validar o link. Pode ter expirado ou já ter sido usado. Solicite um novo link de acesso.
         </p>
       ) : null}
       {errorMessage ? (

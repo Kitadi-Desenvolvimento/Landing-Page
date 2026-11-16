@@ -28,7 +28,7 @@ export async function GET() {
     .select("id,name,slug,active,created_at,updated_at,created_by")
     .order("name");
   let objectivesQuery = admin.from("objectives")
-    .select("id,area_id,due_date,archived,title,description,value_type,target_value,unit,active,created_at,updated_at,created_by,updated_by")
+    .select("id,area_id,parent_objective_id,due_date,archived,title,description,value_type,target_value,unit,active,created_at,updated_at,created_by,updated_by")
     .order("active", { ascending: false }).order("title");
   if (authorization.role === "manager") {
     if (authorization.areaIds.length === 0) {
@@ -159,6 +159,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "areas_unavailable" }, { status: 503 });
   }
   if (!area) return NextResponse.json({ error: "invalid_area" }, { status: 400 });
+
+  if (objective.parent_objective_id) {
+    const { data: parent, error: parentError } = await admin
+      .from("objectives")
+      .select("id,area_id,parent_objective_id,active,archived")
+      .eq("id", objective.parent_objective_id)
+      .maybeSingle();
+    if (parentError) {
+      console.error("[backoffice] parent objective validation failed", parentError.code);
+      return NextResponse.json({ error: "objective_unavailable" }, { status: 503 });
+    }
+    if (!parent || parent.area_id !== objective.area_id || parent.parent_objective_id ||
+        !parent.active || parent.archived || !canManageArea(authorization, parent.area_id)) {
+      return NextResponse.json({ error: "invalid_parent_objective" }, { status: 400 });
+    }
+  }
 
   const { data, error } = await admin
     .from("objectives")

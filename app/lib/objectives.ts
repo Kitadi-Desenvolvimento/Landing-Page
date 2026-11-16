@@ -40,13 +40,18 @@ export function isObjectiveValue(value: unknown, type: ObjectiveValueType) {
 
 export function parseObjective(value: unknown) {
   if (!isRecord(value)) return null;
-  const { title, description, valueType, targetValue, unit, active, areaId, dueDate } = value;
+  const { title, description, valueType, targetValue, unit, active, areaId, dueDate, parentObjectiveId } = value;
   const normalizedDueDate = dueDate === "" || dueDate === undefined ? null : dueDate;
+  const normalizedParentObjectiveId =
+    parentObjectiveId === "" || parentObjectiveId === undefined ? null : parentObjectiveId;
   if (
     typeof title !== "string" || !title.trim() || title.trim().length > 160 ||
     typeof description !== "string" || description.length > 2000 ||
     typeof areaId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(areaId) ||
+    (normalizedParentObjectiveId !== null &&
+      (typeof normalizedParentObjectiveId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedParentObjectiveId))) ||
     (normalizedDueDate !== null &&
       (typeof normalizedDueDate !== "string" ||
         !/^\d{4}-\d{2}-\d{2}$/.test(normalizedDueDate) ||
@@ -64,6 +69,7 @@ export function parseObjective(value: unknown) {
     title: title.trim(),
     description: description.trim(),
     area_id: areaId,
+    parent_objective_id: normalizedParentObjectiveId,
     due_date: normalizedDueDate,
     value_type: valueType,
     target_value: targetValue ?? null,

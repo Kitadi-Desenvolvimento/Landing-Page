@@ -78,7 +78,10 @@ export async function POST(request: NextRequest) {
     if ((areas ?? []).length !== areaIds.length) return jsonError("invalid_area_membership", 400);
   }
 
-  const redirectTo = new URL("/", request.nextUrl.origin).toString();
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() || request.nextUrl.origin;
+  const callbackUrl = new URL("/auth/callback", siteUrl);
+  callbackUrl.searchParams.set("next", "/backoffice/definir-senha");
+  const redirectTo = callbackUrl.toString();
   let linkType: "invite" | "magiclink" = "invite";
   let result = await admin.auth.admin.generateLink({
     type: "invite",
@@ -101,6 +104,25 @@ export async function POST(request: NextRequest) {
   if (!data.properties.action_link) {
     console.error("[backoffice] invite link missing from Supabase response", { type: linkType });
     return jsonError("invite_link_missing", 502);
+  }
+  let redirectMatches = false;
+  try {
+    const generatedLink = new URL(data.properties.action_link);
+    const effectiveRedirect = generatedLink.searchParams.get("redirect_to");
+    if (effectiveRedirect) {
+      const actualRedirect = new URL(effectiveRedirect);
+      redirectMatches = actualRedirect.origin === callbackUrl.origin &&
+        actualRedirect.pathname === callbackUrl.pathname;
+    }
+  } catch {
+    redirectMatches = false;
+  }
+  if (!redirectMatches) {
+    console.error("[backoffice] invite link redirect mismatch", {
+      expectedOrigin: callbackUrl.origin,
+      expectedPath: callbackUrl.pathname,
+    });
+    return jsonError("invite_redirect_mismatch", 502);
   }
 
   if (areaIds.length > 0) {

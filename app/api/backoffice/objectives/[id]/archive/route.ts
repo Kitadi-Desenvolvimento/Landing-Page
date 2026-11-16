@@ -39,7 +39,7 @@ export async function PATCH(
   const admin = createSupabaseAdminClient();
   const { data: objective, error: loadError } = await admin
     .from("objectives")
-    .select("area_id")
+    .select("area_id,parent_objective_id")
     .eq("id", id)
     .maybeSingle();
   if (loadError) {
@@ -49,6 +49,20 @@ export async function PATCH(
   if (!objective) return NextResponse.json({ error: "objective_not_found" }, { status: 404 });
   if (!canManageArea(authorization, objective.area_id)) {
     return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
+  }
+  if (objective.parent_objective_id) {
+    const { data: parent, error: parentError } = await admin
+      .from("objectives")
+      .select("active,archived")
+      .eq("id", objective.parent_objective_id)
+      .maybeSingle();
+    if (parentError) {
+      console.error("[backoffice] parent objective archive lookup failed", parentError.code);
+      return NextResponse.json({ error: "objective_unavailable" }, { status: 503 });
+    }
+    if (!parent || !parent.active || parent.archived) {
+      return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
+    }
   }
 
   const { data, error } = await admin

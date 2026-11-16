@@ -42,7 +42,7 @@ export async function PATCH(
   const admin = createSupabaseAdminClient();
   const { data: objective, error: objectiveError } = await admin
     .from("objectives")
-    .select("area_id,value_type,archived")
+    .select("area_id,value_type,archived,parent_objective_id")
     .eq("id", id)
     .maybeSingle();
   if (objectiveError) {
@@ -54,6 +54,20 @@ export async function PATCH(
     return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
   }
   if (objective.archived) return NextResponse.json({ error: "objective_archived" }, { status: 409 });
+  if (objective.parent_objective_id) {
+    const { data: parent, error: parentError } = await admin
+      .from("objectives")
+      .select("active,archived")
+      .eq("id", objective.parent_objective_id)
+      .maybeSingle();
+    if (parentError) {
+      console.error("[backoffice] parent objective check-in edit lookup failed", parentError.code);
+      return NextResponse.json({ error: "checkin_unavailable" }, { status: 503 });
+    }
+    if (!parent || !parent.active || parent.archived) {
+      return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
+    }
+  }
   if (!isObjectiveValue(payload.value, objective.value_type)) {
     return NextResponse.json({ error: "invalid_checkin_value" }, { status: 400 });
   }

@@ -9,6 +9,7 @@ import {
 type Objective = {
   id: string;
   area_id: string;
+  parent_objective_id: string | null;
   due_date: string | null;
   archived: boolean;
   title: string;
@@ -80,6 +81,7 @@ export default function Objectives() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [formObjective, setFormObjective] = useState<Objective | null | "new">(null);
+  const [formParentObjectiveId, setFormParentObjectiveId] = useState<string | null>(null);
   const [formCheckIn, setFormCheckIn] = useState<{ objective: Objective; checkin: ObjectiveCheckIn } | null>(null);
   const [savingCheckIn, setSavingCheckIn] = useState("");
 
@@ -120,11 +122,15 @@ export default function Objectives() {
       {
         method: objective ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          parentObjectiveId: objective?.parent_objective_id ?? payload.parentObjectiveId,
+        }),
       },
     );
     if (!response.ok) throw new Error("Não foi possível guardar o objectivo.");
     setFormObjective(null);
+    setFormParentObjectiveId(null);
     await loadData();
   }
 
@@ -187,24 +193,53 @@ export default function Objectives() {
   }
 
   const today = luandaToday();
-  const activeCount = objectives.filter((objective) => objective.active && !objective.archived).length;
+  const topLevelObjectives = objectives.filter((objective) => objective.parent_objective_id === null);
+  const activeCount = topLevelObjectives.filter((objective) => objective.active && !objective.archived).length;
   const canCreateObjective = !readOnly && areas.some((area) => area.active);
-  const visibleObjectives = objectives.filter((objective) => objective.archived === showArchived);
+  const visibleObjectives = topLevelObjectives.filter((objective) => objective.archived === showArchived);
   const selectedObjective = selectedObjectiveId
     ? objectives.find((objective) => objective.id === selectedObjectiveId) ?? null
     : null;
-  const todayCount = objectives.filter((objective) =>
+  const editorParentObjectiveId = formObjective === "new"
+    ? formParentObjectiveId
+    : formObjective?.parent_objective_id ?? null;
+  const editorParentAreaId = editorParentObjectiveId
+    ? objectives.find((item) => item.id === editorParentObjectiveId)?.area_id ?? null
+    : null;
+  const todayCount = topLevelObjectives.filter((objective) =>
     !objective.archived &&
       checkins.some((checkin) => checkin.objective_id === objective.id && checkin.checkin_date === today),
   ).length;
 
-  function renderObjectiveCard(objective: Objective, inModal = false) {
+  function renderObjectiveCard(
+    objective: Objective,
+    inModal = false,
+    isKeyResult = false,
+    parentAllowsChanges = true,
+  ) {
     const history = checkins.filter((item) => item.objective_id === objective.id);
     const todayCheckIn = history.find((item) => item.checkin_date === today);
+    const keyResults = isKeyResult
+      ? []
+      : objectives.filter((item) => item.parent_objective_id === objective.id);
     return (
       <ObjectiveCard
         checkInDone={Boolean(todayCheckIn)}
         history={history}
+        isKeyResult={isKeyResult}
+        parentAllowsChanges={parentAllowsChanges}
+        keyResultCards={keyResults.map((keyResult) =>
+          renderObjectiveCard(
+            keyResult,
+            inModal,
+            true,
+            parentAllowsChanges && objective.active && !objective.archived,
+          ),
+        )}
+        onAddKeyResult={() => {
+          setFormParentObjectiveId(objective.id);
+          setFormObjective("new");
+        }}
         onArchive={(archived) => {
           void (async () => {
             const updated = await setObjectiveArchived(objective, archived);
@@ -235,7 +270,7 @@ export default function Objectives() {
           <p className="mt-2 max-w-2xl text-sm text-[#817773]">
             {readOnly
               ? "Consulte as metas e o progresso de todas as áreas. O seu perfil não pode alterar objectivos ou check-ins."
-              : "Cadastre metas de qualquer tipo, registe o progresso uma vez por dia e consulte quem fez cada actualização."}
+              : "Crie objectivos principais, associe-lhes Key Results (KRs) mensuráveis e acompanhe o progresso diário."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -300,6 +335,7 @@ export default function Objectives() {
           <div className="divide-y divide-[#f1edeb]">
             {visibleObjectives.map((objective) => {
               const latest = checkins.find((item) => item.objective_id === objective.id);
+              const keyResultCount = objectives.filter((item) => item.parent_objective_id === objective.id).length;
               const complete = isObjectiveComplete(objective, latest?.value);
               const dueWarning = objective.archived || complete
                 ? null
@@ -321,6 +357,7 @@ export default function Objectives() {
                     <span className="block truncate text-[12px] font-bold text-[#352d2e]">{objective.title}</span>
                     <span className="mt-1 block text-[9px] text-[#8d837f]">
                       {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
+                      {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
                     </span>
                   </span>
                   <span className="text-[10px] text-[#766d69]">
@@ -387,13 +424,20 @@ export default function Objectives() {
 
       {formObjective !== null ? (
         <ObjectiveEditor
-          key={formObjective === "new" ? "new-objective" : formObjective.id}
+          key={formObjective === "new"
+            ? `new-objective-${formParentObjectiveId ?? "root"}`
+            : formObjective.id}
           objective={formObjective === "new" ? null : formObjective}
+          parentObjectiveId={editorParentObjectiveId}
+          parentAreaId={editorParentAreaId}
           areas={areas.filter((area) =>
             area.active || (typeof formObjective === "object" &&
               formObjective !== null && area.id === formObjective.area_id),
           )}
-          onClose={() => setFormObjective(null)}
+          onClose={() => {
+            setFormObjective(null);
+            setFormParentObjectiveId(null);
+          }}
           onSave={saveObjective}
         />
       ) : null}
@@ -452,7 +496,9 @@ export function OverviewObjectives({
     };
   }, []);
 
-  const activeObjectives = data?.objectives.filter((objective) => objective.active && !objective.archived) ?? [];
+  const activeObjectives = data?.objectives.filter((objective) =>
+    objective.parent_objective_id === null && objective.active && !objective.archived,
+  ) ?? [];
   const checkinsToday = data?.checkins.filter(
     (checkin) => checkin.checkin_date === luandaToday() &&
       activeObjectives.some((objective) => objective.id === checkin.objective_id),
@@ -546,11 +592,15 @@ function ObjectiveCard({
   objective,
   history,
   edits,
+  keyResultCards,
+  isKeyResult,
+  parentAllowsChanges,
   areaName,
   checkInDone,
   saving,
   readOnly,
   onEdit,
+  onAddKeyResult,
   onArchive,
   onEditCheckIn,
   onCheckIn,
@@ -558,11 +608,15 @@ function ObjectiveCard({
   objective: Objective;
   history: ObjectiveCheckIn[];
   edits: ObjectiveCheckInEdit[];
+  keyResultCards: React.ReactNode[];
+  isKeyResult: boolean;
+  parentAllowsChanges: boolean;
   areaName: string;
   checkInDone: boolean;
   saving: boolean;
   readOnly: boolean;
   onEdit: () => void;
+  onAddKeyResult: () => void;
   onArchive: (archived: boolean) => void;
   onEditCheckIn: (checkin: ObjectiveCheckIn) => void;
   onCheckIn: (value: unknown, note: string) => Promise<void>;
@@ -605,6 +659,9 @@ function ObjectiveCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-bold text-[#352d2e]">{objective.title}</h3>
+            {isKeyResult ? (
+              <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">KR</span>
+            ) : null}
             <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">{areaName}</span>
             <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
               objective.archived
@@ -626,7 +683,7 @@ function ObjectiveCard({
             </p>
           ) : null}
         </div>
-        {!readOnly ? (
+        {!readOnly && (!isKeyResult || parentAllowsChanges) ? (
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {!objective.archived ? (
               <button
@@ -675,7 +732,31 @@ function ObjectiveCard({
         valueType={objective.value_type}
       />
 
-      {objective.active && !objective.archived && !readOnly ? (
+      {!isKeyResult ? (
+        <section className="mt-5 border-t border-[#f0ecea] pt-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-[11px] font-bold text-[#443a3b]">Key Results ({keyResultCards.length})</h4>
+            {!readOnly && objective.active && !objective.archived ? (
+              <button
+                className="rounded-full border border-[#e9e3e0] px-3 py-1.5 text-[10px] font-semibold text-[#6d605b] hover:bg-[#faf8f7]"
+                onClick={onAddKeyResult}
+                type="button"
+              >
+                Adicionar KR
+              </button>
+            ) : null}
+          </div>
+          {keyResultCards.length > 0 ? (
+            <div className="space-y-3">{keyResultCards}</div>
+          ) : (
+            <p className="rounded-xl bg-[#faf8f6] px-3 py-3 text-[10px] text-[#8d837f]">
+              Ainda não há KRs associados a este objectivo.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {objective.active && !objective.archived && !readOnly && (!isKeyResult || parentAllowsChanges) ? (
         <form className="mt-4 rounded-2xl border border-[#eee7e2] p-4" onSubmit={submit}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-[11px] font-bold text-[#443a3b]">Check-in diário</h4>
@@ -844,11 +925,15 @@ function CheckInEditor({
 
 function ObjectiveEditor({
   objective,
+  parentObjectiveId,
+  parentAreaId,
   areas,
   onClose,
   onSave,
 }: {
   objective: Objective | null;
+  parentObjectiveId: string | null;
+  parentAreaId: string | null;
   areas: ObjectiveArea[];
   onClose: () => void;
   onSave: (payload: ObjectivePayload, objective: Objective | null) => Promise<void>;
@@ -872,7 +957,8 @@ function ObjectiveEditor({
     const payload: ObjectivePayload = {
       title: String(form.get("title") ?? ""),
       description: String(form.get("description") ?? ""),
-      areaId: String(form.get("areaId") ?? ""),
+      areaId: parentAreaId ?? String(form.get("areaId") ?? ""),
+      parentObjectiveId,
       dueDate: String(form.get("dueDate") ?? "") || null,
       valueType,
       targetValue: target.value,
@@ -893,26 +979,36 @@ function ObjectiveEditor({
       <section aria-labelledby="objective-editor-title" aria-modal="true" className="my-auto w-full max-w-[620px] rounded-[24px] bg-white p-5 shadow-2xl sm:p-7" role="dialog">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#a8792f]">{objective ? "Actualizar meta" : "Nova meta"}</p>
-            <h2 className="mt-1 text-xl font-bold text-[#302829]" id="objective-editor-title">{objective ? "Editar objectivo" : "Criar objectivo"}</h2>
+            <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#a8792f]">
+              {parentObjectiveId ? "Key Result" : objective ? "Actualizar meta" : "Nova meta"}
+            </p>
+            <h2 className="mt-1 text-xl font-bold text-[#302829]" id="objective-editor-title">
+              {parentObjectiveId ? objective ? "Editar KR" : "Adicionar Key Result" : objective ? "Editar objectivo" : "Criar objectivo"}
+            </h2>
           </div>
           <button aria-label="Fechar" className="flex size-9 items-center justify-center rounded-full bg-[#f6f2f0] text-[#625858]" onClick={onClose} type="button">×</button>
         </div>
         <form className="mt-5 space-y-4" onSubmit={submit}>
           <label className="block text-[10px] font-semibold text-[#817773]">
-            Nome do objectivo
+            {parentObjectiveId ? "Nome do Key Result" : "Nome do objectivo"}
             <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]" defaultValue={objective?.title} maxLength={160} name="title" required />
           </label>
           <label className="block text-[10px] font-semibold text-[#817773]">
             Descrição (opcional)
             <textarea className="mt-1 min-h-20 w-full rounded-xl border border-[#e9e3e0] px-3 py-2 text-[12px] text-[#302829]" defaultValue={objective?.description} maxLength={2000} name="description" />
           </label>
-          <label className="block text-[10px] font-semibold text-[#817773]">
-            Área
-            <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" defaultValue={objective?.area_id ?? areas[0]?.id ?? ""} name="areaId" required>
-              {areas.map((area) => <option key={area.id} value={area.id}>{area.name}{area.active ? "" : " · inactiva"}</option>)}
-            </select>
-          </label>
+          {parentObjectiveId ? (
+            <p className="rounded-xl bg-[#faf8f6] px-3 py-2.5 text-[10px] text-[#817773]">
+              Este KR ficará associado à área do objectivo principal.
+            </p>
+          ) : (
+            <label className="block text-[10px] font-semibold text-[#817773]">
+              Área
+              <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" defaultValue={objective?.area_id ?? areas[0]?.id ?? ""} name="areaId" required>
+                {areas.map((area) => <option key={area.id} value={area.id}>{area.name}{area.active ? "" : " · inactiva"}</option>)}
+              </select>
+            </label>
+          )}
           <label className="block text-[10px] font-semibold text-[#817773]">
             Data de fim (opcional)
             <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" defaultValue={objective?.due_date ?? ""} name="dueDate" type="date" />
@@ -939,12 +1035,12 @@ function ObjectiveEditor({
           />
           <label className="flex items-center gap-2 text-[11px] font-semibold text-[#554b4b]">
             <input defaultChecked={objective?.active ?? true} name="active" type="checkbox" />
-            Objectivo activo
+            {parentObjectiveId ? "KR activo" : "Objectivo activo"}
           </label>
           {error ? <p className="text-[11px] text-red-700" role="alert">{error}</p> : null}
           <div className="flex justify-end gap-2 border-t border-[#f0ecea] pt-4">
             <button className="min-h-10 rounded-full border border-[#e9e3e0] px-4 text-[11px] font-semibold text-[#625858]" onClick={onClose} type="button">Cancelar</button>
-            <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} type="submit">{saving ? "A guardar…" : "Guardar objectivo"}</button>
+            <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} type="submit">{saving ? "A guardar…" : parentObjectiveId ? "Guardar KR" : "Guardar objectivo"}</button>
           </div>
         </form>
       </section>
@@ -1019,6 +1115,7 @@ type ObjectivePayload = {
   title: string;
   description: string;
   areaId: string;
+  parentObjectiveId: string | null;
   dueDate: string | null;
   valueType: ObjectiveValueType;
   targetValue: unknown;
@@ -1077,6 +1174,8 @@ function isObjectiveResponse(value: unknown): value is {
     typeof item === "object" && item !== null &&
     "id" in item && typeof item.id === "string" &&
     "area_id" in item && typeof item.area_id === "string" &&
+    "parent_objective_id" in item &&
+    (typeof item.parent_objective_id === "string" || item.parent_objective_id === null) &&
     "due_date" in item && (typeof item.due_date === "string" || item.due_date === null) &&
     "archived" in item && typeof item.archived === "boolean" &&
     "title" in item && typeof item.title === "string" &&
@@ -1117,7 +1216,7 @@ function isObjectiveResponse(value: unknown): value is {
 function objectiveLoadError(code: unknown, status: number) {
   switch (code) {
     case "objectives_schema_missing":
-      return "A tabela de objectivos ou as colunas de prazo/arquivo ainda não existem. Aplique as migrações 20261113020000, 20261113030000 e 20261113040000 no Supabase.";
+      return "A tabela de objectivos ou as colunas de prazo, arquivo e KRs ainda não existem. Aplique as migrações 20261113020000, 20261113030000, 20261113040000 e 20261113080000 no Supabase.";
     case "areas_schema_missing":
       return "As tabelas das áreas ainda não existem. Aplique a migração 20261113030000 no Supabase.";
     case "checkins_schema_missing":

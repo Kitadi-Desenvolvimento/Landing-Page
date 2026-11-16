@@ -41,7 +41,7 @@ export async function PATCH(
   const admin = createSupabaseAdminClient();
   const { data: existing, error: existingError } = await admin
     .from("objectives")
-    .select("area_id,archived")
+    .select("area_id,parent_objective_id,archived")
     .eq("id", id)
     .maybeSingle();
   if (existingError) {
@@ -50,6 +50,23 @@ export async function PATCH(
   }
   if (!existing) return NextResponse.json({ error: "objective_not_found" }, { status: 404 });
   if (existing.archived) return NextResponse.json({ error: "objective_archived" }, { status: 409 });
+  if (existing.parent_objective_id !== objective.parent_objective_id) {
+    return NextResponse.json({ error: "parent_objective_immutable" }, { status: 400 });
+  }
+  if (existing.parent_objective_id) {
+    const { data: parent, error: parentError } = await admin
+      .from("objectives")
+      .select("active,archived")
+      .eq("id", existing.parent_objective_id)
+      .maybeSingle();
+    if (parentError) {
+      console.error("[backoffice] parent objective lookup failed", parentError.code);
+      return NextResponse.json({ error: "objective_unavailable" }, { status: 503 });
+    }
+    if (!parent || !parent.active || parent.archived) {
+      return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
+    }
+  }
   if (!canManageArea(authorization, existing.area_id) || !canManageArea(authorization, objective.area_id)) {
     return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
   }
@@ -118,7 +135,7 @@ export async function POST(
   const admin = createSupabaseAdminClient();
   const { data: objective, error: loadError } = await admin
     .from("objectives")
-    .select("id,value_type,active,archived,area_id")
+    .select("id,value_type,active,archived,area_id,parent_objective_id")
     .eq("id", id)
     .maybeSingle();
   if (loadError) {
@@ -131,6 +148,20 @@ export async function POST(
   }
   if (objective.archived) return NextResponse.json({ error: "objective_archived" }, { status: 409 });
   if (!objective.active) return NextResponse.json({ error: "objective_inactive" }, { status: 409 });
+  if (objective.parent_objective_id) {
+    const { data: parent, error: parentError } = await admin
+      .from("objectives")
+      .select("active,archived")
+      .eq("id", objective.parent_objective_id)
+      .maybeSingle();
+    if (parentError) {
+      console.error("[backoffice] parent objective check-in lookup failed", parentError.code);
+      return NextResponse.json({ error: "checkin_unavailable" }, { status: 503 });
+    }
+    if (!parent || !parent.active || parent.archived) {
+      return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
+    }
+  }
 
   if (!isObjectiveValue(payload.value, objective.value_type)) {
     return NextResponse.json({ error: "invalid_checkin_value" }, { status: 400 });

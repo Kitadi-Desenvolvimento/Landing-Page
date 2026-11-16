@@ -34,7 +34,6 @@ export default function SetPasswordForm() {
         return;
       }
       router.replace("/backoffice");
-      router.replace("/backoffice");
     } catch {
       setMessage("Não foi possível definir a palavra-passe. Volte a abrir o link de convite.");
     } finally {
