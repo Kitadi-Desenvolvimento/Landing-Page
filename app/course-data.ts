@@ -88,6 +88,7 @@ export type ProductListing = Pick<
 > & {
   whatsappCta?: boolean;
   whatsappOnly?: boolean;
+  checkoutEnabled?: boolean;
 };
 
 export const courses: Course[] = [
@@ -670,10 +671,6 @@ export function getCourseVariant(course: Course, variantId?: string | null) {
 
 export const kitadiWhatsAppNumber = "244936250151";
 export const checkoutPriceLimit = 100_000;
-const publicWipayCheckoutSlugs = new Set([
-  "tea-and-money-talks",
-  "desafio-aprendiz",
-]);
 
 export function offersCheckout(course: Course) {
   return (
@@ -687,8 +684,18 @@ export function offersCheckout(course: Course) {
   );
 }
 
-export function offersPublicCheckout(course: Course) {
-  return publicWipayCheckoutSlugs.has(course.slug) && offersCheckout(course);
+export function offersPublicCheckout(product: {
+  checkoutEnabled?: boolean;
+  course?: Course | null;
+  priceAmount?: number;
+}) {
+  if (product.checkoutEnabled !== true) return false;
+  if (product.course) return offersCheckout(product.course);
+  return (
+    Number.isSafeInteger(product.priceAmount) &&
+    (product.priceAmount ?? 0) > 0 &&
+    (product.priceAmount ?? 0) < checkoutPriceLimit
+  );
 }
 
 export function getProductPath(course: Pick<Course, "slug">) {
@@ -707,7 +714,7 @@ export function getHelpWhatsAppHref() {
   return `https://wa.me/${kitadiWhatsAppNumber}?text=${encodeURIComponent("Olá, preciso de ajuda.")}`;
 }
 
-export function getCheckoutPath(course: Course, variantId?: string) {
+export function getCheckoutPath(course: Pick<Course, "slug">, variantId?: string) {
   const path = `/formacoes/${course.slug}/inscricao`;
   return variantId ? `${path}?variante=${encodeURIComponent(variantId)}` : path;
 }

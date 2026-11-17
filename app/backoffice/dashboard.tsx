@@ -1493,6 +1493,9 @@ function Products({
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold ${product.published ? "bg-[#edf4ee] text-[#52765e]" : "bg-[#f4eeee] text-[#8a5555]"}`}>
                         {product.published ? "Publicado" : "Rascunho"}
                       </span>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[9px] font-semibold ${product.data.checkoutEnabled === true ? "bg-[#edf4ee] text-[#52765e]" : "bg-[#f3f0ed] text-[#766b66]"}`}>
+                        {product.data.checkoutEnabled === true ? "Pagamento automático" : "WhatsApp"}
+                      </span>
                     </div>
                     <button
                       className="mt-2 text-[10px] font-semibold text-[#762838] hover:underline"
@@ -1556,6 +1559,7 @@ function ProductEditor({
       modality: form.get("modality"),
       edition: form.get("edition"),
       published: form.get("published") === "on",
+      checkoutEnabled: form.get("checkoutEnabled") === "on",
       priceAmount:
         String(form.get("priceAmount") ?? "").trim() === ""
           ? null
@@ -1592,6 +1596,8 @@ function ProductEditor({
             ? "Já existe um produto com este nome."
             : code === "invalid_product"
               ? "Verifique os campos, preços e use o caminho de uma imagem existente."
+              : code === "checkout_not_available"
+                ? "Para activar o pagamento, configure um preço válido abaixo de 100.000 Kz e, para formações, preços válidos em todas as variantes."
               : "Não foi possível guardar o produto. Tente novamente.",
         );
       }
@@ -1701,6 +1707,24 @@ function ProductEditor({
             />
             Publicar este produto na landing page
           </label>
+          <div className="rounded-2xl border border-[#eee8e5] bg-[#fcfbfa] p-4">
+            <label className="flex items-start gap-2 text-[11px] font-semibold text-[#5e5552]">
+              <input
+                defaultChecked={product?.data.checkoutEnabled === true}
+                className="mt-0.5 size-4 accent-[#510f1d]"
+                name="checkoutEnabled"
+                type="checkbox"
+              />
+              <span>
+                Activar pagamento automático (WiPay)
+                <span className="mt-1 block font-normal leading-5 text-[#918783]">
+                  Ligado: o cliente paga no checkout. Desligado: o botão leva ao WhatsApp.
+                  Requer preço entre 1 e 99.999 Kz; as formações também precisam de preços
+                  válidos em todas as variantes.
+                </span>
+              </span>
+            </label>
+          </div>
           <p className="text-[10px] leading-5 text-[#918783]">
             Produtos novos ficam disponíveis para contacto via WhatsApp. Para a imagem, use um caminho como /produtos/imagem.png e coloque o ficheiro na pasta public. Preços em Kz, sem separadores.
           </p>

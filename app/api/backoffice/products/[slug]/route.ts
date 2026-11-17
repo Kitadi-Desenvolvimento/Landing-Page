@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { offersPublicCheckout } from "../../../../course-data";
 import { makeProductData, parseProductInput } from "../../../../lib/product-input";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { requireAdmin } from "../../../../lib/supabase/require-admin";
@@ -55,10 +56,15 @@ export async function PATCH(
   }
   if (!current) return jsonError("product_not_found", 404);
 
+  const productData = makeProductData(input, current.data, slug);
+  if (input.checkoutEnabled && !offersPublicCheckout(productData)) {
+    return jsonError("checkout_not_available", 400);
+  }
+
   const { data, error } = await admin
     .from("products")
     .update({
-      data: makeProductData(input, current.data, slug),
+      data: productData,
       published: input.published,
     })
     .eq("slug", slug)

@@ -74,11 +74,17 @@ export async function POST(request: Request) {
       ? course.variants.find((item) => item.id === variantId)
       : course.variants[0]
     : undefined;
+  const amountKz = course
+    ? variant?.priceAmount
+    : product?.data.priceAmount;
 
   if (
-    !course ||
-    !offersPublicCheckout(course) ||
-    !variant ||
+    !product ||
+    !offersPublicCheckout(product.data) ||
+    amountKz === undefined ||
+    !Number.isSafeInteger(amountKz) ||
+    (course !== null && course !== undefined && !variant) ||
+    (!course && variantId !== null) ||
     !name ||
     !email ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
@@ -106,11 +112,11 @@ export async function POST(request: Request) {
   try {
     await saveOrder({
       reference,
-      amountKz: variant.priceAmount,
-      courseSlug: course.slug,
-      productTitle: course.title,
-      variantId: variant.id,
-      variantLabel: variant.label,
+      amountKz,
+      courseSlug: product.slug,
+      productTitle: product.data.title,
+      variantId: variant?.id ?? "default",
+      variantLabel: variant?.label ?? "Compra",
       edition: product?.data.edition?.trim() || null,
       name,
       email,
@@ -145,7 +151,7 @@ export async function POST(request: Request) {
   let checkoutUrl: string;
   try {
     const payment = await createWipayHostedPayment({
-      amountKz: variant.priceAmount,
+      amountKz,
       customer: phone.replace(/\s+/g, ""),
       reference,
       successUrl: `${origin}/checkout/retorno?status=success&reference=${reference}`,
@@ -180,7 +186,7 @@ export async function POST(request: Request) {
       checkoutUrl,
       entity: null,
       reference,
-      amount: variant.priceAmount,
+      amount: amountKz,
       currency: "AOA",
       expiresAt: null,
     },

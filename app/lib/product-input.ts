@@ -15,6 +15,7 @@ export type ProductInput = {
   modality: string;
   edition: string;
   published: boolean;
+  checkoutEnabled: boolean;
   priceAmount: number | null;
   variants: ProductVariantInput[];
 };
@@ -50,6 +51,7 @@ export function parseProductInput(value: unknown): ProductInput | null {
         input[key].trim().length > (key === "tagline" ? 300 : 160),
     ) ||
     typeof input.published !== "boolean"
+    || typeof input.checkoutEnabled !== "boolean"
     || !(
       input.edition === undefined ||
       (typeof input.edition === "string" && input.edition.trim().length <= 120)
@@ -106,6 +108,7 @@ export function parseProductInput(value: unknown): ProductInput | null {
     modality: (input.modality as string).trim(),
     edition: typeof input.edition === "string" ? input.edition.trim() : "",
     published: input.published,
+    checkoutEnabled: input.checkoutEnabled,
     priceAmount,
     variants: validVariants,
   };
@@ -139,6 +142,7 @@ export function makeProductData(
     imageMode: existing?.imageMode ?? "object",
     modality: input.modality,
     edition: input.edition || undefined,
+    checkoutEnabled: input.checkoutEnabled,
     whatsappCta: existing?.whatsappCta ?? true,
     whatsappOnly: existing?.whatsappOnly ?? !existing?.course,
   };

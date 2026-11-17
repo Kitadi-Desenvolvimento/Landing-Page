@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   getProductPath,
+  getCheckoutPath,
   getWhatsAppHref,
   type ProductListing,
 } from "./course-data";
@@ -21,7 +22,7 @@ export default function ProductCoverCard({
 
   return (
     <div className="relative">
-      {course.whatsappOnly ? (
+      {course.whatsappOnly && course.checkoutEnabled !== true ? (
         <div aria-label={course.title} className={cardClass} role="group">
           <CardArtwork
             course={course}
@@ -44,7 +45,15 @@ export default function ProductCoverCard({
           />
         </Link>
       )}
-      {course.whatsappCta ? (
+      {course.checkoutEnabled ? (
+        <Link
+          className="absolute inset-x-4 bottom-4 z-[5] inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[#cda45c] px-4 text-center text-[14px] font-semibold !text-[#2b160f] shadow-[0_8px_20px_rgba(0,0,0,0.28)] transition-colors hover:bg-[#dab76e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          data-analytics-product={course.slug}
+          href={getCheckoutPath(course)}
+        >
+          Pagar online
+        </Link>
+      ) : course.whatsappCta ? (
         <a
           className="absolute inset-x-4 bottom-4 z-[5] inline-flex min-h-[48px] items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 text-center text-[14px] font-semibold !text-[#12321d] shadow-[0_8px_20px_rgba(0,0,0,0.28)] transition-colors hover:bg-[#49df7d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           data-analytics-product={course.slug}

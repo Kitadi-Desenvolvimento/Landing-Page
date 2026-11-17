@@ -6,8 +6,9 @@ import {
   getProductPath,
   offersPublicCheckout,
 } from "../../../course-data";
-import { getPublishedCourseBySlug } from "../../../lib/products";
+import { getPublishedProductBySlug } from "../../../lib/products";
 import Checkout from "./checkout";
+import ProductCheckout from "./product-checkout";
 
 type CheckoutPageProps = {
   params: Promise<{ slug: string }>;
@@ -20,12 +21,15 @@ export async function generateMetadata({
 }: CheckoutPageProps): Promise<Metadata> {
   const { slug } = await params;
   const { variante } = await searchParams;
-  const course = await getPublishedCourseBySlug(slug);
+  const product = await getPublishedProductBySlug(slug);
+  const course = product?.data.course;
   const variant = course ? getCourseVariant(course, variante) : null;
 
   return {
-    title: course
-      ? `Inscrição — ${course.title} (${variant?.label}) | Kitadi`
+    title: product
+      ? course
+        ? `Inscrição — ${product.data.title} (${variant?.label}) | Kitadi`
+        : `Compra — ${product.data.title} | Kitadi`
       : "Produto não encontrado | Kitadi",
   };
 }
@@ -36,10 +40,16 @@ export default async function CheckoutPage({
 }: CheckoutPageProps) {
   const { slug } = await params;
   const { variante } = await searchParams;
-  const course = await getPublishedCourseBySlug(slug);
+  const product = await getPublishedProductBySlug(slug);
 
-  if (!course) notFound();
-  if (!offersPublicCheckout(course)) redirect(getProductPath(course));
+  if (!product) notFound();
+  if (!offersPublicCheckout(product.data)) {
+    redirect(getProductPath({ slug: product.slug }));
+  }
 
-  return <Checkout course={course} initialVariantId={variante} />;
+  if (!product.data.course) {
+    return <ProductCheckout product={product.data} />;
+  }
+
+  return <Checkout course={product.data.course} initialVariantId={variante} />;
 }

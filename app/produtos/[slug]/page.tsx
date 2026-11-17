@@ -8,7 +8,8 @@ import {
   offersPublicCheckout,
   type Course,
 } from "../../course-data";
-import { getPublishedCourseBySlug } from "../../lib/products";
+import { getPublishedProductBySlug } from "../../lib/products";
+import type { ProductData } from "../../product-types";
 import SectionContainer from "../../section-container";
 import SiteHeader from "../../site-header";
 
@@ -22,11 +23,11 @@ export async function generateMetadata({
   params,
 }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = await getPublishedCourseBySlug(slug);
+  const product = await getPublishedProductBySlug(slug);
 
   return {
-    title: course ? `${course.title} | Kitadi` : "Produto não encontrado | Kitadi",
-    description: course?.description,
+    title: product ? `${product.data.title} | Kitadi` : "Produto não encontrado | Kitadi",
+    description: product?.data.course?.description ?? product?.data.tagline,
   };
 }
 
@@ -98,12 +99,14 @@ function PrimaryCta({
 
 function JoinCta({
   course,
+  checkoutEnabled,
   centered = false,
 }: {
   course: Course;
+  checkoutEnabled: boolean;
   centered?: boolean;
 }) {
-  const checkout = offersPublicCheckout(course);
+  const checkout = offersPublicCheckout({ course, checkoutEnabled });
 
   return (
     <div
@@ -112,7 +115,9 @@ function JoinCta({
       {checkout ? (
         <PrimaryCta href={getCheckoutPath(course)}>Ir para o checkout</PrimaryCta>
       ) : (
-        <PrimaryCta href={getWhatsAppHref(course)}>{course.ctaLabel}</PrimaryCta>
+        <PrimaryCta href={getWhatsAppHref(course)}>
+          Fale connosco no WhatsApp
+        </PrimaryCta>
       )}
     </div>
   );
@@ -131,26 +136,89 @@ function GhostCta({ href, children }: { href: string; children: string }) {
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
-  const course = await getPublishedCourseBySlug(slug);
+  const product = await getPublishedProductBySlug(slug);
 
-  if (!course) notFound();
+  if (!product) notFound();
+  const course = product.data.course;
+  if (!course) return <SimpleProductPage product={product.data} />;
+  const checkoutEnabled = offersPublicCheckout(product.data);
 
   return (
     <main className="min-h-svh bg-[#f5f2f1] text-[#211d1e]">
-      <Hero course={course} />
+      <Hero checkoutEnabled={checkoutEnabled} course={course} />
       <Moment course={course} />
       <About course={course} />
       <Audience course={course} />
       {course.results.length > 0 ? <Results course={course} /> : null}
       <Method course={course} />
-      <Investment course={course} />
+      <Investment checkoutEnabled={checkoutEnabled} course={course} />
       <NextSteps course={course} />
-      <Closing course={course} />
+      <Closing checkoutEnabled={checkoutEnabled} course={course} />
     </main>
   );
 }
 
-function Hero({ course }: { course: Course }) {
+function SimpleProductPage({ product }: { product: ProductData }) {
+  const checkout = offersPublicCheckout(product);
+  const ctaHref = checkout
+    ? getCheckoutPath(product)
+    : getWhatsAppHref(product);
+
+  return (
+    <main className="min-h-svh bg-[#f5f2f1] text-[#211d1e]">
+      <section className="text-white" style={burgundy}>
+        <SiteHeader />
+        <SectionContainer className="grid items-center gap-10 px-6 pb-16 pt-16 sm:pb-20 lg:grid-cols-2">
+          <div>
+            <nav aria-label="Navegação estrutural" className="text-sm text-white/70">
+              <Link className="transition-colors hover:text-white" href="/produtos">
+                Produtos
+              </Link>
+              <span aria-hidden="true" className="mx-3 text-[#cda45c]">›</span>
+              <span aria-current="page" className="text-white">{product.title}</span>
+            </nav>
+            <p className="section-eyebrow mt-10 text-[#cda45c]">{product.category}</p>
+            <h1 className="section-heading mt-5 max-w-[640px] text-white">
+              {product.title}
+            </h1>
+            <p className="content-card-copy mt-5 max-w-[520px] text-white/80">
+              {product.tagline}
+            </p>
+            <p className="mt-4 text-sm text-white/70">
+              {product.modality} · {product.statusLabel}
+            </p>
+            {product.price ? (
+              <p className="mt-7 text-3xl font-bold text-white">{product.price}</p>
+            ) : null}
+            <div className="mt-8">
+              <PrimaryCta href={ctaHref}>
+                {checkout ? "Ir para o checkout" : "Fale connosco no WhatsApp"}
+              </PrimaryCta>
+            </div>
+          </div>
+          <div className="relative mx-auto aspect-[4/5] w-full max-w-[460px]">
+            <Image
+              alt={product.alt}
+              className="object-contain object-right drop-shadow-[0_24px_48px_rgba(0,0,0,0.35)]"
+              fill
+              priority
+              sizes="(min-width: 1024px) 480px, 90vw"
+              src={product.coverImage ?? product.image}
+            />
+          </div>
+        </SectionContainer>
+      </section>
+    </main>
+  );
+}
+
+function Hero({
+  course,
+  checkoutEnabled,
+}: {
+  course: Course;
+  checkoutEnabled: boolean;
+}) {
   return (
     <section className="relative overflow-hidden text-white" style={burgundy}>
       <SiteHeader />
@@ -204,13 +272,13 @@ function Hero({ course }: { course: Course }) {
             </dl>
 
             <div className="mt-10 flex flex-col gap-3">
-              {offersPublicCheckout(course) ? (
+              {checkoutEnabled ? (
                 <p className="text-[clamp(1.8rem,3vw,2.4rem)] font-bold leading-none tracking-[0.04em] text-white">
                   {course.price}
                 </p>
               ) : null}
               <div className="flex flex-col gap-3 sm:flex-row">
-                <JoinCta course={course} />
+                <JoinCta checkoutEnabled={checkoutEnabled} course={course} />
                 <GhostCta href="#sobre">Saber mais</GhostCta>
               </div>
             </div>
@@ -409,7 +477,13 @@ function Method({ course }: { course: Course }) {
   );
 }
 
-function Investment({ course }: { course: Course }) {
+function Investment({
+  course,
+  checkoutEnabled,
+}: {
+  course: Course;
+  checkoutEnabled: boolean;
+}) {
   return (
     <section
       className="scroll-mt-24 px-6 py-16 text-white sm:py-20"
@@ -419,7 +493,7 @@ function Investment({ course }: { course: Course }) {
       <SectionContainer>
         <p className="section-eyebrow text-[#cda45c]">Aderir</p>
         <h2 className="section-heading mt-5 max-w-[640px]">
-          {offersPublicCheckout(course) ? "Inscreva-se" : "Fale connosco no WhatsApp"}
+          {checkoutEnabled ? "Inscreva-se" : "Fale connosco no WhatsApp"}
         </h2>
         <p className="content-card-copy mt-5 max-w-[620px] text-white/80">
           {course.investmentIntro}
@@ -427,16 +501,16 @@ function Investment({ course }: { course: Course }) {
 
         <article className="mt-10 flex max-w-[560px] flex-col rounded-[24px] border border-[#cda45c]/45 bg-black/20 px-6 py-8 sm:px-8">
           <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#cda45c]">
-            {offersPublicCheckout(course) ? "Investimento" : "WhatsApp"}
+            {checkoutEnabled ? "Investimento" : "WhatsApp"}
           </p>
           <p className="mt-4 text-[clamp(1.6rem,3vw,2.2rem)] font-bold leading-none tracking-[0.04em]">
-            {offersPublicCheckout(course) ? course.price : "+244 936 250 151"}
+            {course.price}
           </p>
           <p className="mt-3 text-[14px] text-white/70">
             {course.format} · {course.modality}
           </p>
           <div className="mt-8">
-            <JoinCta course={course} />
+            <JoinCta checkoutEnabled={checkoutEnabled} course={course} />
           </div>
         </article>
 
@@ -495,7 +569,13 @@ function NextSteps({ course }: { course: Course }) {
   );
 }
 
-function Closing({ course }: { course: Course }) {
+function Closing({
+  course,
+  checkoutEnabled,
+}: {
+  course: Course;
+  checkoutEnabled: boolean;
+}) {
   return (
     <section className="px-6 py-16 text-white sm:py-24" style={burgundy}>
       <SectionContainer className="max-w-[760px] text-center">
@@ -505,7 +585,7 @@ function Closing({ course }: { course: Course }) {
         </p>
         <p className="content-card-copy mt-6 text-white/80">{course.closingNote}</p>
         <div className="mt-10">
-          <JoinCta centered course={course} />
+          <JoinCta centered checkoutEnabled={checkoutEnabled} course={course} />
         </div>
       </SectionContainer>
     </section>

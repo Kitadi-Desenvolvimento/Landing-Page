@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { offersPublicCheckout } from "../../../course-data";
 import { makeProductData, parseProductInput, productSlug } from "../../../lib/product-input";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { requireAdmin } from "../../../lib/supabase/require-admin";
@@ -71,9 +72,14 @@ export async function POST(request: NextRequest) {
     return jsonError("product_order_failed", 503);
   }
 
+  const productData = makeProductData(input, undefined, slug);
+  if (input.checkoutEnabled && !offersPublicCheckout(productData)) {
+    return jsonError("checkout_not_available", 400);
+  }
+
   const product = {
     slug,
-    data: makeProductData(input, undefined, slug),
+    data: productData,
     published: input.published,
     sort_order: (lastProduct?.sort_order ?? -1) + 1,
   };
