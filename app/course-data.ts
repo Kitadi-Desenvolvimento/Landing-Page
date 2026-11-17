@@ -411,14 +411,14 @@ export const courses: Course[] = [
       "100% via WhatsApp, com desafios diários, exercícios práticos e acompanhamento em grupo com a formadora Neuza Pinto.",
     tagline: "15 dias de organização financeira.",
     price: "16.989 Kz",
-    priceAmount: 16899,
+    priceAmount: 16989,
     variants: [
       {
         id: "participacao",
         label: "Participação",
         detail: "15 dias · 30 Novembro 2026",
         price: "16.989 Kz",
-        priceAmount: 16899,
+        priceAmount: 16989,
       },
     ],
     image: "/produtos/desafio-aprendiz.jpg",

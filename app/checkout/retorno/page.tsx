@@ -2,7 +2,6 @@ import Link from "next/link";
 import {
   getOrder,
   isKitadiReference,
-  updateOrder,
 } from "../../lib/payments/orders";
 import PaymentStatus from "./status";
 
@@ -15,20 +14,7 @@ export default async function CheckoutReturnPage({
 }) {
   const params = await searchParams;
   const reference = params.reference?.trim() ?? "";
-  let order = isKitadiReference(reference) ? await getOrder(reference) : null;
-
-  if (
-    params.status === "success" &&
-    order?.paymentProvider === "wipay" &&
-    order.status === "pending"
-  ) {
-    order = await updateOrder(reference, {
-      status: "accepted",
-      providerStatus: "test_return_success",
-      reason: null,
-      paidAt: new Date().toISOString(),
-    });
-  }
+  const order = isKitadiReference(reference) ? await getOrder(reference) : null;
 
   const confirmed = order?.status === "accepted";
   const rejected =

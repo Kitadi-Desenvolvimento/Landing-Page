@@ -9,6 +9,9 @@ import {
 } from "../../../lib/payments/orders";
 import { getWipaySignatureToken } from "../../../lib/payments/wipay";
 
+const providerTransactionIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function isValidSignature(rawBody: string, signature: string | null, token: string) {
   if (!signature || !/^[a-f\d]{64}$/i.test(signature)) return false;
   const expected = createHmac("sha256", token).update(rawBody).digest();
@@ -46,12 +49,28 @@ export async function POST(request: Request) {
   if (!reference || !isKitadiReference(reference)) {
     return NextResponse.json({ error: "invalid_reference" }, { status: 400 });
   }
+  const providerTransactionId =
+    typeof body.id === "string" && providerTransactionIdPattern.test(body.id)
+      ? body.id
+      : "";
+  if (!providerTransactionId) {
+    return NextResponse.json({ error: "invalid_payment_id" }, { status: 400 });
+  }
+  if (typeof body.amount !== "string" || !body.amount.trim() ||
+      typeof body.currency !== "string" || !body.currency.trim() ||
+      typeof body.status_reason !== "string" || !body.status_reason.trim()) {
+    return NextResponse.json({ error: "invalid_payment_details" }, { status: 400 });
+  }
 
   const providerStatus =
     typeof body.status === "string" || typeof body.status === "number"
       ? String(body.status).trim().toLowerCase()
       : "";
   const statusCode = getStatusReasonCode(body) || (/^\d{4}$/.test(providerStatus) ? providerStatus : "");
+  if (!["accepted", "rejected"].includes(providerStatus) ||
+      (providerStatus === "accepted") !== (statusCode === "2000")) {
+    return NextResponse.json({ error: "invalid_payment_status" }, { status: 400 });
+  }
   const normalizedStatus = getNormalizedStatus(providerStatus, statusCode);
   let order;
   try {
@@ -63,7 +82,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "payment_storage_unavailable" }, { status: 503 });
   }
   const amount = Number(body.amount);
-  const currency = String(body.currency ?? "").toLowerCase();
+  const currency = body.currency.toLowerCase();
   if (!order) {
     console.error("[wipay:webhook] callback has no matching local order", {
       reference,
@@ -75,7 +94,7 @@ export async function POST(request: Request) {
   if (
     !Number.isFinite(amount) ||
     amount !== order.amountKz ||
-    (currency !== "" && currency !== "aoa")
+    currency !== "aoa"
   ) {
     console.error("[wipay:webhook] callback details do not match the order", {
       reference,
@@ -84,6 +103,15 @@ export async function POST(request: Request) {
       currency,
     });
     return NextResponse.json({ error: "payment_details_mismatch" }, { status: 400 });
+  }
+
+  if (order.providerTransactionId &&
+      order.providerTransactionId !== providerTransactionId) {
+    console.error("[wipay:webhook] ignored conflicting transaction for payment reference", {
+      reference,
+      providerTransactionId,
+    });
+    return NextResponse.json({ ok: true, ignored: true });
   }
 
   if (order.status === "accepted" && normalizedStatus !== "accepted") {

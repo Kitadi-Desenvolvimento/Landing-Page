@@ -101,7 +101,6 @@ export async function createWipayHostedPayment(input: {
   reference: string;
   successUrl: string;
   failureUrl: string;
-  callbackUrl?: string;
 }): Promise<{ checkoutUrl: string }> {
   const config = getConfig();
   const token = await getAccessToken("payment");
@@ -119,7 +118,7 @@ export async function createWipayHostedPayment(input: {
         currency: "aoa",
         customer: input.customer,
         reference_id: input.reference,
-        callback_url: input.callbackUrl || config.callbackUrl,
+        callback_url: config.callbackUrl,
         success_url: input.successUrl,
         failure_url: input.failureUrl,
       }),
