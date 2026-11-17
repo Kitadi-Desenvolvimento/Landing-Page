@@ -670,7 +670,10 @@ export function getCourseVariant(course: Course, variantId?: string | null) {
 
 export const kitadiWhatsAppNumber = "244936250151";
 export const checkoutPriceLimit = 100_000;
-export const publicWipayCheckoutEnabled = false;
+const publicWipayCheckoutSlugs = new Set([
+  "tea-and-money-talks",
+  "desafio-aprendiz",
+]);
 
 export function offersCheckout(course: Course) {
   return (
@@ -685,7 +688,7 @@ export function offersCheckout(course: Course) {
 }
 
 export function offersPublicCheckout(course: Course) {
-  return publicWipayCheckoutEnabled && offersCheckout(course);
+  return publicWipayCheckoutSlugs.has(course.slug) && offersCheckout(course);
 }
 
 export function getProductPath(course: Pick<Course, "slug">) {

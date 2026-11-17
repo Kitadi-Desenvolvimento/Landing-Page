@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { offersCheckout } from "../../../course-data";
+import { offersPublicCheckout } from "../../../course-data";
 import { getPublishedProductBySlug } from "../../../lib/products";
 import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
 import { createWipayHostedPayment, isWipayConfigured, WipayError } from "../../../lib/payments/wipay";
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
   if (
     !course ||
-    !offersCheckout(course) ||
+    !offersPublicCheckout(course) ||
     !variant ||
     !name ||
     !email ||
