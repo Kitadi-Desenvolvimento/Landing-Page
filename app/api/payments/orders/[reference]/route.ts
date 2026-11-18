@@ -40,6 +40,7 @@ export async function GET(
       amountKz: order.amountKz,
       ticket: order.status === "accepted" ? {
         customerName: order.name,
+        customerEmail: order.email,
         productTitle: order.productTitle,
         edition: order.edition,
         variantLabel: order.variantLabel,

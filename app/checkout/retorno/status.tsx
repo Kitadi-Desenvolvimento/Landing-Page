@@ -7,6 +7,7 @@ type PaymentPhase = "pending" | "accepted" | "rejected";
 
 export type PaymentTicket = {
   customerName: string;
+  customerEmail: string;
   productTitle: string;
   edition: string | null;
   variantLabel: string;
@@ -23,7 +24,7 @@ const copy: Record<PaymentPhase, { title: string; description: string }> = {
   accepted: {
     title: "Pagamento confirmado",
     description:
-      "A sua inscrição foi confirmada. Apresente o bilhete abaixo à entrada.",
+      "A sua inscrição foi confirmada. Verifique a caixa de entrada e a pasta de spam ou lixo electrónico. Apresente o bilhete abaixo à entrada.",
   },
   rejected: {
     title: "Pagamento não concluído",
@@ -89,7 +90,9 @@ export default function PaymentStatus({
     <>
       <h1 className="mt-3 text-4xl font-bold">{current.title}</h1>
       <p className="mt-4 max-w-[560px] text-base leading-7 text-white/80">
-        {current.description}
+        {status === "accepted" && ticket
+          ? `A sua inscrição foi confirmada. Enviámos um email de confirmação para ${ticket.customerEmail}. Se não o encontrar na caixa de entrada, verifique também a pasta de spam ou lixo electrónico. Apresente o bilhete abaixo à entrada.`
+          : current.description}
       </p>
       {status === "accepted" && ticket ? <PaymentTicketCard reference={reference} ticket={ticket} /> : null}
     </>
@@ -101,6 +104,7 @@ function isTicket(value: unknown): value is PaymentTicket {
   const ticket = value as Record<string, unknown>;
   return (
     typeof ticket.customerName === "string" &&
+    typeof ticket.customerEmail === "string" &&
     typeof ticket.productTitle === "string" &&
     (typeof ticket.edition === "string" || ticket.edition === null) &&
     typeof ticket.variantLabel === "string" &&

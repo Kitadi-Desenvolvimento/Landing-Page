@@ -14,6 +14,13 @@ type ChargeDetails = {
   amount: number;
 };
 
+type PurchaseDetails = {
+  name: string;
+  email: string;
+  phone: string;
+  companyName: string;
+};
+
 function isChargeDetails(value: unknown): value is ChargeDetails {
   if (typeof value !== "object" || value === null) return false;
   const charge = value as Record<string, unknown>;
@@ -35,23 +42,41 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
 export default function ProductCheckout({ product }: { product: ProductData }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [reviewingDetails, setReviewingDetails] = useState(false);
+  const [details, setDetails] = useState<PurchaseDetails>({
+    name: "",
+    email: "",
+    phone: "",
+    companyName: "",
+  });
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    setDetails({
+      name: String(form.get("name") ?? "").trim(),
+      email: String(form.get("email") ?? "").trim(),
+      phone: String(form.get("phone") ?? "").trim(),
+      companyName: String(form.get("companyName") ?? "").trim(),
+    });
+    setError("");
+    setReviewingDetails(true);
+  }
+
+  async function confirmPayment() {
     setIsSubmitting(true);
     setError("");
 
-    const form = new FormData(event.currentTarget);
     try {
       const response = await fetch("/api/payments/charges", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           courseSlug: product.slug,
-          name: form.get("name"),
-          email: form.get("email"),
-          phone: form.get("phone"),
-          companyName: form.get("companyName"),
+          name: details.name,
+          email: details.email,
+          phone: details.phone,
+          companyName: details.companyName,
           analyticsSessionId: getSiteAnalyticsSessionId(),
         }),
       });
@@ -103,7 +128,9 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
             Finalizar compra
           </h1>
           <p className="content-card-copy mt-3 max-w-[620px] text-white/75">
-            Preencha os seus dados para continuar para o checkout seguro da WiPay.
+            {reviewingDetails
+              ? "Confira os seus dados e o resumo da compra antes de avançar."
+              : "Preencha os seus dados para continuar para o checkout seguro da WiPay."}
           </p>
         </SectionContainer>
       </section>
@@ -111,6 +138,58 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
       <section className="px-6 py-10 sm:py-14">
         <SectionContainer className="max-w-[920px]">
           <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.9fr)] lg:gap-7">
+            {reviewingDetails ? (
+              <section
+                aria-labelledby="purchase-review-title"
+                className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8"
+              >
+                <h2 className="text-[20px] font-bold" id="purchase-review-title">
+                  Confirme os seus dados
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#716a69]">
+                  Verifique os dados e o produto. A cobrança só será criada
+                  depois de confirmar.
+                </p>
+                <dl className="mt-6 divide-y divide-[#eee8e5] rounded-2xl border border-[#eee8e5] px-4">
+                  {[
+                    ["Nome completo", details.name],
+                    ["Email", details.email],
+                    ["Telemóvel", details.phone],
+                    ...(details.companyName ? [["Empresa", details.companyName]] : []),
+                    ["Produto", product.title],
+                    ["Total a pagar", product.price ?? ""],
+                  ].map(([label, value]) => (
+                    <div className="flex flex-col gap-1 py-3 sm:flex-row sm:justify-between sm:gap-4" key={label}>
+                      <dt className="text-sm text-[#716a69]">{label}</dt>
+                      <dd className="break-all text-sm font-semibold text-[#211d1e] sm:text-right">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {error ? (
+                  <p className="mt-5 rounded-xl bg-[#fff1f0] px-3 py-2 text-sm text-[#a43832]" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+                  <button
+                    className="min-h-12 flex-1 rounded-full border border-[#e7e1df] px-5 text-sm font-medium text-[#51484a] hover:bg-[#faf9f8]"
+                    disabled={isSubmitting}
+                    onClick={() => setReviewingDetails(false)}
+                    type="button"
+                  >
+                    Editar dados
+                  </button>
+                  <button
+                    className="min-h-12 flex-1 rounded-full bg-[#510f1d] px-5 text-sm font-semibold text-white disabled:opacity-60"
+                    disabled={isSubmitting}
+                    onClick={() => void confirmPayment()}
+                    type="button"
+                  >
+                    {isSubmitting ? "A preparar pagamento…" : "Confirmar e pagar"}
+                  </button>
+                </div>
+              </section>
+            ) : (
             <form
               className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8"
               onSubmit={submit}
@@ -128,6 +207,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     maxLength={120}
                     name="name"
                     required
+                    defaultValue={details.name}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -139,6 +219,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     name="email"
                     required
                     type="email"
+                    defaultValue={details.email}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -151,6 +232,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     pattern="\\+?[0-9 ]{9,17}"
                     required
                     type="tel"
+                    defaultValue={details.phone}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -160,6 +242,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     className="mt-1.5 min-h-12 w-full rounded-xl border border-[#e7e1df] px-4 text-sm outline-none focus:border-[#ae7d32]"
                     maxLength={160}
                     name="companyName"
+                    defaultValue={details.companyName}
                   />
                 </label>
               </div>
@@ -179,6 +262,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                 A Kitadi nunca pede o seu PIN, códigos de acesso ou credenciais bancárias.
               </p>
             </form>
+            )}
 
             <aside className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8">
               <Image

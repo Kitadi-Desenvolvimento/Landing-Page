@@ -306,6 +306,7 @@ export default function Checkout({
   const [paymentCharge, setPaymentCharge] = useState<ChargeDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [reviewingDetails, setReviewingDetails] = useState(false);
   const [variantId, setVariantId] = useState(
     getCourseVariant(course, initialVariantId)?.id ?? course.variants[0]?.id ?? "",
   );
@@ -371,8 +372,13 @@ export default function Checkout({
     };
   }, [paymentCharge]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setPaymentError(null);
+    setReviewingDetails(true);
+  }
+
+  async function confirmPayment() {
     setIsSubmitting(true);
     setPaymentError(null);
 
@@ -443,7 +449,9 @@ export default function Checkout({
         ? `O estado atual do pagamento é: ${paymentCharge.status}.`
       : paymentCharge
         ? "A cobrança foi criada. Continue para o checkout seguro da WiPay."
-        : "Preencha os seus dados e escolha como pagar. Sem carrinho, sem complicações.";
+        : reviewingDetails
+          ? "Confira os dados da inscrição e o valor antes de avançar para o pagamento."
+          : "Preencha os seus dados e escolha como pagar. Sem carrinho, sem complicações.";
 
   return (
     <main className="min-h-svh text-[#211d1e]">
@@ -505,6 +513,59 @@ export default function Checkout({
                 email={enrollment.email}
                 statusError={paymentError}
               />
+            ) : reviewingDetails ? (
+              <section
+                aria-labelledby="review-details-title"
+                className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8"
+              >
+                <h2 className="text-[20px] font-bold" id="review-details-title">
+                  Confirme os seus dados
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-[#716a69]">
+                  Verifique os dados e o formato escolhidos. Ainda não foi criada
+                  nenhuma cobrança.
+                </p>
+                <dl className="mt-6 divide-y divide-[#eee8e5] rounded-2xl border border-[#eee8e5] px-4">
+                  {[
+                    ["Nome completo", enrollment.name],
+                    ["Email", enrollment.email],
+                    ["Telemóvel", enrollment.phone],
+                    ...(enrollment.companyName
+                      ? [["Empresa", enrollment.companyName]]
+                      : []),
+                    ["Formato", `${variant.label} · ${variant.detail}`],
+                    ["Total a pagar", variant.price],
+                  ].map(([label, value]) => (
+                    <div className="flex flex-col gap-1 py-3 sm:flex-row sm:justify-between sm:gap-4" key={label}>
+                      <dt className="text-sm text-[#716a69]">{label}</dt>
+                      <dd className="break-all text-sm font-semibold text-[#211d1e] sm:text-right">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {paymentError ? (
+                  <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">
+                    {paymentError}
+                  </p>
+                ) : null}
+                <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+                  <button
+                    className="inline-flex min-h-[50px] flex-1 items-center justify-center rounded-full border border-[#e7e1df] px-5 text-sm font-medium text-[#51484a] hover:bg-[#faf9f8]"
+                    disabled={isSubmitting}
+                    onClick={() => setReviewingDetails(false)}
+                    type="button"
+                  >
+                    Editar dados
+                  </button>
+                  <button
+                    className="inline-flex min-h-[50px] flex-1 items-center justify-center rounded-full bg-[#cda45c] px-5 text-sm font-semibold text-[#2b160f] hover:bg-[#dab76e] disabled:cursor-wait disabled:opacity-70"
+                    disabled={isSubmitting}
+                    onClick={() => void confirmPayment()}
+                    type="button"
+                  >
+                    {isSubmitting ? "A criar cobrança…" : "Confirmar e pagar"}
+                  </button>
+                </div>
+              </section>
             ) : (
             <form
               className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8"

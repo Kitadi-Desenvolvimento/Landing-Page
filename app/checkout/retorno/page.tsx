@@ -41,6 +41,7 @@ export default async function CheckoutReturnPage({
             ticket={order
               ? {
                   customerName: order.name,
+                  customerEmail: order.email,
                   productTitle: order.productTitle,
                   edition: order.edition,
                   variantLabel: order.variantLabel,
