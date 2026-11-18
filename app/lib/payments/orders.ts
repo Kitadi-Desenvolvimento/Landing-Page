@@ -36,6 +36,8 @@ export type KitadiOrder = {
   checkedInBy: string | null;
   analyticsSessionId?: string | null;
   customerCompany?: string | null;
+  emailSentAt?: string | null;
+  emailProviderMessageId?: string | null;
 };
 
 export type PaymentSummary = {
@@ -121,6 +123,12 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
     customerCompany: typeof row.customer_company === "string"
       ? row.customer_company
       : null,
+    emailSentAt: typeof row.email_sent_at === "string"
+      ? row.email_sent_at
+      : null,
+    emailProviderMessageId: typeof row.email_provider_message_id === "string"
+      ? row.email_provider_message_id
+      : null,
   };
 }
 
@@ -177,6 +185,8 @@ function toDatabasePatch(patch: Partial<KitadiOrder>) {
     ["checkedIn", "checked_in"],
     ["checkedInAt", "checked_in_at"],
     ["checkedInBy", "checked_in_by"],
+    ["emailSentAt", "email_sent_at"],
+    ["emailProviderMessageId", "email_provider_message_id"],
   ];
 
   for (const [key, column] of columns) {

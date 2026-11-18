@@ -8,6 +8,7 @@ import {
   type KitadiOrder,
 } from "../../../lib/payments/orders";
 import { getWipaySignatureToken } from "../../../lib/payments/wipay";
+import { sendKitadiPaymentEmail } from "../../../lib/payments/kitadi-email";
 
 const providerTransactionIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -148,6 +149,33 @@ export async function POST(request: Request) {
       paidAt: order.paidAt ?? getProviderEventAt(body) ?? new Date().toISOString(),
     });
     if (!saved) return paymentStorageError();
+
+    if (!saved.emailSentAt) {
+      const emailResult = await sendKitadiPaymentEmail(saved);
+      if (emailResult.ok) {
+        try {
+          await updateOrder(reference, {
+            emailSentAt: new Date().toISOString(),
+            emailProviderMessageId: emailResult.messageId || null,
+          });
+          console.info("[payments] confirmed payment ticket email accepted", {
+            reference,
+            hasProviderMessageId: Boolean(emailResult.messageId),
+          });
+        } catch (error) {
+          console.error("[payments] could not persist payment email delivery", {
+            reference,
+            code: error instanceof PaymentLedgerNotMigratedError ? "not_migrated" : "database_error",
+          });
+        }
+      } else {
+        console.error("[payments] confirmed payment ticket email not sent", {
+          reference,
+          reason: emailResult.reason,
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, status: "accepted" });
   }
 
@@ -209,9 +237,9 @@ async function updateWebhookUpdate(
     const order = await updateOrder(reference, patch);
     if (!order) {
       console.error("[wipay:webhook] payment order disappeared before update");
-      return false;
+      return null;
     }
-    return true;
+    return order;
   } catch (error) {
     console.error("[wipay:webhook] payment update failed", {
       code: error instanceof PaymentLedgerNotMigratedError ? "not_migrated" : "database_error",
