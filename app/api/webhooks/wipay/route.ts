@@ -12,11 +12,24 @@ import { getWipaySignatureToken } from "../../../lib/payments/wipay";
 const providerTransactionIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function isValidSignature(rawBody: string, signature: string | null, token: string) {
-  if (!signature || !/^[a-f\d]{64}$/i.test(signature)) return false;
+type SignatureValidation =
+  | "valid"
+  | "missing_signature"
+  | "invalid_signature_format"
+  | "digest_mismatch";
+
+function validateSignature(
+  rawBody: string,
+  signature: string | null,
+  token: string,
+): SignatureValidation {
+  if (!signature) return "missing_signature";
+  if (!/^[a-f\d]{64}$/i.test(signature)) return "invalid_signature_format";
   const expected = createHmac("sha256", token).update(rawBody).digest();
   const provided = Buffer.from(signature, "hex");
-  return expected.length === provided.length && timingSafeEqual(expected, provided);
+  return expected.length === provided.length && timingSafeEqual(expected, provided)
+    ? "valid"
+    : "digest_mismatch";
 }
 
 export async function POST(request: Request) {
@@ -31,9 +44,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "signature_validation_unavailable" }, { status: 503 });
   }
 
-  if (!isValidSignature(rawBody, signature, signatureToken)) {
+  const signatureValidation = validateSignature(rawBody, signature, signatureToken);
+  if (signatureValidation !== "valid") {
     console.error("[wipay:webhook] rejected invalid callback signature", {
-      hasSignature: Boolean(signature),
+      reason: signatureValidation,
+      signatureLength: signature?.length ?? 0,
+      rawBodyBytes: Buffer.byteLength(rawBody, "utf8"),
+      contentType: request.headers.get("content-type")?.slice(0, 100) ?? null,
+      userAgent: request.headers.get("user-agent")?.slice(0, 160) ?? null,
+      vercelEnvironment: process.env.VERCEL_ENV ?? "unknown",
+      deploymentBranch: process.env.VERCEL_GIT_COMMIT_REF ?? "unknown",
     });
     return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
   }

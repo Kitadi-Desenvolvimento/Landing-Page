@@ -46,7 +46,15 @@ function getConfig(env: NodeJS.ProcessEnv = process.env): WipayConfig {
 
 async function getAccessToken(scope: WipayScope): Promise<string> {
   const cached = tokenCache.get(scope);
-  if (cached && Date.now() < cached.expiresAt) return cached.value;
+  if (cached && Date.now() < cached.expiresAt) {
+    if (scope === "signature") {
+      console.info("[wipay] signature access token reused", {
+        scope,
+        expiresInSeconds: Math.floor((cached.expiresAt - Date.now()) / 1000),
+      });
+    }
+    return cached.value;
+  }
 
   const config = getConfig();
   let response: Response;
@@ -75,7 +83,7 @@ async function getAccessToken(scope: WipayScope): Promise<string> {
   }
 
   const data = (await response.json().catch(() => null)) as
-    | { access_token?: unknown; expires_in?: unknown }
+    | { access_token?: unknown; expires_in?: unknown; scope?: unknown }
     | null;
   if (typeof data?.access_token !== "string" || !data.access_token) {
     console.error("[wipay] token response missing access_token", { scope });
@@ -84,6 +92,13 @@ async function getAccessToken(scope: WipayScope): Promise<string> {
 
   const expiresIn =
     typeof data.expires_in === "number" ? data.expires_in : scope === "payment" ? 3600 : 86400;
+  if (scope === "signature") {
+    console.info("[wipay] signature access token issued", {
+      requestedScope: scope,
+      responseScope: typeof data.scope === "string" ? data.scope : "missing",
+      expiresInSeconds: expiresIn,
+    });
+  }
   tokenCache.set(scope, {
     value: data.access_token,
     expiresAt: Date.now() + Math.max(30, expiresIn - 60) * 1000,
