@@ -114,7 +114,7 @@ export async function sendKitadiPaymentEmail(order: KitadiOrder): Promise<BirdSe
   if (!order.email.trim()) return { ok: false, reason: "customer_email_missing" };
 
   const { subject, text, html } = buildPaymentEmail(order);
-  const senderEmail = process.env.BIRD_FROM_EMAIL?.trim() || "onboarding@messagebird.dev";
+  const senderEmail = process.env.BIRD_FROM_EMAIL?.trim() || "comercial@kitadi.co.ao";
   const senderName = process.env.BIRD_FROM_NAME?.trim() || "Kitadi";
   const host = getBirdHost(apiKey);
   const abortController = new AbortController();
