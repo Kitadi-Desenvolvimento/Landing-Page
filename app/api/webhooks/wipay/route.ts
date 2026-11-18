@@ -40,8 +40,13 @@ export async function POST(request: Request) {
   let signatureToken: string;
   try {
     signatureToken = await getWipaySignatureToken();
-  } catch {
-    console.error("[wipay:webhook] signature token unavailable");
+  } catch (error) {
+    console.error("[wipay:webhook] shared signature token unavailable", {
+      code: error instanceof Error && "code" in error &&
+        typeof error.code === "string"
+        ? error.code
+        : "signature_token_cache_unavailable",
+    });
     return NextResponse.json({ error: "signature_validation_unavailable" }, { status: 503 });
   }
 

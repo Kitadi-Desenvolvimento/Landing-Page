@@ -1,3 +1,10 @@
+import {
+  claimWipaySignatureTokenRefresh,
+  readWipaySignatureToken,
+  releaseWipaySignatureTokenRefresh,
+  saveWipaySignatureToken,
+} from "./wipay-signature-token-store";
+
 type WipayScope = "payment" | "signature";
 
 type WipayConfig = {
@@ -9,7 +16,7 @@ type WipayConfig = {
 
 type CachedToken = { value: string; expiresAt: number };
 
-const tokenCache = new Map<WipayScope, CachedToken>();
+let paymentTokenCache: CachedToken | null = null;
 
 export class WipayError extends Error {
   constructor(
@@ -45,17 +52,19 @@ function getConfig(env: NodeJS.ProcessEnv = process.env): WipayConfig {
 }
 
 async function getAccessToken(scope: WipayScope): Promise<string> {
-  const cached = tokenCache.get(scope);
+  const cached = scope === "payment" ? paymentTokenCache : null;
   if (cached && Date.now() < cached.expiresAt) {
-    if (scope === "signature") {
-      console.info("[wipay] signature access token reused", {
-        scope,
-        expiresInSeconds: Math.floor((cached.expiresAt - Date.now()) / 1000),
-      });
-    }
     return cached.value;
   }
 
+  const token = await issueAccessToken(scope);
+  if (scope === "payment") {
+    paymentTokenCache = token;
+  }
+  return token.value;
+}
+
+async function issueAccessToken(scope: WipayScope): Promise<CachedToken> {
   const config = getConfig();
   let response: Response;
   try {
@@ -92,22 +101,74 @@ async function getAccessToken(scope: WipayScope): Promise<string> {
 
   const expiresIn =
     typeof data.expires_in === "number" ? data.expires_in : scope === "payment" ? 3600 : 86400;
-  if (scope === "signature") {
-    console.info("[wipay] signature access token issued", {
-      requestedScope: scope,
-      responseScope: typeof data.scope === "string" ? data.scope : "missing",
-      expiresInSeconds: expiresIn,
-    });
+  if (data.scope !== undefined && data.scope !== scope) {
+    throw new WipayError(
+      "token_scope_mismatch",
+      "WiPay devolveu um token com scope diferente do solicitado.",
+    );
   }
-  tokenCache.set(scope, {
+  return {
     value: data.access_token,
     expiresAt: Date.now() + Math.max(30, expiresIn - 60) * 1000,
-  });
-  return data.access_token;
+  };
 }
 
 export async function getWipaySignatureToken(): Promise<string> {
-  return getAccessToken("signature");
+  const { clientSecret } = getConfig();
+  const cached = await readWipaySignatureToken(clientSecret);
+  if (!cached) {
+    throw new WipayError(
+      "signature_token_not_primed",
+      "O token WiPay signature não foi preparado antes do callback.",
+    );
+  }
+  console.info("[wipay] shared signature access token reused", {
+    cache: "shared",
+    expiresInSeconds: Math.floor((cached.expiresAt - Date.now()) / 1000),
+  });
+  return cached.value;
+}
+
+export async function ensureWipaySignatureToken(): Promise<void> {
+  const config = getConfig();
+  const cached = await readWipaySignatureToken(config.clientSecret);
+  if (cached) {
+    console.info("[wipay] shared signature access token reused before charge", {
+      cache: "shared",
+      expiresInSeconds: Math.floor((cached.expiresAt - Date.now()) / 1000),
+    });
+    return;
+  }
+
+  const claimed = await claimWipaySignatureTokenRefresh();
+  if (!claimed) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (await readWipaySignatureToken(config.clientSecret)) return;
+    }
+
+    throw new WipayError(
+      "signature_token_refresh_busy",
+      "O token WiPay signature está a ser renovado; tente novamente.",
+    );
+  }
+
+  try {
+    const token = await issueAccessToken("signature");
+    await saveWipaySignatureToken(
+      token.value,
+      token.expiresAt,
+      config.clientSecret,
+    );
+    console.info("[wipay] shared signature access token prepared", {
+      requestedScope: "signature",
+      cache: "shared",
+      expiresInSeconds: Math.floor((token.expiresAt - Date.now()) / 1000),
+    });
+  } catch (error) {
+    await releaseWipaySignatureTokenRefresh();
+    throw error;
+  }
 }
 
 export async function createWipayHostedPayment(input: {

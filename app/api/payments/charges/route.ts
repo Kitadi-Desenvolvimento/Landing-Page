@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { offersPublicCheckout } from "../../../course-data";
 import { getPublishedProductBySlug } from "../../../lib/products";
 import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
-import { createWipayHostedPayment, isWipayConfigured, WipayError } from "../../../lib/payments/wipay";
+import {
+  createWipayHostedPayment,
+  ensureWipaySignatureToken,
+  isWipayConfigured,
+  WipayError,
+} from "../../../lib/payments/wipay";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -103,6 +108,17 @@ export async function POST(request: Request) {
     console.error("WiPay credentials are not configured.");
     return NextResponse.json(
       { error: "O serviço de pagamentos ainda não está configurado." },
+      { status: 503 },
+    );
+  }
+
+  try {
+    await ensureWipaySignatureToken();
+  } catch (error) {
+    const code = error instanceof WipayError ? error.code : "signature_token_cache_unavailable";
+    console.error("[payments] could not prepare WiPay callback verification", { code });
+    return NextResponse.json(
+      { error: "Não foi possível preparar a confirmação segura do pagamento." },
       { status: 503 },
     );
   }
