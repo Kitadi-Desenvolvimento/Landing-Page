@@ -273,7 +273,7 @@ export const courses: Course[] = [
       {
         id: "participacao",
         label: "Participação",
-        detail: "1 lugar · 21 Novembro 2026",
+        detail: "1 lugar · 28 Novembro 2026",
         price: "88.000 Kz",
         priceAmount: 88000,
       },
@@ -388,7 +388,7 @@ export const courses: Course[] = [
     ],
     nextSteps: [
       "Confirmar o interesse connosco",
-      "Reservar o lugar na sessão de 21 de Novembro",
+      "Reservar o lugar na sessão de 28 de Novembro",
       "Participar na experiência em Morro Bento",
       "Sair com o plano dos próximos 7 dias",
     ],
