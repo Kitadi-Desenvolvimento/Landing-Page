@@ -151,3 +151,27 @@ export async function getAdminProducts(): Promise<ProductRecord[]> {
 
   return (data ?? []).map(parseProduct);
 }
+
+/**
+ * Lê um produto publicado ou não. Usado para entregar compras já pagas mesmo
+ * que o produto tenha sido despublicado entretanto.
+ */
+export async function getProductBySlugForDelivery(
+  slug: string,
+): Promise<ProductRecord | undefined> {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("products")
+    .select("slug, data, published, sort_order")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingProductsTable(error)) {
+      return getLegacyProducts().find((item) => item.slug === slug);
+    }
+    console.error("[products] delivery product query failed", error.code);
+    throw new Error("Não foi possível carregar o produto.");
+  }
+
+  return data ? parseProduct(data) : undefined;
+}

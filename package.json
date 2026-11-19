@@ -14,6 +14,7 @@
     "backoffice:import-legacy-payments": "node --experimental-strip-types --env-file=.env.local scripts/import-legacy-payments.mjs"
   },
   "dependencies": {
+    "@cantoo/pdf-lib": "^2.11.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "next": "^15.3.3",

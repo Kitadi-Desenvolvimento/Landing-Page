@@ -3,6 +3,8 @@ import {
   getOrder,
   isKitadiReference,
 } from "../../lib/payments/orders";
+import { getProductEbook } from "../../lib/ebooks";
+import { getProductBySlugForDelivery } from "../../lib/products";
 import PaymentStatus from "./status";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +25,12 @@ export default async function CheckoutReturnPage({
     order?.status === "canceled";
 
   const initialStatus = confirmed ? "accepted" : rejected ? "rejected" : "pending";
+  const product = order
+    ? await getProductBySlugForDelivery(order.courseSlug).catch(() => undefined)
+    : undefined;
+  const ebook = confirmed && getProductEbook(product?.data)
+    ? { downloaded: Boolean(order?.ebookDownloadedAt) }
+    : null;
 
   return (
     <main className="min-h-svh text-[#211d1e]">
@@ -36,6 +44,7 @@ export default async function CheckoutReturnPage({
         <div className="mx-auto max-w-[720px]">
           <p className="text-sm font-medium text-[#cda45c]">Checkout Kitadi</p>
           <PaymentStatus
+            ebook={ebook}
             initialStatus={initialStatus}
             reference={order?.reference ?? ""}
             ticket={order

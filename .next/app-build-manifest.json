@@ -16,15 +16,30 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/site-analytics/route.js"
     ],
-    "/formacoes/[slug]/inscricao/page": [
+    "/backoffice/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/formacoes/[slug]/inscricao/page.js"
+      "static/chunks/app/backoffice/page.js"
     ],
-    "/produtos/[slug]/page": [
+    "/api/backoffice/objectives/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/produtos/[slug]/page.js"
+      "static/chunks/app/api/backoffice/objectives/route.js"
+    ],
+    "/checkout/retorno/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/checkout/retorno/page.js"
+    ],
+    "/api/payments/orders/[reference]/ebook/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/payments/orders/[reference]/ebook/route.js"
+    ],
+    "/api/backoffice/products/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/products/route.js"
     ]
   }
 }

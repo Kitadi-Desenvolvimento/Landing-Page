@@ -38,6 +38,7 @@ export type KitadiOrder = {
   customerCompany?: string | null;
   emailSentAt?: string | null;
   emailProviderMessageId?: string | null;
+  ebookDownloadedAt?: string | null;
 };
 
 export type PaymentSummary = {
@@ -129,6 +130,9 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
     emailProviderMessageId: typeof row.email_provider_message_id === "string"
       ? row.email_provider_message_id
       : null,
+    ebookDownloadedAt: typeof row.ebook_downloaded_at === "string"
+      ? row.ebook_downloaded_at
+      : null,
   };
 }
 
@@ -187,6 +191,7 @@ function toDatabasePatch(patch: Partial<KitadiOrder>) {
     ["checkedInBy", "checked_in_by"],
     ["emailSentAt", "email_sent_at"],
     ["emailProviderMessageId", "email_provider_message_id"],
+    ["ebookDownloadedAt", "ebook_downloaded_at"],
   ];
 
   for (const [key, column] of columns) {
@@ -239,6 +244,38 @@ export async function updateOrder(
 
   if (error) throwDatabaseError("updating order", error);
   return data ? fromDatabase(data) : null;
+}
+
+/**
+ * Reserva o único download de um e-book pago. Só uma chamada concorrente
+ * consegue a reserva; devolve null se o download já foi feito.
+ */
+export async function claimEbookDownload(reference: string) {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("payment_orders")
+    .update({
+      ebook_downloaded_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("reference", reference.toUpperCase())
+    .eq("status", "accepted")
+    .is("ebook_downloaded_at", null)
+    .select("*")
+    .maybeSingle();
+
+  if (error) throwDatabaseError("claiming ebook download", error);
+  return data ? fromDatabase(data) : null;
+}
+
+/** Desfaz a reserva quando a cópia do e-book não chegou a ser gerada. */
+export async function releaseEbookDownload(reference: string, claimedAt: string) {
+  const { error } = await createSupabaseAdminClient()
+    .from("payment_orders")
+    .update({ ebook_downloaded_at: null, updated_at: new Date().toISOString() })
+    .eq("reference", reference.toUpperCase())
+    .eq("ebook_downloaded_at", claimedAt);
+
+  if (error) throwDatabaseError("releasing ebook download", error);
 }
 
 export async function getRecentPaymentOrders(limit = 100) {

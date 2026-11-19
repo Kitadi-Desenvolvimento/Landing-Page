@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import InviteAdminForm from "./invite-admin-form";
 import SignOutButton from "./sign-out-button";
 import Attendees from "./attendees";
+import { EbookCopyButton, EbookUploader } from "./ebook-tools";
 import Objectives, { OverviewObjectives } from "./objectives";
 import {
   dashboardMetrics,
@@ -199,6 +200,7 @@ export default function BackofficeDashboard({
               paymentSummary={paymentSummary}
               payments={payments}
               paymentsReady={paymentsReady}
+              products={catalogProducts}
             />
           ) : null}
           {role === "admin" && activeSection === "attendees" ? <Attendees products={catalogProducts} /> : null}
@@ -397,11 +399,16 @@ function Payments({
   payments,
   paymentSummary,
   paymentsReady,
+  products,
 }: {
   payments: KitadiOrder[];
   paymentSummary: PaymentSummary;
   paymentsReady: boolean;
+  products: DashboardProduct[];
 }) {
+  const ebookSlugs = new Set(
+    products.filter((product) => product.data.ebook).map((product) => product.slug),
+  );
   return (
     <>
       <PageIntro eyebrow="Financeiro" title="Pagamentos" description="Acompanhe o estado real de cada cobrança, o produto, o método de pagamento e os dados de reconciliação." />
@@ -426,7 +433,7 @@ function Payments({
           title="Transacções recentes"
           subtitle={`Resumo de ${paymentSummary.totalCount} pagamentos · lista das ${payments.length} transacções mais recentes`}
         />
-        <PaymentTable orders={payments} paymentsReady={paymentsReady} />
+        <PaymentTable ebookSlugs={ebookSlugs} orders={payments} paymentsReady={paymentsReady} />
       </section>
     </>
   );
@@ -1523,6 +1530,13 @@ function Products({
             setCreatingProduct(false);
             setEditorProduct(null);
           }}
+          onEbookSaved={(record) => {
+            const updated = toDashboardProduct(record);
+            onProductsChange(
+              products.map((item) => (item.slug === updated.slug ? updated : item)),
+            );
+            setEditorProduct(updated);
+          }}
           onSaved={saveProduct}
           product={editorProduct}
         />
@@ -1535,10 +1549,12 @@ function ProductEditor({
   product,
   onClose,
   onSaved,
+  onEbookSaved,
 }: {
   product: DashboardProduct | null;
   onClose: () => void;
   onSaved: (product: DashboardProduct) => void;
+  onEbookSaved: (record: ProductRecord) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1707,6 +1723,17 @@ function ProductEditor({
             />
             Publicar este produto na landing page
           </label>
+          {product && !product.data.course ? (
+            <EbookUploader onSaved={onEbookSaved} product={product} />
+          ) : !product ? (
+            <div className="rounded-2xl border border-[#eee8e5] bg-[#fcfbfa] p-4">
+              <p className="text-[11px] font-semibold text-[#5e5552]">E-book (PDF)</p>
+              <p className="mt-1 text-[10px] leading-5 text-[#918783]">
+                Para vender um e-book, guarde primeiro o produto. Depois abra
+                &quot;Editar produto&quot; e carregue o PDF nesta secção.
+              </p>
+            </div>
+          ) : null}
           <div className="rounded-2xl border border-[#eee8e5] bg-[#fcfbfa] p-4">
             <label className="flex items-start gap-2 text-[11px] font-semibold text-[#5e5552]">
               <input
@@ -2236,10 +2263,12 @@ function PaymentTable({
   orders,
   paymentsReady,
   compact = false,
+  ebookSlugs,
 }: {
   orders: KitadiOrder[];
   paymentsReady: boolean;
   compact?: boolean;
+  ebookSlugs?: ReadonlySet<string>;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2348,6 +2377,16 @@ function PaymentTable({
               <td className="py-3.5 pr-4">
                 <p className="font-semibold text-[#4a4141]">{order.productTitle}</p>
                 <p className="mt-1 text-[9px] text-[#968c88]">{order.variantLabel}</p>
+                {order.status === "accepted" && ebookSlugs?.has(order.courseSlug) ? (
+                  <>
+                    <p className={`mt-1.5 text-[9px] font-semibold ${order.ebookDownloadedAt ? "text-[#52765e]" : "text-[#8d692c]"}`}>
+                      {order.ebookDownloadedAt
+                        ? `E-book descarregado ${formatPaymentDate(order.ebookDownloadedAt)}`
+                        : "E-book ainda não descarregado"}
+                    </p>
+                    <EbookCopyButton reference={order.reference} />
+                  </>
+                ) : null}
               </td>
               <td className="py-3.5 pr-4 text-[#726966]">
                 <p>{paymentMethodLabel(order.paymentMethod)}</p>

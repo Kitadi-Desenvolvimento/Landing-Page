@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { kitadiWhatsAppNumber } from "../../course-data";
 
 type PaymentPhase = "pending" | "accepted" | "rejected";
 
@@ -15,9 +16,12 @@ export type PaymentTicket = {
   amountKz: number;
 };
 
+export type EbookState = { downloaded: boolean };
+
 type PaymentStatusResult = {
   status?: string;
   ticket?: PaymentTicket;
+  ebook?: EbookState | null;
 };
 
 const copy: Record<PaymentPhase, { title: string; description: string }> = {
@@ -41,13 +45,16 @@ export default function PaymentStatus({
   reference,
   initialStatus,
   ticket: initialTicket,
+  ebook: initialEbook,
 }: {
   reference: string;
   initialStatus: PaymentPhase;
   ticket: PaymentTicket | null;
+  ebook: EbookState | null;
 }) {
   const [status, setStatus] = useState<PaymentPhase>(initialStatus);
   const [ticket, setTicket] = useState<PaymentTicket | null>(initialTicket);
+  const [ebook, setEbook] = useState<EbookState | null>(initialEbook);
 
   useEffect(() => {
     if (!reference || status !== "pending") return;
@@ -70,6 +77,7 @@ export default function PaymentStatus({
           const nextStatus = body.status === "accepted" ? "accepted" : "rejected";
           setStatus(nextStatus);
           if (nextStatus === "accepted" && isTicket(body.ticket)) setTicket(body.ticket);
+          if (nextStatus === "accepted" && isEbookState(body.ebook)) setEbook(body.ebook);
         }
       } catch {
         // A próxima tentativa volta a consultar o estado.
@@ -86,6 +94,23 @@ export default function PaymentStatus({
 
   const current = copy[status];
 
+  if (status === "accepted" && ticket && ebook) {
+    return (
+      <>
+        <h1 className="mt-3 text-4xl font-bold">{current.title}</h1>
+        <p className="mt-4 max-w-[560px] text-base leading-7 text-white/80">
+          O seu pagamento foi confirmado. O seu e-book está pronto para descarregar abaixo.
+        </p>
+        <EbookDownloadCard
+          customerEmail={ticket.customerEmail}
+          initialDownloaded={ebook.downloaded}
+          productTitle={ticket.productTitle}
+          reference={reference}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <h1 className="mt-3 text-4xl font-bold">{current.title}</h1>
@@ -96,6 +121,121 @@ export default function PaymentStatus({
       </p>
       {status === "accepted" && ticket ? <PaymentTicketCard reference={reference} ticket={ticket} /> : null}
     </>
+  );
+}
+
+function isEbookState(value: unknown): value is EbookState {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).downloaded === "boolean"
+  );
+}
+
+function EbookDownloadCard({
+  reference,
+  productTitle,
+  customerEmail,
+  initialDownloaded,
+}: {
+  reference: string;
+  productTitle: string;
+  customerEmail: string;
+  initialDownloaded: boolean;
+}) {
+  const [downloaded, setDownloaded] = useState(initialDownloaded);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function download() {
+    setDownloading(true);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/payments/orders/${encodeURIComponent(reference)}/ebook`,
+        { method: "POST", cache: "no-store" },
+      );
+      const body: unknown = await response.json().catch(() => null);
+      if (response.status === 410) {
+        setDownloaded(true);
+        return;
+      }
+      const url =
+        typeof body === "object" && body !== null && "url" in body && typeof body.url === "string"
+          ? body.url
+          : "";
+      if (!response.ok || !url.startsWith("https://")) {
+        throw new Error("download_failed");
+      }
+      setDownloaded(true);
+      window.location.assign(url);
+    } catch {
+      setError("Não foi possível preparar o seu e-book. Tente novamente dentro de alguns instantes.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  const whatsappHref = `https://wa.me/${kitadiWhatsAppNumber}?text=${encodeURIComponent(
+    `Olá, comprei o e-book "${productTitle}" com a referência ${reference} e não consegui baixar o ficheiro.`,
+  )}`;
+
+  return (
+    <article className="mt-8 overflow-hidden rounded-[24px] border border-[#d8bd83] bg-[#fffdf8] text-[#292123] shadow-xl">
+      <div className="flex items-center justify-between gap-4 bg-[#510f1d] px-5 py-4 sm:px-7">
+        <Image alt="Kitadi" height={40} src="/kitadi-logo.png" width={104} />
+        <span className="rounded-full border border-[#d8bd83]/50 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.16em] text-[#e4c77f]">
+          E-book
+        </span>
+      </div>
+      <div className="p-5 sm:p-7">
+        <h2 className="text-2xl font-bold text-[#3a101a]">{productTitle}</h2>
+        <p className="mt-1 text-[12px] font-semibold text-[#8b5b39]">Referência {reference}</p>
+        <div className="mt-5 rounded-2xl border border-[#eadcbc] bg-[#faf5e8] px-4 py-3 text-[13px] leading-6 text-[#4a3b2c]">
+          <p className="font-bold text-[#510f1d]">Como abrir o e-book</p>
+          <p className="mt-1">
+            Ao abrir o ficheiro, será pedida uma palavra-passe. Escreva o seu email:{" "}
+            <span className="break-all font-bold">{customerEmail.trim().toLowerCase()}</span>
+          </p>
+        </div>
+        {downloaded ? (
+          <div className="mt-6">
+            <p className="text-[14px] font-semibold text-[#3a101a]">O seu e-book já foi descarregado.</p>
+            <p className="mt-2 text-[13px] leading-6 text-[#716a69]">
+              Por segurança, o download só pode ser feito uma vez. Não conseguiu baixar o ficheiro?
+              Fale connosco no WhatsApp e indique a referência da compra. Enviamos-lhe o e-book.
+            </p>
+            <a
+              className="mt-4 inline-flex min-h-[48px] items-center justify-center rounded-full bg-[#25D366] px-6 text-[14px] font-semibold !text-[#12321d] transition-colors hover:bg-[#49df7d]"
+              href={whatsappHref}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Não consegui baixar — falar no WhatsApp
+            </a>
+          </div>
+        ) : (
+          <div className="mt-6">
+            <p className="text-[13px] leading-6 text-[#716a69]">
+              Atenção: o download só pode ser feito <strong>uma única vez</strong>. Guarde o ficheiro no seu dispositivo.
+            </p>
+            <button
+              className="mt-4 inline-flex min-h-[48px] items-center justify-center rounded-full bg-[#cda45c] px-7 text-[14px] font-bold text-[#2b160f] transition-colors hover:bg-[#dab76e] disabled:opacity-60"
+              disabled={downloading}
+              onClick={() => void download()}
+              type="button"
+            >
+              {downloading ? "A preparar o e-book…" : "Baixar e-book"}
+            </button>
+            {error ? (
+              <p className="mt-3 rounded-xl bg-[#fff1f0] px-3 py-2 text-[12px] text-[#a43832]" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </article>
   );
 }
 

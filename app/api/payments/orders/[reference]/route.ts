@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getProductEbook } from "../../../../lib/ebooks";
+import { getProductBySlugForDelivery } from "../../../../lib/products";
 import {
   getOrder,
   isKitadiReference,
@@ -33,6 +35,18 @@ export async function GET(
     return NextResponse.json({ error: "payment_not_found" }, { status: 404 });
   }
 
+  let ebook: { downloaded: boolean } | null = null;
+  if (order.status === "accepted") {
+    try {
+      const product = await getProductBySlugForDelivery(order.courseSlug);
+      if (getProductEbook(product?.data)) {
+        ebook = { downloaded: Boolean(order.ebookDownloadedAt) };
+      }
+    } catch {
+      // Sem catálogo, mostra-se apenas a confirmação do pagamento.
+    }
+  }
+
   return NextResponse.json(
     {
       reference: order.reference,
@@ -47,6 +61,7 @@ export async function GET(
         paidAt: order.paidAt,
         amountKz: order.amountKz,
       } : null,
+      ebook,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
