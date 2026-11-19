@@ -229,7 +229,6 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     className="mt-1.5 min-h-12 w-full rounded-xl border border-[#e7e1df] px-4 text-sm outline-none focus:border-[#ae7d32]"
                     maxLength={24}
                     name="phone"
-                    pattern="\\+?[0-9 ]{9,17}"
                     required
                     type="tel"
                     defaultValue={details.phone}
