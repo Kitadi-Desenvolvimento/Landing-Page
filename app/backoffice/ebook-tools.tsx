@@ -94,8 +94,8 @@ export function EbookUploader({
     <div className="rounded-2xl border border-[#eee8e5] bg-[#fcfbfa] p-4">
       <p className="text-[11px] font-semibold text-[#5e5552]">E-book (PDF)</p>
       <p className="mt-1 text-[10px] leading-5 text-[#918783]">
-        Depois do pagamento, o cliente descarrega o PDF uma única vez, com o logo da Kitadi como
-        marca de água e o email dele como palavra-passe. Active o pagamento automático para vender online.
+        Depois do pagamento, o cliente descarrega o PDF uma única vez, protegido com o email dele
+        como palavra-passe. Active o pagamento automático para vender online.
       </p>
       {ebook ? (
         <p className="mt-3 rounded-xl bg-[#edf4ee] px-3 py-2 text-[11px] text-[#41644d]">

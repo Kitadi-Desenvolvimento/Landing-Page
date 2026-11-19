@@ -24,7 +24,7 @@ function jsonError(error: string, status: number) {
 }
 
 /**
- * Entrega única do e-book comprado: gera a cópia com marca de água e
+ * Entrega única do e-book comprado: gera a cópia protegida com
  * palavra-passe (o email do comprador) e devolve um link temporário.
  */
 export async function POST(

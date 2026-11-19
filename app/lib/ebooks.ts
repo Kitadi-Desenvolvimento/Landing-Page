@@ -3,14 +3,12 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { PDFDocument } from "@cantoo/pdf-lib";
 import type { EbookFile, ProductData } from "../product-types";
-import { kitadiWatermarkPngBase64 } from "./ebook-watermark";
 import { createSupabaseAdminClient } from "./supabase/admin";
 
 export const ebookBucket = "ebooks";
 export const maxEbookBytes = 50 * 1024 * 1024;
 const signedDownloadSeconds = 120;
 const deliveryRetentionMs = 10 * 60 * 1000;
-const watermarkOpacity = 0.18;
 
 export class EbookError extends Error {
   constructor(
@@ -62,14 +60,7 @@ export function safeEbookFileName(fileName: string) {
   return `${base || "ebook-kitadi"}.pdf`;
 }
 
-let logoBytes: Buffer | undefined;
-
-function loadLogo() {
-  logoBytes ??= Buffer.from(kitadiWatermarkPngBase64, "base64");
-  return logoBytes;
-}
-
-/** Verifica que o ficheiro é um PDF que conseguimos marcar e proteger. */
+/** Verifica que o ficheiro é um PDF que conseguimos proteger. */
 export async function assertUsableEbook(bytes: Uint8Array) {
   if (Buffer.from(bytes.subarray(0, 5)).toString("latin1") !== "%PDF-") {
     throw new EbookError("ebook_invalid_pdf");
@@ -86,28 +77,12 @@ export async function assertUsableEbook(bytes: Uint8Array) {
 }
 
 /**
- * Coloca o logo da Kitadi como marca de água em todas as páginas e protege o
- * ficheiro com uma palavra-passe de abertura igual ao email do comprador.
+ * Protege o PDF original com uma palavra-passe de abertura igual ao email do
+ * comprador. O conteúdo das páginas fica igual ao original.
  */
 export async function personalizeEbook(original: Uint8Array, email: string) {
   try {
     const document = await PDFDocument.load(original, { updateMetadata: false });
-    const logo = await document.embedPng(loadLogo());
-
-    for (const page of document.getPages()) {
-      const { x, y, width, height } = page.getCropBox();
-      const logoWidth = Math.min(width, height) * 0.6;
-      const logoHeight = (logoWidth * logo.height) / logo.width;
-      page.drawImage(logo, {
-        x: x + (width - logoWidth) / 2,
-        y: y + (height - logoHeight) / 2,
-        width: logoWidth,
-        height: logoHeight,
-        opacity: watermarkOpacity,
-      });
-    }
-
-    document.setProducer("Kitadi");
     document.encrypt({
       userPassword: ebookPassword(email),
       ownerPassword: randomBytes(24).toString("hex"),

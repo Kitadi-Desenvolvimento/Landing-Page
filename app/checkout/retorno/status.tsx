@@ -191,13 +191,59 @@ function EbookDownloadCard({
       <div className="p-5 sm:p-7">
         <h2 className="text-2xl font-bold text-[#3a101a]">{productTitle}</h2>
         <p className="mt-1 text-[12px] font-semibold text-[#8b5b39]">Referência {reference}</p>
-        <div className="mt-5 rounded-2xl border border-[#eadcbc] bg-[#faf5e8] px-4 py-3 text-[13px] leading-6 text-[#4a3b2c]">
-          <p className="font-bold text-[#510f1d]">Como abrir o e-book</p>
+        <section
+          aria-labelledby="ebook-unlock-title"
+          className="mt-5 rounded-2xl border border-[#eadcbc] bg-[#faf5e8] px-4 py-4 text-[13px] leading-6 text-[#4a3b2c] sm:px-5"
+        >
+          <h3 className="text-[15px] font-bold text-[#510f1d]" id="ebook-unlock-title">
+            Como desbloquear o seu e-book
+          </h3>
           <p className="mt-1">
-            Ao abrir o ficheiro, será pedida uma palavra-passe. Escreva o seu email:{" "}
-            <span className="break-all font-bold">{customerEmail.trim().toLowerCase()}</span>
+            Para proteger a sua compra, o e-book está protegido por uma palavra-passe.{" "}
+            <strong>A palavra-passe é o email que usou na compra.</strong>
           </p>
-        </div>
+          <div className="mt-3 rounded-xl border border-[#d8bd83] bg-white px-3 py-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#9b742d]">
+              A sua palavra-passe
+            </p>
+            <p className="mt-0.5 break-all font-mono text-[15px] font-bold text-[#3a101a]">
+              {customerEmail.trim().toLowerCase()}
+            </p>
+          </div>
+          <ol className="mt-4 list-decimal space-y-2 pl-5">
+            <li>Descarregue o ficheiro e guarde-o no seu telemóvel ou computador.</li>
+            <li>
+              Abra o ficheiro. Vai aparecer um pedido de palavra-passe. Conforme a aplicação, pode
+              aparecer como <strong>&quot;Palavra-passe&quot;</strong>, <strong>&quot;Senha&quot;</strong> ou{" "}
+              <strong>&quot;Password&quot;</strong>.
+            </li>
+            <li>
+              Escreva o seu email exactamente como aparece acima: <strong>tudo em letras minúsculas</strong> e{" "}
+              <strong>sem espaços</strong> antes ou depois.
+            </li>
+            <li>Confirme. O e-book abre normalmente.</li>
+            <li>Sempre que voltar a abrir o e-book, use o mesmo email como palavra-passe.</li>
+          </ol>
+          <div className="mt-4 border-t border-[#eadcbc] pt-3">
+            <p className="font-bold text-[#510f1d]">Onde abrir o e-book</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li><strong>iPhone ou iPad:</strong> aplicação Ficheiros ou Livros.</li>
+              <li><strong>Android:</strong> Google Drive ou Adobe Acrobat Reader.</li>
+              <li><strong>Computador:</strong> Adobe Acrobat Reader, Google Chrome ou Microsoft Edge.</li>
+            </ul>
+          </div>
+          <div className="mt-4 border-t border-[#eadcbc] pt-3">
+            <p className="font-bold text-[#510f1d]">O e-book não abre?</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li>Confirme que escreveu o email sem letras maiúsculas e sem espaços.</li>
+              <li>Confirme que usou o email desta compra, e não outro email.</li>
+              <li>
+                Se mesmo assim não abrir, fale connosco no WhatsApp e indique a referência{" "}
+                <strong>{reference}</strong>.
+              </li>
+            </ul>
+          </div>
+        </section>
         {downloaded ? (
           <div className="mt-6">
             <p className="text-[14px] font-semibold text-[#3a101a]">O seu e-book já foi descarregado.</p>
