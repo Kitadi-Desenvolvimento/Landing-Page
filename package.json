@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
+    "test:qr": "node --experimental-strip-types --test scripts/qr-code.test.mjs",
     "backoffice:invite-admin": "node --env-file=.env.local scripts/invite-initial-admin.mjs",
     "backoffice:generate-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link",
     "backoffice:generate-local-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link --local",
@@ -19,11 +20,13 @@
     "@supabase/supabase-js": "^2.119.0",
     "next": "^15.3.3",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.11",
     "@types/node": "^22.15.30",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "eslint": "^9.30.1",

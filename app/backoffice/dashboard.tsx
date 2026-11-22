@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import InviteAdminForm from "./invite-admin-form";
 import SignOutButton from "./sign-out-button";
 import Attendees from "./attendees";
+import QrCodeGenerator from "../components/QrCodeGenerator";
 import { EbookCopyButton, EbookUploader } from "./ebook-tools";
 import Objectives, { OverviewObjectives } from "./objectives";
 import {
@@ -1477,7 +1478,13 @@ function Products({
             <h3 className="text-[14px] font-bold text-[#342c2d]">Catálogo e desempenho</h3>
             <p className="mt-1 text-[11px] text-[#9b918d]">Visitas e contactos dos últimos 30 dias; vendas e receitas acumuladas a partir dos pagamentos aceites.</p>
           </div>
-          <span className="w-fit rounded-full bg-[#f6f1e6] px-3 py-1.5 text-[10px] font-bold text-[#8d692c]">Sincronizado com a landing</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <QrCodeGenerator
+              className="rounded-full border border-[#e4dcd8] px-3 py-1.5 text-[10px] font-bold text-[#762838] hover:bg-[#fcfbfa]"
+              label="Todos os produtos"
+            />
+            <span className="w-fit rounded-full bg-[#f6f1e6] px-3 py-1.5 text-[10px] font-bold text-[#8d692c]">Sincronizado com a landing</span>
+          </div>
         </div>
         <div className="hidden grid-cols-[minmax(210px,1.3fr)_repeat(5,minmax(95px,0.55fr))] border-b border-[#f0ecea] bg-[#fcfbfa] px-6 py-3 xl:grid">
           {["Produto", "Preço", "Visualizações · 30 d", "Contactos · 30 d", "Vendas", "Receita"].map((label) => (
@@ -1504,13 +1511,16 @@ function Products({
                         {product.data.checkoutEnabled === true ? "Pagamento automático" : "WhatsApp"}
                       </span>
                     </div>
-                    <button
-                      className="mt-2 text-[10px] font-semibold text-[#762838] hover:underline"
-                      onClick={() => setEditorProduct(product)}
-                      type="button"
-                    >
-                      Editar produto
-                    </button>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <button
+                        className="text-[10px] font-semibold text-[#762838] hover:underline"
+                        onClick={() => setEditorProduct(product)}
+                        type="button"
+                      >
+                        Editar produto
+                      </button>
+                      <QrCodeGenerator label={product.title} published={product.published} slug={product.slug} />
+                    </div>
                   </div>
                 </div>
                 <ProductMetric label="Preço" value={product.price || "Por definir"} />

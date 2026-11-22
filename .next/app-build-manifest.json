@@ -6,16 +6,6 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
-    "/api/site-analytics/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/site-analytics/route.js"
-    ],
     "/backoffice/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -26,20 +16,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/backoffice/objectives/route.js"
     ],
-    "/checkout/retorno/page": [
+    "/api/site-analytics/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/checkout/retorno/page.js"
+      "static/chunks/app/api/site-analytics/route.js"
     ],
-    "/api/payments/orders/[reference]/ebook/route": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/payments/orders/[reference]/ebook/route.js"
-    ],
-    "/api/backoffice/products/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/products/route.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }
