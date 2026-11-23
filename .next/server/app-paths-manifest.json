@@ -1,4 +1,3 @@
 {
-  "/api/backoffice/objectives/route": "app/api/backoffice/objectives/route.js",
   "/backoffice/page": "app/backoffice/page.js"
 }

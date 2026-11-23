@@ -4,7 +4,7 @@ import { requireAdmin } from "../../../../lib/supabase/require-admin";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const stages = new Set(["new_contact", "in_conversation", "proposal_sent", "converted"]);
+const stages = new Set(["new_contact", "in_conversation", "proposal_sent", "converted", "lost"]);
 const missingCrmCodes = new Set(["42P01", "PGRST202", "PGRST204", "PGRST205"]);
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -157,6 +157,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "invalid_update" }, { status: 400 });
   }
 
+  const lostReason = "lostReason" in body && typeof body.lostReason === "string"
+    ? body.lostReason.trim()
+    : "";
+  if (body.toStage === "lost" && (!lostReason || lostReason.length > 300)) {
+    return NextResponse.json({ error: "lost_reason_required" }, { status: 400 });
+  }
+
   const { data, error } = await createSupabaseAdminClient().rpc(
     "backoffice_move_crm_contact_stage",
     {
@@ -168,6 +175,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       p_follow_up_at: body.followUpAt,
       p_actor_id: authorization.user.id,
       p_actor_email: authorization.user.email ?? "",
+      p_lost_reason: body.toStage === "lost" ? lostReason : null,
     },
   );
   if (error) {

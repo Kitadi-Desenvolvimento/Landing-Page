@@ -23,6 +23,22 @@ export type DashboardProduct = {
 export type ProductSales = Record<string, { sales: number; revenueKz: number }>;
 export type { ProductAnalytics, SiteAnalyticsSummary } from "../lib/site-analytics-types";
 
+export function formatKz(value: number) {
+  return `${new Intl.NumberFormat("pt-PT", {
+    maximumFractionDigits: 0,
+  }).format(value)} Kz`;
+}
+
+export function formatPaymentDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("pt-PT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Africa/Luanda",
+  });
+}
+
 export function toDashboardProduct(
   product: import("../product-types").ProductRecord,
 ): DashboardProduct {

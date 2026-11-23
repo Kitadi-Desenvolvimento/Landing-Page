@@ -9,14 +9,18 @@ import {
 } from "../lib/products";
 import {
   getAcceptedOrderSalesByProduct,
+  getCashSummary,
   getPaymentSummary,
   getRecentPaymentOrders,
   getWeeklyPaymentRevenue,
   PaymentLedgerNotMigratedError,
+  type CashSummary,
   type KitadiOrder,
   type PaymentSummary,
   type WeeklyPaymentRevenue,
 } from "../lib/payments/orders";
+import { getFinanceData, type FinanceData } from "../lib/finance";
+import { listWithdrawals, type Withdrawal } from "../lib/payments/withdrawals";
 import {
   getSiteAnalyticsSummary,
   SiteAnalyticsNotMigratedError,
@@ -65,6 +69,11 @@ export default async function BackofficePage() {
   let siteAnalytics: SiteAnalyticsSummary | null = null;
   let commercialReady = true;
   let commercialSummary: CommercialSummary | null = null;
+  let reconciliationReady = true;
+  let cashSummary: CashSummary | null = null;
+  let withdrawals: Withdrawal[] = [];
+  let finance: FinanceData | null = null;
+  let financeReady = true;
   let paymentSummary: PaymentSummary = {
     totalCount: 0,
     acceptedCount: 0,
@@ -110,6 +119,22 @@ export default async function BackofficePage() {
       productSales = null;
       weeklyPaymentRevenue = null;
     }
+
+    if (paymentsReady) {
+      try {
+        [cashSummary, withdrawals] = await Promise.all([getCashSummary(), listWithdrawals()]);
+      } catch (error) {
+        if (!(error instanceof PaymentLedgerNotMigratedError)) throw error;
+        reconciliationReady = false;
+      }
+
+      try {
+        finance = await getFinanceData();
+      } catch (error) {
+        if (!(error instanceof PaymentLedgerNotMigratedError)) throw error;
+        financeReady = false;
+      }
+    }
   }
 
   return (
@@ -120,6 +145,11 @@ export default async function BackofficePage() {
       paymentSummary={paymentSummary}
       payments={payments}
       paymentsReady={paymentsReady}
+      cashSummary={cashSummary}
+      withdrawals={withdrawals}
+      reconciliationReady={reconciliationReady}
+      finance={finance}
+      financeReady={financeReady}
       products={products}
       productSales={productSales}
       weeklyPaymentRevenue={weeklyPaymentRevenue}

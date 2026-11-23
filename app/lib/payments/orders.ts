@@ -39,6 +39,21 @@ export type KitadiOrder = {
   emailSentAt?: string | null;
   emailProviderMessageId?: string | null;
   ebookDownloadedAt?: string | null;
+  reconciledAt?: string | null;
+  createdBy?: string | null;
+};
+
+export type CashSummary = {
+  entriesKz: number;
+  entriesCount: number;
+  manualEntriesKz: number;
+  manualEntriesCount: number;
+  reconciledEntriesKz: number;
+  unreconciledEntriesCount: number;
+  withdrawalsKz: number;
+  withdrawalsCount: number;
+  reconciledWithdrawalsKz: number;
+  unreconciledWithdrawalsCount: number;
 };
 
 export type PaymentSummary = {
@@ -88,7 +103,18 @@ function isMissingLedger(error: { code?: string }) {
   );
 }
 
-function throwDatabaseError(operation: string, error: { code?: string }) {
+export class PeriodClosedError extends Error {
+  constructor() {
+    super("O mês deste movimento está fechado.");
+    this.name = "PeriodClosedError";
+  }
+}
+
+export function throwDatabaseError(
+  operation: string,
+  error: { code?: string; message?: string },
+) {
+  if (error.message === "period_closed") throw new PeriodClosedError();
   if (isMissingLedger(error)) throw new PaymentLedgerNotMigratedError();
   console.error(`[payments] ${operation} failed`, error.code ?? "unknown");
   throw new Error("Não foi possível aceder aos pagamentos.");
@@ -133,6 +159,8 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
     ebookDownloadedAt: typeof row.ebook_downloaded_at === "string"
       ? row.ebook_downloaded_at
       : null,
+    reconciledAt: typeof row.reconciled_at === "string" ? row.reconciled_at : null,
+    createdBy: typeof row.created_by === "string" ? row.created_by : null,
   };
 }
 
@@ -163,6 +191,7 @@ function toDatabase(order: KitadiOrder) {
     checked_in_by: order.checkedInBy,
     analytics_session_id: order.analyticsSessionId ?? null,
     customer_company: order.customerCompany ?? null,
+    ...(order.createdBy ? { created_by: order.createdBy } : {}),
   };
 }
 
@@ -413,5 +442,138 @@ export async function getPaymentSummary(): Promise<PaymentSummary> {
     refundedAmountKz: Number(row.refunded_amount_kz),
     successRate: Number(row.success_rate),
     averageTicketKz: Number(row.average_ticket_kz),
+  };
+}
+
+export const manualPaymentMethods = [
+  "Numerário",
+  "Transferência bancária",
+  "Depósito",
+  "Multicaixa Express",
+  "Outro",
+] as const;
+
+export type ManualPaymentInput = {
+  product: { slug: string; title: string; edition: string | null };
+  variant: { id: string; label: string };
+  amountKz: number;
+  name: string;
+  email: string;
+  phone: string;
+  method: (typeof manualPaymentMethods)[number];
+  providerReference: string | null;
+  paidAt: string;
+  createdBy: string;
+};
+
+/**
+ * Pagamento recebido fora do checkout. Entra como "accepted" em payment_orders,
+ * pelo que participantes, e-books, receita por produto e totais o contam
+ * automaticamente, tal como um pagamento WiPay.
+ */
+export async function createManualOrder(input: ManualPaymentInput) {
+  const now = new Date().toISOString();
+  return saveOrder({
+    reference: newKitadiReference(),
+    amountKz: input.amountKz,
+    courseSlug: input.product.slug,
+    productTitle: input.product.title,
+    variantId: input.variant.id,
+    variantLabel: input.variant.label,
+    edition: input.product.edition,
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    status: "accepted",
+    paymentProvider: "manual",
+    paymentMethod: input.method,
+    providerStatus: null,
+    providerTransactionId: input.providerReference,
+    reason: null,
+    createdAt: now,
+    updatedAt: now,
+    paidAt: input.paidAt,
+    checkedIn: false,
+    checkedInAt: null,
+    checkedInBy: null,
+    createdBy: input.createdBy,
+  });
+}
+
+export async function setOrderReconciled(
+  reference: string,
+  reconciled: boolean,
+  userId: string,
+) {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("payment_orders")
+    .update({
+      reconciled_at: reconciled ? new Date().toISOString() : null,
+      reconciled_by: reconciled ? userId : null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("reference", reference.toUpperCase())
+    .eq("status", "accepted")
+    .select("*")
+    .maybeSingle();
+
+  if (error) throwDatabaseError("reconciling order", error);
+  return data ? fromDatabase(data) : null;
+}
+
+/** Só pagamentos manuais podem ser estornados aqui; os da WiPay seguem o webhook. */
+export async function refundManualOrder(reference: string, reason: string, userId: string) {
+  const { data, error } = await createSupabaseAdminClient()
+    .from("payment_orders")
+    .update({
+      status: "refunded",
+      reason,
+      refunded_at: new Date().toISOString(),
+      refunded_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("reference", reference.toUpperCase())
+    .eq("status", "accepted")
+    .eq("payment_provider", "manual")
+    .select("*")
+    .maybeSingle();
+
+  if (error) throwDatabaseError("refunding manual order", error);
+  return data ? fromDatabase(data) : null;
+}
+
+const emptyCashSummary: CashSummary = {
+  entriesKz: 0,
+  entriesCount: 0,
+  manualEntriesKz: 0,
+  manualEntriesCount: 0,
+  reconciledEntriesKz: 0,
+  unreconciledEntriesCount: 0,
+  withdrawalsKz: 0,
+  withdrawalsCount: 0,
+  reconciledWithdrawalsKz: 0,
+  unreconciledWithdrawalsCount: 0,
+};
+
+export async function getCashSummary(): Promise<CashSummary> {
+  const { data, error } = await createSupabaseAdminClient().rpc(
+    "backoffice_cash_summary",
+  );
+
+  if (error) throwDatabaseError("loading cash summary", error);
+  const row = Array.isArray(data) ? data[0] : null;
+  if (!row) return emptyCashSummary;
+
+  return {
+    entriesKz: Number(row.entries_kz),
+    entriesCount: Number(row.entries_count),
+    manualEntriesKz: Number(row.manual_entries_kz),
+    manualEntriesCount: Number(row.manual_entries_count),
+    reconciledEntriesKz: Number(row.reconciled_entries_kz),
+    unreconciledEntriesCount: Number(row.unreconciled_entries_count),
+    withdrawalsKz: Number(row.withdrawals_kz),
+    withdrawalsCount: Number(row.withdrawals_count),
+    reconciledWithdrawalsKz: Number(row.reconciled_withdrawals_kz),
+    unreconciledWithdrawalsCount: Number(row.unreconciled_withdrawals_count),
   };
 }

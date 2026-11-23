@@ -16,15 +16,40 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/backoffice/objectives/route.js"
     ],
+    "/api/backoffice/payments/[reference]/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/payments/[reference]/route.js"
+    ],
+    "/api/backoffice/commercial/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/commercial/route.js"
+    ],
+    "/api/backoffice/attendees/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/attendees/route.js"
+    ],
+    "/api/backoffice/commercial/[id]/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/commercial/[id]/route.js"
+    ],
     "/api/site-analytics/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/site-analytics/route.js"
     ],
-    "/_not-found/page": [
+    "/api/backoffice/finance/export/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/backoffice/finance/export/route.js"
+    ],
+    "/api/backoffice/finance/closures/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/backoffice/finance/closures/route.js"
     ]
   }
 }

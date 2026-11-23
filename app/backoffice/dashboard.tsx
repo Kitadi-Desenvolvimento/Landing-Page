@@ -1,16 +1,20 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import InviteAdminForm from "./invite-admin-form";
 import SignOutButton from "./sign-out-button";
 import Attendees from "./attendees";
 import QrCodeGenerator from "../components/QrCodeGenerator";
 import { EbookCopyButton, EbookUploader } from "./ebook-tools";
 import Objectives, { OverviewObjectives } from "./objectives";
+import { ExpensesPanel, FinancePanel } from "./finance";
+import { PaymentReconciliationCell, ReconciliationPanel } from "./reconciliation";
 import {
   dashboardMetrics,
   dashboardNavigation,
+  formatKz,
+  formatPaymentDate,
   type DashboardProduct,
   type DashboardSection,
   type ProductAnalytics,
@@ -19,9 +23,12 @@ import {
   toDashboardProduct,
 } from "./dashboard-data";
 import type { ProductRecord } from "../product-types";
-import type { KitadiOrder, PaymentSummary, WeeklyPaymentRevenue } from "../lib/payments/orders";
+import { ScrollTable } from "./scroll-table";
+import type { CashSummary, KitadiOrder, PaymentSummary, WeeklyPaymentRevenue } from "../lib/payments/orders";
+import type { FinanceData } from "../lib/finance";
+import type { Withdrawal } from "../lib/payments/withdrawals";
 import type { CommercialSummary } from "../lib/commercial";
-import type { DragEvent, FormEvent } from "react";
+import type { DragEvent, FormEvent, ReactNode } from "react";
 
 const sectionTitles: Record<DashboardSection, { title: string; subtitle: string }> = {
   overview: { title: "Visão geral", subtitle: "Uma leitura rápida da actividade da Kitadi." },
@@ -52,6 +59,11 @@ export default function BackofficeDashboard({
   paymentSummary,
   paymentsReady,
   weeklyPaymentRevenue,
+  cashSummary,
+  withdrawals,
+  reconciliationReady,
+  finance,
+  financeReady,
 }: {
   email: string;
   role: BackofficeRole;
@@ -66,6 +78,11 @@ export default function BackofficeDashboard({
   paymentSummary: PaymentSummary;
   paymentsReady: boolean;
   weeklyPaymentRevenue: WeeklyPaymentRevenue[] | null;
+  cashSummary: CashSummary | null;
+  withdrawals: Withdrawal[];
+  reconciliationReady: boolean;
+  finance: FinanceData | null;
+  financeReady: boolean;
 }) {
   const [catalogProducts, setCatalogProducts] = useState(products);
   const [activeSection, setActiveSection] = useState<DashboardSection>(
@@ -198,10 +215,15 @@ export default function BackofficeDashboard({
           ) : null}
           {role === "admin" && activeSection === "payments" ? (
             <Payments
+              cashSummary={cashSummary}
+              finance={finance}
+              financeReady={financeReady}
               paymentSummary={paymentSummary}
               payments={payments}
               paymentsReady={paymentsReady}
               products={catalogProducts}
+              reconciliationReady={reconciliationReady}
+              withdrawals={withdrawals}
             />
           ) : null}
           {role === "admin" && activeSection === "attendees" ? <Attendees products={catalogProducts} /> : null}
@@ -303,7 +325,11 @@ function Overview({
                         ...metric,
                         value: commercialSummary ? String(commercialSummary.openCount) : "—",
                         change: commercialSummary ? String(commercialSummary.convertedCount) : "—",
-                        note: commercialReady ? "convertidas" : "CRM não configurado",
+                        note: !commercialReady
+                          ? "CRM não configurado"
+                          : commercialSummary && commercialSummary.followUpDueCount > 0
+                            ? `convertidas · ${commercialSummary.followUpDueCount} seguimento(s) para hoje`
+                            : "convertidas",
                       }
                     : metric
             }
@@ -397,22 +423,35 @@ function Overview({
 }
 
 function Payments({
+  cashSummary,
+  finance,
+  financeReady,
   payments,
   paymentSummary,
   paymentsReady,
   products,
+  reconciliationReady,
+  withdrawals,
 }: {
+  cashSummary: CashSummary | null;
+  finance: FinanceData | null;
+  financeReady: boolean;
   payments: KitadiOrder[];
   paymentSummary: PaymentSummary;
   paymentsReady: boolean;
   products: DashboardProduct[];
+  reconciliationReady: boolean;
+  withdrawals: Withdrawal[];
 }) {
   const ebookSlugs = new Set(
     products.filter((product) => product.data.ebook).map((product) => product.slug),
   );
+  const [view, setView] = useState<"payments" | "reconciliation" | "closing" | "expenses">("payments");
+  const activeView = paymentsReady ? view : "payments";
+  const acceptedPayments = payments.filter((payment) => payment.status === "accepted");
   return (
     <>
-      <PageIntro eyebrow="Financeiro" title="Pagamentos" description="Acompanhe o estado real de cada cobrança, o produto, o método de pagamento e os dados de reconciliação." />
+      <PageIntro eyebrow="Financeiro" title="Pagamentos" description="Acompanhe cada cobrança, a conciliação com a WiPay, as despesas e o fecho mensal." />
       {!paymentsReady ? (
         <div className="mt-5 rounded-2xl border border-[#e9d8b5] bg-[#fffaf0] px-4 py-3 text-[11px] leading-5 text-[#6b542d]" role="status">
           O registo de pagamentos ainda não está configurado. Aplique a migração
@@ -421,21 +460,62 @@ function Payments({
           <code className="mx-1 rounded bg-white px-1.5 py-0.5">20261113010000_add_attendee_edition_checkin.sql</code>
           no Supabase para começar a guardar transacções e presenças.
         </div>
-      ) : null}
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <SimpleStat label="Total recebido" value={formatKz(paymentSummary.acceptedAmountKz)} note={`${paymentSummary.acceptedCount} pagamentos confirmados`} />
-        <SimpleStat label="Por confirmar" value={formatKz(paymentSummary.pendingAmountKz)} note={`${paymentSummary.pendingCount} pagamentos pendentes`} />
-        <SimpleStat label="Pagamentos falhados" value={String(paymentSummary.failedCount)} note="rejeitados, expirados ou cancelados" />
-        <SimpleStat label="Reembolsos" value={formatKz(paymentSummary.refundedAmountKz)} note={`${paymentSummary.refundedCount} pagamentos reembolsados`} />
-        <SimpleStat label="Taxa de sucesso" value={`${paymentSummary.successRate.toLocaleString("pt-PT", { maximumFractionDigits: 1 })}%`} note={`ticket médio ${formatKz(paymentSummary.averageTicketKz)}`} />
-      </div>
-      <section className="mt-5 rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
-        <SectionHeading
-          title="Transacções recentes"
-          subtitle={`Resumo de ${paymentSummary.totalCount} pagamentos · lista das ${payments.length} transacções mais recentes`}
-        />
-        <PaymentTable ebookSlugs={ebookSlugs} orders={payments} paymentsReady={paymentsReady} />
-      </section>
+      ) : (
+        <div aria-label="Vista de pagamentos" className="mt-6 inline-flex rounded-full border border-[#e9e3df] bg-white p-1" role="tablist">
+          {([["payments", "Pagamentos"], ["reconciliation", "Conciliação"], ["closing", "Fecho e relatórios"], ["expenses", "Despesas"]] as const).map(([id, label]) => (
+            <button
+              aria-selected={activeView === id}
+              className={`rounded-full px-5 py-2 text-[11px] font-semibold transition ${activeView === id ? "bg-[#510f1d] text-white" : "text-[#716a69] hover:bg-[#f7f3f0]"}`}
+              key={id}
+              onClick={() => setView(id)}
+              role="tab"
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {activeView === "payments" ? (
+        <>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <SimpleStat label="Total recebido" value={formatKz(paymentSummary.acceptedAmountKz)} note={`${paymentSummary.acceptedCount} pagamentos confirmados`} />
+            <SimpleStat label="Por confirmar" value={formatKz(paymentSummary.pendingAmountKz)} note={`${paymentSummary.pendingCount} pagamentos pendentes`} />
+            <SimpleStat label="Pagamentos falhados" value={String(paymentSummary.failedCount)} note="rejeitados, expirados ou cancelados" />
+            <SimpleStat label="Reembolsos" value={formatKz(paymentSummary.refundedAmountKz)} note={`${paymentSummary.refundedCount} pagamentos reembolsados`} />
+            <SimpleStat label="Taxa de sucesso" value={`${paymentSummary.successRate.toLocaleString("pt-PT", { maximumFractionDigits: 1 })}%`} note={`ticket médio ${formatKz(paymentSummary.averageTicketKz)}`} />
+          </div>
+          <section className="mt-5 rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
+            <SectionHeading
+              title="Transacções recentes"
+              subtitle={`Resumo de ${paymentSummary.totalCount} pagamentos · lista das ${payments.length} transacções mais recentes`}
+            />
+            <PaymentTable ebookSlugs={ebookSlugs} orders={payments} paymentsReady={paymentsReady} />
+          </section>
+        </>
+      ) : activeView === "closing" ? (
+        <FinancePanel finance={finance} onGoToExpenses={() => setView("expenses")} onGoToReconciliation={() => setView("reconciliation")} ready={financeReady} />
+      ) : activeView === "expenses" ? (
+        <ExpensesPanel finance={finance} ready={financeReady} />
+      ) : (
+        <>
+          <ReconciliationPanel
+            cashSummary={cashSummary}
+            products={products}
+            ready={reconciliationReady}
+            withdrawals={withdrawals}
+          />
+          {reconciliationReady ? (
+            <section className="mt-5 rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
+              <SectionHeading
+                title="Entradas a conciliar"
+                subtitle="Pagamentos concluídos (WiPay e manuais). Confirme cada um na WiPay e clique em Conciliar."
+              />
+              <PaymentTable orders={acceptedPayments} paymentsReady={paymentsReady} showReconciliation />
+            </section>
+          ) : null}
+        </>
+      )}
     </>
   );
 }
@@ -468,7 +548,8 @@ type CommercialOpportunity = {
   product_slug: string | null;
   product_title: string | null;
   amount_kz: number | null;
-  stage: "new_contact" | "in_conversation" | "proposal_sent" | "converted";
+  stage: "new_contact" | "in_conversation" | "proposal_sent" | "converted" | "lost";
+  lost_reason?: string | null;
   source: string;
   payment_reference: string | null;
   payment_status: KitadiOrder["status"] | null;
@@ -498,6 +579,7 @@ const commercialStages = [
   { id: "in_conversation", label: "Em conversa", tone: "gold" },
   { id: "proposal_sent", label: "Proposta enviada", tone: "orange" },
   { id: "converted", label: "Convertido", tone: "green" },
+  { id: "lost", label: "Perdido", tone: "gray" },
 ] as const;
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -546,6 +628,15 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
   } | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CommercialOpportunity["stage"] | null>(null);
   const lastCardDragAt = useRef(0);
+  const [search, setSearch] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [onlyFollowUp, setOnlyFollowUp] = useState(false);
+  const [showLost, setShowLost] = useState(false);
+  const [lostPrompt, setLostPrompt] = useState<{
+    contactId: string;
+    stage: CommercialOpportunity["stage"];
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -593,11 +684,35 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     };
   }, [reloadCounter]);
 
-  const openCount = opportunities.filter((item) => item.stage !== "converted").length;
+  const isOpen = (item: CommercialOpportunity) => item.stage !== "converted" && item.stage !== "lost";
+  const openCount = opportunities.filter(isOpen).length;
   const convertedCount = opportunities.filter((item) => item.stage === "converted").length;
+  const lostCount = opportunities.filter((item) => item.stage === "lost").length;
   const potentialAmount = opportunities
-    .filter((item) => item.stage !== "converted")
+    .filter(isOpen)
     .reduce((sum, item) => sum + (item.amount_kz ?? 0), 0);
+  const dueFollowUps = opportunities
+    .filter((item) => followUpState(item) !== null)
+    .sort((a, b) => Date.parse(a.follow_up_at ?? "") - Date.parse(b.follow_up_at ?? ""));
+  const productOptions = [
+    ...new Map(
+      opportunities
+        .filter((item) => item.product_slug)
+        .map((item) => [item.product_slug as string, item.product_title || item.product_slug as string]),
+    ),
+  ].sort((a, b) => a[1].localeCompare(b[1], "pt"));
+  const filtersActive = Boolean(search.trim() || productFilter || sourceFilter || onlyFollowUp);
+  const visibleOpportunities = opportunities.filter((item) => {
+    if (productFilter && item.product_slug !== productFilter) return false;
+    if (sourceFilter && item.source !== sourceFilter) return false;
+    if (onlyFollowUp && !item.follow_up_at) return false;
+    return matchesCommercialSearch(
+      item,
+      contacts.find((contact) => contact.id === item.contact.company_id)?.name ?? "",
+      search,
+    );
+  });
+  const visibleStages = commercialStages.filter((stage) => showLost || stage.id !== "lost");
   const selectedOpportunity = opportunities.find((item) => item.id === selectedId) ?? null;
   const selectedContactOpportunities = selectedOpportunity
     ? opportunities.filter((item) => item.contact_id === selectedOpportunity.contact_id)
@@ -614,6 +729,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     contactId: string,
     fromStage: CommercialOpportunity["stage"],
     toStage: CommercialOpportunity["stage"],
+    lostReason = "",
   ) {
     if (fromStage === toStage) return;
     const opportunity = opportunities.find(
@@ -636,6 +752,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           editOpportunityId: opportunity.id,
           notes: opportunity.notes,
           followUpAt: opportunity.follow_up_at,
+          lostReason,
         }),
       });
       const result: unknown = await response.json();
@@ -660,7 +777,12 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     setDragOverStage(null);
     const drag = draggedCard;
     setDraggedCard(null);
-    if (drag) void moveCardToStage(drag.contactId, drag.stage, toStage);
+    if (!drag) return;
+    if (toStage === "lost") {
+      setLostPrompt(drag);
+      return;
+    }
+    void moveCardToStage(drag.contactId, drag.stage, toStage);
   }
 
   return (
@@ -680,11 +802,80 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           [String(openCount), "oportunidades abertas"],
           [String(convertedCount), "convertidas"],
           [formatKz(potentialAmount), "valor potencial em aberto"],
+          ...(lostCount ? [[String(lostCount), "perdidas"]] : []),
         ].map(([value, label]) => (
           <span className="rounded-xl border border-[#ece6e2] bg-white px-4 py-2.5 text-[11px] text-[#776e6a]" key={label}>
             <strong className="mr-1.5 text-[#352d2e]">{value}</strong>{label}
           </span>
         ))}
+      </div>
+      {dueFollowUps.length ? (
+        <section className="mb-5 rounded-2xl border border-[#ecd9ae] bg-[#fffaf0] p-4" aria-label="Seguimentos de hoje e atrasados">
+          <h3 className="text-[12px] font-bold text-[#6b542d]">
+            Para contactar hoje · {dueFollowUps.length}
+          </h3>
+          <ul className="mt-3 grid gap-2 lg:grid-cols-2">
+            {dueFollowUps.slice(0, 6).map((item) => {
+              const overdue = followUpState(item) === "overdue";
+              return (
+                <li className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2" key={item.id}>
+                  <button className="min-w-0 text-left" onClick={() => setSelectedId(item.id)} type="button">
+                    <span className="block truncate text-[11px] font-bold text-[#3d3435]">{item.contact.name}</span>
+                    <span className={`block truncate text-[10px] ${overdue ? "font-semibold text-red-700" : "text-[#8c6a2c]"}`}>
+                      {overdue ? "Atrasado · " : "Hoje · "}{formatPaymentDate(item.follow_up_at ?? item.created_at)}
+                      {item.product_title ? ` · ${item.product_title}` : ""}
+                    </span>
+                  </button>
+                  <ContactActions compact contact={item.contact} />
+                </li>
+              );
+            })}
+          </ul>
+          {dueFollowUps.length > 6 ? (
+            <p className="mt-2 text-[10px] text-[#8c6a2c]">+ {dueFollowUps.length - 6} seguimentos. Use “Só com seguimento” para ver todos.</p>
+          ) : null}
+        </section>
+      ) : null}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <input
+          aria-label="Pesquisar contactos"
+          className="h-10 min-w-[220px] flex-1 rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]"
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Pesquisar nome, email, telefone ou empresa"
+          type="search"
+          value={search}
+        />
+        <select aria-label="Filtrar por produto" className="h-10 rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setProductFilter(event.target.value)} value={productFilter}>
+          <option value="">Todos os produtos</option>
+          {productOptions.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}
+        </select>
+        <select aria-label="Filtrar por origem" className="h-10 rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setSourceFilter(event.target.value)} value={sourceFilter}>
+          <option value="">Todas as origens</option>
+          <option value="checkout">Checkout do site</option>
+          <option value="manual">Manual</option>
+        </select>
+        <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e7e1df] bg-white px-3 text-[11px] font-semibold text-[#514849]">
+          <input checked={onlyFollowUp} onChange={(event) => setOnlyFollowUp(event.target.checked)} type="checkbox" />
+          Só com seguimento
+        </label>
+        <label className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#e7e1df] bg-white px-3 text-[11px] font-semibold text-[#514849]">
+          <input checked={showLost} onChange={(event) => setShowLost(event.target.checked)} type="checkbox" />
+          Mostrar perdidos{lostCount ? ` (${lostCount})` : ""}
+        </label>
+        {filtersActive ? (
+          <button
+            className="h-10 rounded-xl px-3 text-[11px] font-bold text-[#762838] underline"
+            onClick={() => {
+              setSearch("");
+              setProductFilter("");
+              setSourceFilter("");
+              setOnlyFollowUp(false);
+            }}
+            type="button"
+          >
+            Limpar filtros
+          </button>
+        ) : null}
       </div>
       <p className="mb-4 text-[10px] text-[#938783]">Arraste um cartão para outra etapa para mover as oportunidades da pessoa nessa etapa.</p>
       {error ? (
@@ -693,9 +884,9 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           <button className="font-bold underline" onClick={() => setReloadCounter((current) => current + 1)} type="button">Tentar novamente</button>
         </div>
       ) : null}
-      <div className="grid gap-4 xl:grid-cols-4">
-        {commercialStages.map((stage) => {
-          const cards = groupCommercialCards(opportunities, stage.id);
+      <div className={`grid gap-4 ${showLost ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
+        {visibleStages.map((stage) => {
+          const cards = groupCommercialCards(visibleOpportunities, stage.id);
           const amount = cards.reduce(
             (sum, card) => sum + card.opportunities.reduce((total, item) => total + (item.amount_kz ?? 0), 0),
             0,
@@ -726,9 +917,9 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
                 <span className="rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold text-[#857b77]">{cards.length}</span>
               </div>
               <p className="mb-3 px-1 text-[10px] text-[#968c88]">
-                {stage.id === "converted" ? "Valor convertido" : "Valor potencial"} · {formatKz(amount)}
+                {stage.id === "converted" ? "Valor convertido" : stage.id === "lost" ? "Valor perdido" : "Valor potencial"} · {formatKz(amount)}
               </p>
-              <div className="space-y-3">
+              <StageCardList>
                 {cards.map((card) => {
                   const item = card.opportunities[0];
                   const cardAmount = card.opportunities.reduce((sum, current) => sum + (current.amount_kz ?? 0), 0);
@@ -780,6 +971,19 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
                         {card.opportunities.length} oportunidades nesta etapa
                       </span>
                     ) : null}
+                    {stage.id === "lost" && item.lost_reason ? (
+                      <span className="mt-2 block truncate text-[9px] text-[#928783]">Motivo: {item.lost_reason}</span>
+                    ) : null}
+                    {(() => {
+                      const state = card.opportunities.some((entry) => followUpState(entry) === "overdue")
+                        ? "overdue"
+                        : card.opportunities.some((entry) => followUpState(entry) === "today") ? "today" : null;
+                      return state ? (
+                        <span className={`mt-2 inline-block rounded-md px-1.5 py-0.5 text-[9px] font-bold ${state === "overdue" ? "bg-red-50 text-red-700" : "bg-[#f8f0df] text-[#8c6a2c]"}`}>
+                          {state === "overdue" ? "Seguimento atrasado" : "Contactar hoje"}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="mt-3 flex items-center justify-between gap-2 border-t border-[#f2eeec] pt-2.5">
                       <span className="truncate text-[9px] text-[#a39995]">
                         {card.opportunities.some((entry) => entry.payment_status === "pending")
@@ -798,9 +1002,9 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
                   );
                 })}
                 {cards.length === 0 && !loading ? (
-                  <p className="rounded-xl border border-dashed border-[#d6cbc6] px-3 py-4 text-center text-[10px] text-[#938783]">Sem oportunidades nesta etapa.</p>
+                  <p className="rounded-xl border border-dashed border-[#d6cbc6] px-3 py-4 text-center text-[10px] text-[#938783]">{filtersActive ? "Nenhum resultado nesta etapa." : "Sem oportunidades nesta etapa."}</p>
                 ) : null}
-              </div>
+              </StageCardList>
             </section>
           );
         })}
@@ -816,6 +1020,16 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           products={products}
         />
       ) : null}
+      {lostPrompt ? (
+        <LostReasonModal
+          onCancel={() => setLostPrompt(null)}
+          onConfirm={(reason) => {
+            const prompt = lostPrompt;
+            setLostPrompt(null);
+            void moveCardToStage(prompt.contactId, prompt.stage, "lost", reason);
+          }}
+        />
+      ) : null}
       {selectedOpportunity ? (
         <CommercialDetailsModal
           contacts={contacts}
@@ -826,6 +1040,31 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
         />
       ) : null}
     </>
+  );
+}
+
+// Mostra no máximo 7 cartões; a partir daí a coluna faz scroll.
+function StageCardList({ children }: { children: ReactNode }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [maxHeight, setMaxHeight] = useState<number>();
+
+  useLayoutEffect(() => {
+    const items = Array.from(listRef.current?.children ?? []) as HTMLElement[];
+    if (items.length <= 7) {
+      setMaxHeight(undefined);
+      return;
+    }
+    setMaxHeight(items[6].offsetTop + items[6].offsetHeight - items[0].offsetTop);
+  });
+
+  return (
+    <div
+      className="relative -mx-1 space-y-3 overflow-y-auto px-1 pb-1 pt-1"
+      ref={listRef}
+      style={maxHeight ? { maxHeight: maxHeight + 8 } : undefined}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -844,6 +1083,122 @@ function groupCommercialCards(
     contact: items[0].contact,
     opportunities: items,
   }));
+}
+
+function followUpState(opportunity: CommercialOpportunity): "overdue" | "today" | null {
+  if (!opportunity.follow_up_at || opportunity.stage === "converted" || opportunity.stage === "lost") {
+    return null;
+  }
+  const due = new Date(opportunity.follow_up_at).getTime();
+  if (Number.isNaN(due)) return null;
+  const now = new Date();
+  if (due < now.getTime()) return "overdue";
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  return due < tomorrow ? "today" : null;
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+
+function matchesCommercialSearch(
+  opportunity: CommercialOpportunity,
+  companyName: string,
+  term: string,
+) {
+  const query = normalizeSearch(term);
+  if (!query) return true;
+  const { contact } = opportunity;
+  const text = normalizeSearch(
+    [contact.name, contact.email, companyName, opportunity.title, opportunity.product_title]
+      .filter(Boolean)
+      .join(" "),
+  );
+  if (text.includes(query)) return true;
+  const queryDigits = query.replace(/\D/g, "");
+  return queryDigits.length >= 3 && (contact.phone ?? "").replace(/\D/g, "").includes(queryDigits);
+}
+
+// Números angolanos têm 9 dígitos; o indicativo é acrescentado se faltar.
+function phoneWithCountryCode(phone: string | null) {
+  if (!phone) return "";
+  let digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  return digits.length === 9 ? `244${digits}` : digits;
+}
+
+function ContactActions({ contact, compact = false }: { contact: CommercialContact; compact?: boolean }) {
+  const phone = phoneWithCountryCode(contact.phone);
+  const actions = [
+    phone.length >= 9
+      ? { label: "WhatsApp", href: `https://wa.me/${phone}`, external: true }
+      : null,
+    phone.length >= 9 ? { label: "Ligar", href: `tel:+${phone}`, external: false } : null,
+    contact.email ? { label: "Email", href: `mailto:${contact.email}`, external: false } : null,
+  ].filter((action) => action !== null);
+  if (!actions.length) return null;
+  return (
+    <span className="flex shrink-0 flex-wrap gap-1.5">
+      {actions.map((action) => (
+        <a
+          aria-label={`${action.label} — ${contact.name}`}
+          className={`rounded-full border border-[#e2d6d0] bg-white font-semibold text-[#510f1d] transition-colors hover:bg-[#f7efe9] ${compact ? "px-2.5 py-1 text-[10px]" : "px-3.5 py-2 text-[11px]"}`}
+          href={action.href}
+          key={action.label}
+          {...(action.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+        >
+          {action.label}
+        </a>
+      ))}
+    </span>
+  );
+}
+
+function LostReasonModal({
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-[#211d1e]/45 p-4">
+      <form
+        aria-labelledby="commercial-lost-title"
+        aria-modal="true"
+        className="w-full max-w-[460px] rounded-[24px] bg-white p-6 shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (reason.trim()) onConfirm(reason.trim());
+        }}
+        role="dialog"
+      >
+        <h2 className="text-[18px] font-bold text-[#302829]" id="commercial-lost-title">Marcar como perdido</h2>
+        <p className="mt-1 text-[12px] text-[#827976]">Indique o motivo para perceber porque não avançou.</p>
+        <input
+          autoFocus
+          className="mt-4 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]"
+          list="commercial-lost-reasons"
+          maxLength={300}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Ex.: Sem orçamento"
+          required
+          value={reason}
+        />
+        <datalist id="commercial-lost-reasons">
+          <option value="Sem orçamento" />
+          <option value="Sem resposta" />
+          <option value="Escolheu outra solução" />
+          <option value="Já não tem interesse" />
+        </datalist>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="rounded-full border border-[#e7e1df] px-4 py-2.5 text-[11px] font-semibold text-[#716a69]" onClick={onCancel} type="button">Cancelar</button>
+          <button className="rounded-full bg-[#510f1d] px-5 py-2.5 text-[11px] font-semibold text-white disabled:opacity-60" disabled={!reason.trim()} type="submit">Marcar como perdido</button>
+        </div>
+      </form>
+    </div>
+  );
 }
 
 function paymentStatusForCommercial(status: KitadiOrder["status"], createdAt: string) {
@@ -1016,6 +1371,7 @@ function CommercialDetailsModal({
   const [followUpAt, setFollowUpAt] = useState(
     opportunity.follow_up_at ? toLocalDateTime(opportunity.follow_up_at) : "",
   );
+  const [lostReason, setLostReason] = useState(opportunity.lost_reason ?? "");
   const [history, setHistory] = useState<CommercialHistory[]>([]);
   const [detailOpportunities, setDetailOpportunities] = useState(contactOpportunities);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -1068,6 +1424,10 @@ function CommercialDetailsModal({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (stage === "lost" && !lostReason.trim()) {
+      setError("Indique o motivo da perda.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -1081,6 +1441,7 @@ function CommercialDetailsModal({
           editOpportunityId: opportunity.id,
           notes,
           followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
+          lostReason: stage === "lost" ? lostReason.trim() : "",
         }),
       });
       const result: unknown = await response.json();
@@ -1097,6 +1458,7 @@ function CommercialDetailsModal({
       onSaved({
         ...opportunity,
         stage,
+        lost_reason: stage === "lost" ? lostReason.trim() : null,
         notes,
         follow_up_at: followUpAt ? new Date(followUpAt).toISOString() : null,
         converted_at: stage === "converted"
@@ -1145,7 +1507,10 @@ function CommercialDetailsModal({
           </div>
           <button aria-label="Fechar" className="rounded-full px-3 py-1 text-[20px] text-[#857b77] hover:bg-[#f5f2f1]" onClick={onClose} type="button">×</button>
         </div>
-        <div className="mt-5 grid gap-3 rounded-2xl bg-[#faf8f7] p-4 sm:grid-cols-2">
+        <div className="mt-4">
+          <ContactActions contact={opportunity.contact} />
+        </div>
+        <div className="mt-4 grid gap-3 rounded-2xl bg-[#faf8f7] p-4 sm:grid-cols-2">
           <DetailItem label="Tipo" value={opportunity.contact.contact_type === "company" ? "Empresa" : "Pessoa"} />
           {company ? <DetailItem label="Empresa associada" value={company.name} /> : null}
           <DetailItem label="Email" value={opportunity.contact.email || "Não indicado"} />
@@ -1198,6 +1563,12 @@ function CommercialDetailsModal({
               Próximo contacto
               <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" onChange={(event) => setFollowUpAt(event.target.value)} type="datetime-local" value={followUpAt} />
             </label>
+            {stage === "lost" ? (
+              <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
+                Motivo da perda
+                <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" maxLength={300} onChange={(event) => setLostReason(event.target.value)} placeholder="Ex.: Sem orçamento" required value={lostReason} />
+              </label>
+            ) : null}
             <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
               Notas e acompanhamento da oportunidade seleccionada
               <textarea className="mt-1.5 min-h-24 w-full rounded-xl border border-[#e7e1df] px-3 py-2 text-[12px]" maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} />
@@ -2274,11 +2645,13 @@ function PaymentTable({
   paymentsReady,
   compact = false,
   ebookSlugs,
+  showReconciliation = false,
 }: {
   orders: KitadiOrder[];
   paymentsReady: boolean;
   compact?: boolean;
   ebookSlugs?: ReadonlySet<string>;
+  showReconciliation?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -2360,16 +2733,17 @@ function PaymentTable({
           </select>
         </div>
       ) : null}
-      <div className="overflow-x-auto">
+      <ScrollTable>
       <table className="w-full min-w-[980px] text-left">
-        <thead>
+        <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#f0ecea]">
           <tr className="border-b border-[#f0ecea] text-[9px] font-bold uppercase tracking-[0.1em] text-[#a39995]">
             <th className="py-3 pr-4">Referência / cliente</th>
             <th className="py-3 pr-4">Produto / variante</th>
             <th className="py-3 pr-4">Método</th>
             <th className="py-3 pr-4">Data</th>
             <th className="py-3 pr-4">Valor</th>
-            <th className="py-3">Estado</th>
+            <th className={showReconciliation ? "py-3 pr-4" : "py-3"}>Estado</th>
+            {showReconciliation ? <th className="py-3">Conciliação</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-[#f2eeec]">
@@ -2381,7 +2755,9 @@ function PaymentTable({
                 <p className="mt-0.5 text-[9px] text-[#a19894]">{order.phone}</p>
                 <p className="mt-1.5 font-semibold text-[#8b5b39]">{order.reference}</p>
                 {order.providerTransactionId ? (
-                  <p className="mt-0.5 text-[9px] text-[#a19894]">WiPay: {order.providerTransactionId}</p>
+                  <p className="mt-0.5 text-[9px] text-[#a19894]">
+                    {order.paymentProvider === "wipay" ? "WiPay" : "Ref."}: {order.providerTransactionId}
+                  </p>
                 ) : null}
               </td>
               <td className="py-3.5 pr-4">
@@ -2407,16 +2783,21 @@ function PaymentTable({
                 {order.paidAt ? <p className="mt-1 text-[9px] text-[#52765e]">Pago {formatPaymentDate(order.paidAt)}</p> : null}
               </td>
               <td className="py-3.5 pr-4 font-semibold text-[#554b4b]">{formatKz(order.amountKz)}</td>
-              <td className="py-3.5">
+              <td className={showReconciliation ? "py-3.5 pr-4" : "py-3.5"}>
                 <StatusBadge status={paymentStatusLabel(order.status)} />
                 {order.reason ? <p className="mt-1.5 max-w-48 text-[9px] leading-4 text-[#a43832]">{order.reason}</p> : null}
                 {order.providerStatus ? <p className="mt-1 text-[9px] text-[#a19894]">WiPay: {order.providerStatus}</p> : null}
               </td>
+              {showReconciliation ? (
+                <td className="py-3.5">
+                  <PaymentReconciliationCell order={order} />
+                </td>
+              ) : null}
             </tr>
           ))}
           {rows.length === 0 ? (
             <tr>
-              <td className="py-8 text-center text-[11px] text-[#968c88]" colSpan={6}>
+              <td className="py-8 text-center text-[11px] text-[#968c88]" colSpan={showReconciliation ? 7 : 6}>
                 {paymentsReady
                   ? orders.length
                     ? "Nenhum pagamento corresponde aos filtros."
@@ -2427,7 +2808,7 @@ function PaymentTable({
           ) : null}
         </tbody>
       </table>
-      </div>
+      </ScrollTable>
       {!compact && orders.length > rows.length && !normalizedQuery && statusFilter === "all" && methodFilter === "all" && periodFilter === "all" ? (
         <p className="mt-3 text-[10px] text-[#968c88]">
           A mostrar as {rows.length} transacções mais recentes. Os totais incluem o histórico completo.
@@ -2467,22 +2848,6 @@ function paymentMethodLabel(method: string | null) {
   if (normalized.includes("reference") || normalized.includes("referência")) return "Referência";
   if (normalized.includes("card") || normalized.includes("cartão")) return "Cartão";
   return method.replaceAll("_", " ");
-}
-
-function formatPaymentDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("pt-PT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Africa/Luanda",
-  });
-}
-
-function formatKz(value: number) {
-  return `${new Intl.NumberFormat("pt-PT", {
-    maximumFractionDigits: 0,
-  }).format(value)} Kz`;
 }
 
 function PageIntro({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
@@ -2583,11 +2948,11 @@ function metricForeground(tone: string) {
 }
 
 function toneDot(tone: string) {
-  return tone === "plum" ? "bg-[#8c5263]" : tone === "gold" ? "bg-[#c79a48]" : tone === "orange" ? "bg-[#d58b55]" : "bg-[#66836c]";
+  return tone === "plum" ? "bg-[#8c5263]" : tone === "gold" ? "bg-[#c79a48]" : tone === "orange" ? "bg-[#d58b55]" : tone === "gray" ? "bg-[#9a9290]" : "bg-[#66836c]";
 }
 
 function toneAvatar(tone: string) {
-  return tone === "plum" ? "bg-[#f2e8eb] text-[#75404f]" : tone === "gold" ? "bg-[#f8f0df] text-[#8c6a2c]" : tone === "orange" ? "bg-[#fbede2] text-[#a36e45]" : "bg-[#eaf1eb] text-[#57745d]";
+  return tone === "plum" ? "bg-[#f2e8eb] text-[#75404f]" : tone === "gold" ? "bg-[#f8f0df] text-[#8c6a2c]" : tone === "orange" ? "bg-[#fbede2] text-[#a36e45]" : tone === "gray" ? "bg-[#efecea] text-[#7a716d]" : "bg-[#eaf1eb] text-[#57745d]";
 }
 
 function initials(email: string) {
