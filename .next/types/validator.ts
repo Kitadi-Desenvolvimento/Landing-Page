@@ -434,6 +434,24 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/students/verification/confirm/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/students/verification/confirm">> = Specific
+  const handler = {} as typeof import("../../app/api/students/verification/confirm/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/students/verification/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/students/verification">> = Specific
+  const handler = {} as typeof import("../../app/api/students/verification/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/webhooks/wipay/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/webhooks/wipay">> = Specific

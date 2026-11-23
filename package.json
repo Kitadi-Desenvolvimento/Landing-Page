@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test:qr": "node --experimental-strip-types --test scripts/qr-code.test.mjs",
+    "test:student-discount": "node --experimental-strip-types --test scripts/student-discount.test.mjs",
     "backoffice:invite-admin": "node --env-file=.env.local scripts/invite-initial-admin.mjs",
     "backoffice:generate-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link",
     "backoffice:generate-local-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link --local",

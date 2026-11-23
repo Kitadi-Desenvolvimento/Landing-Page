@@ -9,6 +9,7 @@ import {
 import { getPublishedProductBySlug } from "../../../lib/products";
 import Checkout from "./checkout";
 import ProductCheckout from "./product-checkout";
+import { studentDiscountEnabled } from "../../../lib/students-server";
 
 type CheckoutPageProps = {
   params: Promise<{ slug: string }>;
@@ -48,8 +49,8 @@ export default async function CheckoutPage({
   }
 
   if (!product.data.course) {
-    return <ProductCheckout product={product.data} />;
+    return <ProductCheckout product={product.data} studentEnabled={studentDiscountEnabled()} />;
   }
 
-  return <Checkout course={product.data.course} initialVariantId={variante} />;
+  return <Checkout course={product.data.course} initialVariantId={variante} studentEnabled={studentDiscountEnabled()} />;
 }

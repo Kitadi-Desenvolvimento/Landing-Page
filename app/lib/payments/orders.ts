@@ -14,6 +14,8 @@ export type PaymentStatus =
 export type KitadiOrder = {
   reference: string;
   amountKz: number;
+  originalAmountKz?: number | null;
+  studentDiscountPercent?: number | null;
   courseSlug: string;
   productTitle: string;
   variantId: string;
@@ -124,6 +126,8 @@ function fromDatabase(row: Record<string, unknown>): KitadiOrder {
   return {
     reference: row.reference as string,
     amountKz: row.amount_kz as number,
+    originalAmountKz: typeof row.original_amount_kz === "number" ? row.original_amount_kz : null,
+    studentDiscountPercent: typeof row.student_discount_percent === "number" ? row.student_discount_percent : null,
     courseSlug: row.course_slug as string,
     productTitle: row.product_title as string,
     variantId: row.variant_id as string,
@@ -168,6 +172,10 @@ function toDatabase(order: KitadiOrder) {
   return {
     reference: order.reference,
     amount_kz: order.amountKz,
+    ...(order.studentDiscountPercent != null ? {
+      original_amount_kz: order.originalAmountKz,
+      student_discount_percent: order.studentDiscountPercent,
+    } : {}),
     currency: "AOA",
     course_slug: order.courseSlug,
     product_title: order.productTitle,

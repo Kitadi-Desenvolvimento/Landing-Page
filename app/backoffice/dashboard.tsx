@@ -2782,7 +2782,14 @@ function PaymentTable({
                 <p>{formatPaymentDate(order.createdAt)}</p>
                 {order.paidAt ? <p className="mt-1 text-[9px] text-[#52765e]">Pago {formatPaymentDate(order.paidAt)}</p> : null}
               </td>
-              <td className="py-3.5 pr-4 font-semibold text-[#554b4b]">{formatKz(order.amountKz)}</td>
+              <td className="py-3.5 pr-4 font-semibold text-[#554b4b]">
+                {formatKz(order.amountKz)}
+                {order.studentDiscountPercent && order.originalAmountKz != null ? (
+                  <p className="mt-1 text-[9px] font-normal text-[#716a69]">
+                    Aluno: {order.studentDiscountPercent}% sobre {formatKz(order.originalAmountKz)}
+                  </p>
+                ) : null}
+              </td>
               <td className={showReconciliation ? "py-3.5 pr-4" : "py-3.5"}>
                 <StatusBadge status={paymentStatusLabel(order.status)} />
                 {order.reason ? <p className="mt-1.5 max-w-48 text-[9px] leading-4 text-[#a43832]">{order.reason}</p> : null}

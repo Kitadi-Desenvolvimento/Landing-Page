@@ -8,6 +8,8 @@ import type { ProductData } from "../../../product-types";
 import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
+import { formatStudentPrice, studentDiscountedAmount, studentDiscountPercent } from "../../../lib/student-discount";
+import StudentVerification, { type VerifiedStudent } from "./student-verification";
 
 type ChargeDetails = {
   checkoutUrl: string;
@@ -39,16 +41,20 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
   }
 }
 
-export default function ProductCheckout({ product }: { product: ProductData }) {
+export default function ProductCheckout({ product, studentEnabled }: { product: ProductData; studentEnabled: boolean }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [reviewingDetails, setReviewingDetails] = useState(false);
+  const [verifiedStudent, setVerifiedStudent] = useState<VerifiedStudent | null>(null);
   const [details, setDetails] = useState<PurchaseDetails>({
     name: "",
     email: "",
     phone: "",
     companyName: "",
   });
+  const total = verifiedStudent && product.priceAmount !== undefined
+    ? studentDiscountedAmount(product.priceAmount)
+    : product.priceAmount;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,6 +84,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
           phone: details.phone,
           companyName: details.companyName,
           analyticsSessionId: getSiteAnalyticsSessionId(),
+          ...(verifiedStudent ? { studentToken: verifiedStudent.token } : {}),
         }),
       });
       const result: unknown = await response.json();
@@ -91,7 +98,7 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
             : "Não foi possível criar a cobrança. Tente novamente.";
         throw new Error(message);
       }
-      if (!isChargeDetails(result) || result.amount !== product.priceAmount) {
+      if (!isChargeDetails(result) || result.amount !== total) {
         throw new Error("O serviço de pagamentos devolveu dados inválidos.");
       }
       window.location.assign(result.checkoutUrl);
@@ -157,7 +164,10 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     ["Telemóvel", details.phone],
                     ...(details.companyName ? [["Empresa", details.companyName]] : []),
                     ["Produto", product.title],
-                    ["Total a pagar", product.price ?? ""],
+                    ...(verifiedStudent && product.priceAmount !== undefined
+                      ? [["Desconto de aluno", `${studentDiscountPercent(product.priceAmount)}%`]]
+                      : []),
+                    ["Total a pagar", total !== undefined ? formatStudentPrice(total) : ""],
                   ].map(([label, value]) => (
                     <div className="flex flex-col gap-1 py-3 sm:flex-row sm:justify-between sm:gap-4" key={label}>
                       <dt className="text-sm text-[#716a69]">{label}</dt>
@@ -198,6 +208,12 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
               <p className="mt-2 text-sm text-[#716a69]">
                 Não precisa de criar conta.
               </p>
+              {studentEnabled ? (
+                <StudentVerification value={verifiedStudent} onChange={(value) => {
+                  setVerifiedStudent(value);
+                  if (value) setDetails((current) => ({ ...current, ...value.student }));
+                }} />
+              ) : null}
               <div className="mt-6 grid gap-4">
                 <label className="text-sm font-medium">
                   Nome completo
@@ -207,7 +223,9 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     maxLength={120}
                     name="name"
                     required
-                    defaultValue={details.name}
+                    value={details.name}
+                    onChange={(event) => setDetails({ ...details, name: event.target.value })}
+                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -219,7 +237,9 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     name="email"
                     required
                     type="email"
-                    defaultValue={details.email}
+                    value={details.email}
+                    onChange={(event) => setDetails({ ...details, email: event.target.value })}
+                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -231,7 +251,9 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     name="phone"
                     required
                     type="tel"
-                    defaultValue={details.phone}
+                    value={details.phone}
+                    onChange={(event) => setDetails({ ...details, phone: event.target.value })}
+                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -241,7 +263,8 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
                     className="mt-1.5 min-h-12 w-full rounded-xl border border-[#e7e1df] px-4 text-sm outline-none focus:border-[#ae7d32]"
                     maxLength={160}
                     name="companyName"
-                    defaultValue={details.companyName}
+                    value={details.companyName}
+                    onChange={(event) => setDetails({ ...details, companyName: event.target.value })}
                   />
                 </label>
               </div>
@@ -276,8 +299,11 @@ export default function ProductCheckout({ product }: { product: ProductData }) {
               </p>
               <h2 className="mt-2 text-lg font-bold">{product.title}</h2>
               <p className="mt-4 border-t border-[#eee8e5] pt-4 text-xl font-bold text-[#510f1d]">
-                {product.price}
+                {total !== undefined ? formatStudentPrice(total) : product.price}
               </p>
+              {verifiedStudent && product.priceAmount !== undefined ? (
+                <p className="mt-2 text-sm text-[#716a69]">Desconto de aluno: {studentDiscountPercent(product.priceAmount)}% sobre {formatStudentPrice(product.priceAmount)}</p>
+              ) : null}
             </aside>
           </div>
         </SectionContainer>

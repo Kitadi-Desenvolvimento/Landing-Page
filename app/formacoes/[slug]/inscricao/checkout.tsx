@@ -11,6 +11,8 @@ import {
 import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
+import { formatStudentPrice, studentDiscountedAmount, studentDiscountPercent } from "../../../lib/student-discount";
+import StudentVerification, { type VerifiedStudent } from "./student-verification";
 
 type EnrollmentDetails = {
   name: string;
@@ -299,19 +301,23 @@ function PaymentInstructions({
 export default function Checkout({
   course,
   initialVariantId,
+  studentEnabled,
 }: {
   course: Course;
   initialVariantId?: string;
+  studentEnabled: boolean;
 }) {
   const [paymentCharge, setPaymentCharge] = useState<ChargeDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [reviewingDetails, setReviewingDetails] = useState(false);
+  const [verifiedStudent, setVerifiedStudent] = useState<VerifiedStudent | null>(null);
   const [variantId, setVariantId] = useState(
     getCourseVariant(course, initialVariantId)?.id ?? course.variants[0]?.id ?? "",
   );
   const variant =
     getCourseVariant(course, variantId) ?? course.variants[0];
+  const total = variant && verifiedStudent ? studentDiscountedAmount(variant.priceAmount) : variant?.priceAmount;
   const [enrollment, setEnrollment] = useState<EnrollmentDetails>({
     name: "",
     email: "",
@@ -394,6 +400,7 @@ export default function Checkout({
           phone: enrollment.phone,
           companyName: enrollment.companyName,
           analyticsSessionId: getSiteAnalyticsSessionId(),
+          ...(verifiedStudent ? { studentToken: verifiedStudent.token } : {}),
         }),
       });
       const result: unknown = await response.json();
@@ -413,7 +420,7 @@ export default function Checkout({
         throw new Error("O serviço de pagamentos devolveu dados inválidos.");
       }
 
-      if (result.amount !== variant.priceAmount) {
+      if (result.amount !== total) {
         throw new Error("O valor devolvido não corresponde a esta inscrição.");
       }
 
@@ -534,7 +541,8 @@ export default function Checkout({
                       ? [["Empresa", enrollment.companyName]]
                       : []),
                     ["Formato", `${variant.label} · ${variant.detail}`],
-                    ["Total a pagar", variant.price],
+                    ...(verifiedStudent ? [["Desconto de aluno", `${studentDiscountPercent(variant.priceAmount)}%`]] : []),
+                    ["Total a pagar", formatStudentPrice(total ?? variant.priceAmount)],
                   ].map(([label, value]) => (
                     <div className="flex flex-col gap-1 py-3 sm:flex-row sm:justify-between sm:gap-4" key={label}>
                       <dt className="text-sm text-[#716a69]">{label}</dt>
@@ -577,6 +585,12 @@ export default function Checkout({
                   Não precisa de criar conta
                 </p>
               </div>
+              {studentEnabled ? (
+                <StudentVerification value={verifiedStudent} onChange={(value) => {
+                  setVerifiedStudent(value);
+                  if (value) setEnrollment((current) => ({ ...current, ...value.student }));
+                }} />
+              ) : null}
 
               <fieldset className="mt-6">
                 <legend className="mb-3 text-sm font-medium">
@@ -636,6 +650,7 @@ export default function Checkout({
                       setEnrollment({ ...enrollment, name: event.target.value })
                     }
                     placeholder="O seu nome completo"
+                    readOnly={Boolean(verifiedStudent)}
                     required
                     value={enrollment.name}
                   />
@@ -657,6 +672,7 @@ export default function Checkout({
                       setEnrollment({ ...enrollment, email: event.target.value })
                     }
                     placeholder="nome@exemplo.com"
+                    readOnly={Boolean(verifiedStudent)}
                     required
                     type="email"
                     value={enrollment.email}
@@ -696,6 +712,7 @@ export default function Checkout({
                   }
                   pattern="^\+?[0-9 ]{9,17}$"
                   placeholder="+244 923 000 000"
+                  readOnly={Boolean(verifiedStudent)}
                   required
                   type="tel"
                   value={enrollment.phone}
@@ -737,7 +754,7 @@ export default function Checkout({
               >
                 {isSubmitting
                   ? "A criar cobrança…"
-                  : `Continuar para pagamento · ${variant.price}`}
+                  : `Continuar para pagamento · ${formatStudentPrice(total ?? variant.priceAmount)}`}
               </button>
 
               <p className="mt-4 text-xs leading-[1.6] text-[#716a69]">
@@ -779,8 +796,9 @@ export default function Checkout({
                 <div className="mt-4 rounded-[16px] bg-[#f7efe0] p-5">
                   <p className="text-sm text-[#862f3b]">Total a pagar</p>
                   <p className="mt-1 text-[28px] font-bold leading-none text-[#862f3b]">
-                    {variant.price}
+                    {formatStudentPrice(total ?? variant.priceAmount)}
                   </p>
+                  {verifiedStudent ? <p className="mt-2 text-xs text-[#716a69]">Desconto de aluno: {studentDiscountPercent(variant.priceAmount)}%</p> : null}
                   <p className="mt-3 text-xs text-[#716a69]">
                     Pagamento único · Sem custos adicionais
                   </p>

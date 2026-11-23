@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { offersPublicCheckout } from "../../../course-data";
 import { getPublishedProductBySlug } from "../../../lib/products";
 import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
+import { studentDiscountedAmount, studentDiscountPercent } from "../../../lib/student-discount";
+import { getVerifiedStudent } from "../../../lib/students-server";
 import {
   createWipayHostedPayment,
   ensureWipaySignatureToken,
@@ -59,9 +61,9 @@ export async function POST(request: Request) {
 
   const courseSlug = readString(body.courseSlug, 100);
   const variantId = readString(body.variantId, 40);
-  const name = readString(body.name, 120);
-  const email = readString(body.email, 254);
-  const phone = readString(body.phone, 24);
+  let name = readString(body.name, 120);
+  let email = readString(body.email, 254);
+  let phone = readString(body.phone, 24);
   const companyName = typeof body.companyName === "string"
     ? body.companyName.trim()
     : "";
@@ -79,9 +81,31 @@ export async function POST(request: Request) {
       ? course.variants.find((item) => item.id === variantId)
       : course.variants[0]
     : undefined;
-  const amountKz = course
+  const originalAmountKz = course
     ? variant?.priceAmount
     : product?.data.priceAmount;
+  let amountKz = originalAmountKz;
+  let discountPercent: number | null = null;
+
+  if (body.studentToken !== undefined) {
+    if (typeof body.studentToken !== "string") {
+      return NextResponse.json({ error: "Verificação de aluno inválida." }, { status: 400 });
+    }
+    try {
+      const student = await getVerifiedStudent(body.studentToken);
+      if (!student) return NextResponse.json({ error: "A verificação de aluno expirou. Confirme novamente." }, { status: 401 });
+      name = student.name;
+      email = student.email;
+      phone = student.phone;
+      if (amountKz !== undefined) {
+        discountPercent = studentDiscountPercent(amountKz);
+        amountKz = studentDiscountedAmount(amountKz);
+      }
+    } catch (error) {
+      console.error("[payments] student verification failed", error instanceof Error ? error.message : "unknown");
+      return NextResponse.json({ error: "Não foi possível verificar o desconto de aluno." }, { status: 503 });
+    }
+  }
 
   if (
     !product ||
@@ -129,6 +153,8 @@ export async function POST(request: Request) {
     await saveOrder({
       reference,
       amountKz,
+      originalAmountKz: discountPercent === null ? null : originalAmountKz,
+      studentDiscountPercent: discountPercent,
       courseSlug: product.slug,
       productTitle: product.data.title,
       variantId: variant?.id ?? "default",
