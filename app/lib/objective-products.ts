@@ -44,7 +44,7 @@ export async function loadObjectiveCollaborators(
     
     collaborators.push(
       ...data.users
-        .filter((user) => user.email && user.app_metadata?.role === "collaborator")
+        .filter((user) => user.email)
         .map((user) => ({
           id: user.id,
           email: user.email || "",
