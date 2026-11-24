@@ -1059,9 +1059,7 @@ function ObjectiveEditor({
   const effectiveAssignedTo = effectiveScopeType === "collaborator"
     ? parentObjective?.assigned_to ?? (role === "collaborator" ? currentUserId : assignedTo || null)
     : null;
-  const assignableCollaborators = collaborators.filter((member) =>
-    !effectiveAreaId || member.areaIds.includes(effectiveAreaId),
-  );
+  const assignableCollaborators = collaborators;
   const periodStart = objectivePeriodStart(periodType, periodAnchor);
   const alignmentCandidates = objectives.filter((candidate) => {
     if (candidate.id === objective?.id || candidate.parent_objective_id ||
