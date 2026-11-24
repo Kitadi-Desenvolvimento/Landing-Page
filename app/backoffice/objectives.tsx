@@ -498,7 +498,6 @@ export default function Objectives() {
           currentUserId={userId}
           objectives={objectives}
           collaborators={collaborators}
-          availableCollaborators={availableCollaborators}
           areas={areas.filter((area) =>
             area.active || (typeof formObjective === "object" &&
               formObjective !== null && area.id === formObjective.area_id),
@@ -1014,7 +1013,6 @@ function ObjectiveEditor({
   currentUserId,
   objectives,
   collaborators,
-  availableCollaborators,
   areas,
   products,
   onClose,
@@ -1028,7 +1026,6 @@ function ObjectiveEditor({
   currentUserId: string;
   objectives: Objective[];
   collaborators: ObjectiveCollaborator[];
-  availableCollaborators: SimpleCollaborator[];
   areas: ObjectiveArea[];
   products: ObjectiveProduct[];
   onClose: () => void;
@@ -1048,7 +1045,6 @@ function ObjectiveEditor({
     objective?.assigned_to ?? parentObjective?.assigned_to ?? (role === "collaborator" ? currentUserId : ""),
   );
   const [productId, setProductId] = useState(objective?.product_id ?? "");
-  const [additionalCollaborators, setAdditionalCollaborators] = useState<string[]>([]);
   const [periodType, setPeriodType] = useState<ObjectivePeriodType>(
     objective?.period_type ?? parentObjective?.period_type ?? "daily",
   );
@@ -1285,15 +1281,6 @@ function ObjectiveEditor({
                 <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" name="productId" onChange={(event) => setProductId(event.target.value)} value={productId}>
                   <option value="">Sem produto</option>
                   {products.map((product) => <option key={product.slug} value={product.slug}>{product.title}</option>)}
-                </select>
-              </label>
-              <label className="block text-[10px] font-semibold text-[#817773]">
-                Colaboradores adicionais (opcional)
-                <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" multiple onChange={(event) => {
-                  const selected = Array.from(event.target.selectedOptions, (option) => option.value);
-                  setAdditionalCollaborators(selected);
-                }} value={additionalCollaborators}>
-                  {availableCollaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaborator.email}</option>)}
                 </select>
               </label>
             </div>
