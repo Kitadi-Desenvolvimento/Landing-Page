@@ -45,7 +45,7 @@ export async function loadObjectiveAccess(
       if (error) throw new Error("Objective collaborator lookup failed");
       collaborators.push(
         ...data.users
-          .filter((user) => user.app_metadata.role === "collaborator")
+          .filter((user) => user.email)
           .map((user) => ({
             id: user.id,
             email: user.email ?? "",
@@ -100,7 +100,7 @@ export async function loadObjectiveAccess(
   for (const memberId of memberIds) {
     const { data, error } = await admin.auth.admin.getUserById(memberId);
     if (error) throw new Error("Objective collaborator lookup failed");
-    if (data.user?.app_metadata.role === "collaborator") {
+    if (data.user?.email) {
       collaborators.push({
         id: memberId,
         email: data.user.email ?? "",
