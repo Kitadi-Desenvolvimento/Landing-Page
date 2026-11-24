@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "../../lib/supabase/browser";
 import FilterPanel from "./filters-panel";
 import MetricsCards from "./metrics-cards";
 import ActivityFeed from "./activity-feed";
@@ -46,16 +48,55 @@ export default function ExecutiveIntelligence({
   userRole,
   userId,
 }: ExecutiveIntelligenceProps) {
+  const router = useRouter();
+  const supabase = createSupabaseBrowserClient();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState({
     period: 7,
     area_id: null as string | null,
     type: "all" as "all" | "crm" | "objective" | "finance",
   });
+
+  // Helper function to fetch with auth
+  const fetchWithAuth = async (url: string) => {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      if (!sessionData.session) {
+        console.error("No session found, redirecting to login");
+        router.push("/backoffice/login");
+        return null;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          "Authorization": `Bearer ${sessionData.session.access_token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.status === 401 || response.status === 403) {
+        console.error("Unauthorized or Forbidden");
+        router.push("/backoffice/login");
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Fetch error:", error);
+      setError(String(error));
+      return null;
+    }
+  };
 
   // Load metrics
   useEffect(() => {
@@ -64,14 +105,11 @@ export default function ExecutiveIntelligence({
     params.append("period", String(filters.period));
     if (filters.area_id) params.append("area_id", filters.area_id);
 
-    fetch(`/api/backoffice/executive-intelligence/metrics?${params}`)
-      .then((res) => res.json())
+    fetchWithAuth(`/api/backoffice/executive-intelligence/metrics?${params}`)
       .then((data) => {
-        setMetrics(data);
-        setMetricsLoading(false);
-      })
-      .catch((error) => {
-        console.error("Failed to load metrics:", error);
+        if (data) {
+          setMetrics(data);
+        }
         setMetricsLoading(false);
       });
   }, [filters.period, filters.area_id]);
@@ -85,14 +123,11 @@ export default function ExecutiveIntelligence({
     if (filters.type !== "all") params.append("type", filters.type);
     params.append("limit", "50");
 
-    fetch(`/api/backoffice/executive-intelligence/activities?${params}`)
-      .then((res) => res.json())
+    fetchWithAuth(`/api/backoffice/executive-intelligence/activities?${params}`)
       .then((data) => {
-        setActivities(data.activities || []);
-        setActivitiesLoading(false);
-      })
-      .catch((error) => {
-        console.error("Failed to load activities:", error);
+        if (data) {
+          setActivities(data.activities || []);
+        }
         setActivitiesLoading(false);
       });
   }, [filters.period, filters.area_id, filters.type]);
