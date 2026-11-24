@@ -30,9 +30,13 @@ function secret() {
 }
 
 function apiToken() {
-  const value = process.env.CEU_API_TOKEN?.trim();
-  if (!value) throw new Error("CEU_API_TOKEN is not configured");
-  return value;
+  const secretValue = process.env.STUDENT_VERIFICATION_SECRET?.trim();
+  if (!secretValue) throw new Error("STUDENT_VERIFICATION_SECRET is not configured");
+  const parts = secretValue.split("|");
+  if (parts.length !== 2 || !parts[1]) {
+    throw new Error("STUDENT_VERIFICATION_SECRET format invalid (expected: id|token)");
+  }
+  return parts[1];
 }
 
 export function studentDiscountEnabled() {
