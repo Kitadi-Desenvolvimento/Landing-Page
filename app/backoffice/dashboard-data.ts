@@ -6,7 +6,8 @@ export type DashboardSection =
   | "commercial"
   | "funnel"
   | "products"
-  | "team";
+  | "team"
+  | "executive-intelligence";
 
 export type DashboardProduct = {
   slug: string;
@@ -64,6 +65,7 @@ export const dashboardNavigation: {
   { id: "objectives", label: "Objectivos", group: "workspace" },
   { id: "commercial", label: "Comercial", group: "workspace" },
   { id: "funnel", label: "Funil do site", group: "workspace" },
+  { id: "executive-intelligence", label: "Executive Intelligence", group: "workspace" },
   { id: "products", label: "Produtos", group: "manage" },
   { id: "team", label: "Equipa e acessos", group: "manage" },
 ];

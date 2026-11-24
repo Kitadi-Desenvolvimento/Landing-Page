@@ -39,6 +39,7 @@ const sectionTitles: Record<DashboardSection, { title: string; subtitle: string 
   objectives: { title: "Objectivos", subtitle: "Defina metas, registe o progresso diário e consulte o histórico." },
   commercial: { title: "Área comercial", subtitle: "Oportunidades e acompanhamento de potenciais clientes." },
   funnel: { title: "Funil do site", subtitle: "Visitas, contactos, checkout e pagamentos atribuídos." },
+  "executive-intelligence": { title: "Executive Intelligence", subtitle: "Visão completa das atividades da empresa por departamento e período." },
   products: { title: "Produtos", subtitle: "Desempenho dos programas e experiências da Kitadi." },
   team: { title: "Equipa e acessos", subtitle: "Gerir funções, convites e atribuições às áreas." },
 };
@@ -235,6 +236,13 @@ export default function BackofficeDashboard({
           ) : null}
           {role === "admin" && activeSection === "funnel" ? (
             <Funnel analytics={siteAnalytics} analyticsReady={analyticsReady} />
+          ) : null}
+          {(role === "admin" || role === "manager") && activeSection === "executive-intelligence" ? (
+            <div className="text-center py-8">
+              <p className="text-[#716a69]">Executive Intelligence está carregando...</p>
+              <p className="text-xs text-[#a99d99] mt-2">Redireccionando para a página dedicada...</p>
+              <script>{`window.location.href = '/backoffice/executive-intelligence';`}</script>
+            </div>
           ) : null}
           {role === "admin" && activeSection === "products" ?           <Products
             catalogReady={catalogReady}

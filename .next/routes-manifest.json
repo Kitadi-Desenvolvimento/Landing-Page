@@ -203,6 +203,12 @@
       "namedRegex": "^/backoffice/definir\\-senha(?:/)?$"
     },
     {
+      "page": "/backoffice/executive-intelligence",
+      "regex": "^/backoffice/executive\\-intelligence(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/backoffice/executive\\-intelligence(?:/)?$"
+    },
+    {
       "page": "/backoffice/login",
       "regex": "^/backoffice/login(?:/)?$",
       "routeKeys": {},
