@@ -11,6 +11,7 @@ import { EbookCopyButton, EbookUploader } from "./ebook-tools";
 import Objectives, { OverviewObjectives } from "./objectives";
 import { ExpensesPanel, FinancePanel } from "./finance";
 import { PaymentReconciliationCell, ReconciliationPanel } from "./reconciliation";
+import { ImportContactsModal } from "./import-contacts-modal";
 import {
   dashboardMetrics,
   dashboardNavigation,
@@ -623,6 +624,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [reloadCounter, setReloadCounter] = useState(0);
   const [draggedCard, setDraggedCard] = useState<{
     contactId: string;
@@ -791,13 +793,22 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     <>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <PageIntro eyebrow="Relacionamento" title="Funil comercial" description="Acompanhe contactos manuais e oportunidades criadas a partir de inscrições no checkout." />
-        <button
-          className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#510f1d] px-5 text-[12px] font-semibold text-white transition-colors hover:bg-[#762838]"
-          onClick={() => setCreateOpen(true)}
-          type="button"
-        >
-          + Novo contacto
-        </button>
+        <div className="flex gap-3">
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#510f1d] px-5 text-[12px] font-semibold text-white transition-colors hover:bg-[#762838]"
+            onClick={() => setImportOpen(true)}
+            type="button"
+          >
+            📥 Importar do Excel
+          </button>
+          <button
+            className="inline-flex min-h-11 items-center justify-center rounded-full bg-[#510f1d] px-5 text-[12px] font-semibold text-white transition-colors hover:bg-[#762838]"
+            onClick={() => setCreateOpen(true)}
+            type="button"
+          >
+            + Novo contacto
+          </button>
+        </div>
       </div>
       <div className="mb-5 mt-5 flex flex-wrap gap-2">
         {[
@@ -1044,6 +1055,15 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           onSaved={updateOpportunity}
           opportunity={selectedOpportunity}
           contactOpportunities={selectedContactOpportunities}
+        />
+      ) : null}
+      {importOpen ? (
+        <ImportContactsModal
+          isOpen={importOpen}
+          onClose={() => setImportOpen(false)}
+          onSuccess={(count) => {
+            setReloadCounter((current) => current + 1);
+          }}
         />
       ) : null}
     </>
