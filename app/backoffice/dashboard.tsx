@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { maxProductPriceKz } from "../course-data";
 import InviteAdminForm from "./invite-admin-form";
 import SignOutButton from "./sign-out-button";
 import Attendees from "./attendees";
@@ -24,6 +25,7 @@ import {
 } from "./dashboard-data";
 import type { ProductRecord } from "../product-types";
 import { ScrollTable } from "./scroll-table";
+import CommercialReportExport from "./commercial-report-export";
 import type { CashSummary, KitadiOrder, PaymentSummary, WeeklyPaymentRevenue } from "../lib/payments/orders";
 import type { FinanceData } from "../lib/finance";
 import type { Withdrawal } from "../lib/payments/withdrawals";
@@ -633,9 +635,10 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
   const [sourceFilter, setSourceFilter] = useState("");
   const [onlyFollowUp, setOnlyFollowUp] = useState(false);
   const [showLost, setShowLost] = useState(false);
-  const [lostPrompt, setLostPrompt] = useState<{
+  const [stageChangePrompt, setStageChangePrompt] = useState<{
     contactId: string;
-    stage: CommercialOpportunity["stage"];
+    fromStage: CommercialOpportunity["stage"];
+    toStage: CommercialOpportunity["stage"];
   } | null>(null);
 
   useEffect(() => {
@@ -729,7 +732,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     contactId: string,
     fromStage: CommercialOpportunity["stage"],
     toStage: CommercialOpportunity["stage"],
-    lostReason = "",
+    stageChangeReason = "",
   ) {
     if (fromStage === toStage) return;
     const opportunity = opportunities.find(
@@ -749,10 +752,11 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           contactId,
           fromStage,
           toStage,
+          stageChangeReason,
           editOpportunityId: opportunity.id,
           notes: opportunity.notes,
           followUpAt: opportunity.follow_up_at,
-          lostReason,
+          lostReason: toStage === "lost" ? stageChangeReason.trim() : "",
         }),
       });
       const result: unknown = await response.json();
@@ -760,9 +764,11 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
         const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
         throw new Error(
           code === "commercial_not_configured"
-            ? "Aplique a migração 20261113070000_group_commercial_contacts.sql no Supabase."
+            ? "Aplique as migrações do CRM, incluindo 20261124020000_require_crm_stage_change_reason.sql, no Supabase."
             : code === "commercial_stage_locked"
               ? "Os pagamentos confirmados permanecem na etapa Convertido."
+              : code === "stage_change_reason_required"
+                ? "Explique o motivo antes de mover esta oportunidade."
               : "Não foi possível mover o cartão.",
         );
       }
@@ -778,11 +784,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     const drag = draggedCard;
     setDraggedCard(null);
     if (!drag) return;
-    if (toStage === "lost") {
-      setLostPrompt(drag);
-      return;
-    }
-    void moveCardToStage(drag.contactId, drag.stage, toStage);
+    setStageChangePrompt({ contactId: drag.contactId, fromStage: drag.stage, toStage });
   }
 
   return (
@@ -809,6 +811,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           </span>
         ))}
       </div>
+      <CommercialReportExport />
       {dueFollowUps.length ? (
         <section className="mb-5 rounded-2xl border border-[#ecd9ae] bg-[#fffaf0] p-4" aria-label="Seguimentos de hoje e atrasados">
           <h3 className="text-[12px] font-bold text-[#6b542d]">
@@ -877,7 +880,9 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           </button>
         ) : null}
       </div>
-      <p className="mb-4 text-[10px] text-[#938783]">Arraste um cartão para outra etapa para mover as oportunidades da pessoa nessa etapa.</p>
+      <p className="mb-4 text-[10px] text-[#938783]">
+        Arraste um cartão para mudar de etapa. Antes de confirmar, explique o motivo; ficará guardado no histórico e no relatório.
+      </p>
       {error ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e9d8b5] bg-[#fffaf0] px-4 py-3 text-[11px] leading-5 text-[#6b542d]" role="alert">
           <span>{error}</span>
@@ -1020,13 +1025,15 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           products={products}
         />
       ) : null}
-      {lostPrompt ? (
-        <LostReasonModal
-          onCancel={() => setLostPrompt(null)}
+      {stageChangePrompt ? (
+        <StageChangeReasonModal
+          fromStage={stageChangePrompt.fromStage}
+          toStage={stageChangePrompt.toStage}
+          onCancel={() => setStageChangePrompt(null)}
           onConfirm={(reason) => {
-            const prompt = lostPrompt;
-            setLostPrompt(null);
-            void moveCardToStage(prompt.contactId, prompt.stage, "lost", reason);
+            const prompt = stageChangePrompt;
+            setStageChangePrompt(null);
+            void moveCardToStage(prompt.contactId, prompt.fromStage, prompt.toStage, reason);
           }}
         />
       ) : null}
@@ -1154,18 +1161,24 @@ function ContactActions({ contact, compact = false }: { contact: CommercialConta
   );
 }
 
-function LostReasonModal({
+function StageChangeReasonModal({
+  fromStage,
+  toStage,
   onCancel,
   onConfirm,
 }: {
+  fromStage: CommercialOpportunity["stage"];
+  toStage: CommercialOpportunity["stage"];
   onCancel: () => void;
   onConfirm: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
+  const fromLabel = commercialStages.find((stage) => stage.id === fromStage)?.label ?? fromStage;
+  const toLabel = commercialStages.find((stage) => stage.id === toStage)?.label ?? toStage;
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-[#211d1e]/45 p-4">
       <form
-        aria-labelledby="commercial-lost-title"
+        aria-labelledby="commercial-stage-reason-title"
         aria-modal="true"
         className="w-full max-w-[460px] rounded-[24px] bg-white p-6 shadow-2xl"
         onSubmit={(event) => {
@@ -1174,27 +1187,25 @@ function LostReasonModal({
         }}
         role="dialog"
       >
-        <h2 className="text-[18px] font-bold text-[#302829]" id="commercial-lost-title">Marcar como perdido</h2>
-        <p className="mt-1 text-[12px] text-[#827976]">Indique o motivo para perceber porque não avançou.</p>
-        <input
+        <h2 className="text-[18px] font-bold text-[#302829]" id="commercial-stage-reason-title">Registar mudança de etapa</h2>
+        <p className="mt-1 text-[12px] text-[#827976]">
+          A oportunidade vai passar de <strong>{fromLabel}</strong> para <strong>{toLabel}</strong>.
+          Explique o motivo para que fique no histórico comercial.
+        </p>
+        <textarea
           autoFocus
-          className="mt-4 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]"
-          list="commercial-lost-reasons"
+          className="mt-4 min-h-24 w-full rounded-xl border border-[#e7e1df] px-3 py-2 text-[12px]"
           maxLength={300}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="Ex.: Sem orçamento"
+          placeholder={toStage === "lost"
+            ? "Ex.: O cliente adiou a decisão por falta de orçamento."
+            : "Ex.: O cliente confirmou interesse e pediu uma proposta."}
           required
           value={reason}
         />
-        <datalist id="commercial-lost-reasons">
-          <option value="Sem orçamento" />
-          <option value="Sem resposta" />
-          <option value="Escolheu outra solução" />
-          <option value="Já não tem interesse" />
-        </datalist>
         <div className="mt-5 flex justify-end gap-2">
           <button className="rounded-full border border-[#e7e1df] px-4 py-2.5 text-[11px] font-semibold text-[#716a69]" onClick={onCancel} type="button">Cancelar</button>
-          <button className="rounded-full bg-[#510f1d] px-5 py-2.5 text-[11px] font-semibold text-white disabled:opacity-60" disabled={!reason.trim()} type="submit">Marcar como perdido</button>
+          <button className="rounded-full bg-[#510f1d] px-5 py-2.5 text-[11px] font-semibold text-white disabled:opacity-60" disabled={!reason.trim()} type="submit">Confirmar mudança</button>
         </div>
       </form>
     </div>
@@ -1368,6 +1379,7 @@ function CommercialDetailsModal({
 }) {
   const [stage, setStage] = useState(opportunity.stage);
   const [notes, setNotes] = useState(opportunity.notes);
+  const [stageChangeReason, setStageChangeReason] = useState("");
   const [followUpAt, setFollowUpAt] = useState(
     opportunity.follow_up_at ? toLocalDateTime(opportunity.follow_up_at) : "",
   );
@@ -1380,6 +1392,7 @@ function CommercialDetailsModal({
   const company = opportunity.contact.company_id
     ? contacts.find((contact) => contact.id === opportunity.contact.company_id)
     : null;
+  const stageChanged = stage !== opportunity.stage;
 
   useEffect(() => {
     if (opportunity.payment_status === "accepted") setStage("converted");
@@ -1424,7 +1437,11 @@ function CommercialDetailsModal({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (stage === "lost" && !lostReason.trim()) {
+    if (stageChanged && !stageChangeReason.trim()) {
+      setError("Explique o motivo da mudança de etapa.");
+      return;
+    }
+    if (stage === "lost" && !stageChanged && !lostReason.trim()) {
       setError("Indique o motivo da perda.");
       return;
     }
@@ -1438,10 +1455,13 @@ function CommercialDetailsModal({
           contactId: opportunity.contact_id,
           fromStage: opportunity.stage,
           toStage: stage,
+          stageChangeReason: stageChanged ? stageChangeReason.trim() : "",
           editOpportunityId: opportunity.id,
           notes,
           followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
-          lostReason: stage === "lost" ? lostReason.trim() : "",
+          lostReason: stage === "lost"
+            ? stageChanged ? stageChangeReason.trim() : lostReason.trim()
+            : "",
         }),
       });
       const result: unknown = await response.json();
@@ -1449,9 +1469,11 @@ function CommercialDetailsModal({
         const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
         throw new Error(
           code === "commercial_not_configured"
-            ? "Aplique a migração 20261113070000_group_commercial_contacts.sql no Supabase."
+            ? "Aplique as migrações do CRM, incluindo 20261124020000_require_crm_stage_change_reason.sql, no Supabase."
             : code === "commercial_stage_locked"
               ? "Os pagamentos confirmados permanecem na etapa Convertido."
+              : code === "stage_change_reason_required"
+                ? "Explique o motivo da mudança de etapa."
               : "Não foi possível guardar as alterações desta oportunidade.",
         );
       }
@@ -1555,7 +1577,10 @@ function CommercialDetailsModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-[11px] font-semibold text-[#514849]">
               Mover cartão e oportunidades desta etapa
-              <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setStage(event.target.value as CommercialOpportunity["stage"])} value={stage}>
+              <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => {
+                setStage(event.target.value as CommercialOpportunity["stage"]);
+                setStageChangeReason("");
+              }} value={stage}>
                 {commercialStages.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
               </select>
             </label>
@@ -1563,7 +1588,13 @@ function CommercialDetailsModal({
               Próximo contacto
               <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" onChange={(event) => setFollowUpAt(event.target.value)} type="datetime-local" value={followUpAt} />
             </label>
-            {stage === "lost" ? (
+            {stageChanged ? (
+              <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
+                Motivo da mudança{stage === "lost" ? " e da perda" : ""}
+                <textarea className="mt-1.5 min-h-20 w-full rounded-xl border border-[#e7e1df] px-3 py-2 text-[12px]" maxLength={300} onChange={(event) => setStageChangeReason(event.target.value)} placeholder="Explique o que aconteceu e por que a etapa deve mudar." required value={stageChangeReason} />
+              </label>
+            ) : null}
+            {stage === "lost" && !stageChanged ? (
               <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
                 Motivo da perda
                 <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" maxLength={300} onChange={(event) => setLostReason(event.target.value)} placeholder="Ex.: Sem orçamento" required value={lostReason} />
@@ -1588,7 +1619,10 @@ function CommercialDetailsModal({
             {history.map((item) => (
               <li className="border-l-2 border-[#eadfd9] pl-3" key={item.id}>
                 <p className="text-[10px] font-semibold text-[#514849]">
-                  {detailOpportunities.find((entry) => entry.id === item.opportunity_id)?.product_title || "Oportunidade"}: {item.details}
+                  {detailOpportunities.find((entry) => entry.id === item.opportunity_id)?.product_title || "Oportunidade"}:{" "}
+                  {item.event_type === "stage_changed" && item.from_stage && item.to_stage
+                    ? `Passou de ${commercialStages.find((stageOption) => stageOption.id === item.from_stage)?.label ?? item.from_stage} para ${commercialStages.find((stageOption) => stageOption.id === item.to_stage)?.label ?? item.to_stage}. ${item.details}`
+                    : item.details}
                 </p>
                 <p className="mt-1 text-[9px] text-[#938783]">
                   {item.changed_by_email ? `${item.changed_by_email} · ` : "Sistema · "}
@@ -1994,7 +2028,7 @@ function ProductEditor({
             : code === "invalid_product"
               ? "Verifique os campos, preços e use o caminho de uma imagem existente."
               : code === "checkout_not_available"
-                ? "Para activar o pagamento, configure um preço válido abaixo de 100.000 Kz e, para formações, preços válidos em todas as variantes."
+                ? "Para activar o pagamento, configure um preço válido e, para formações, preços válidos em todas as variantes."
               : "Não foi possível guardar o produto. Tente novamente.",
         );
       }
@@ -2205,7 +2239,7 @@ function ProductPriceField({
       <input
         className="mt-1.5 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] font-normal outline-none focus:border-[#ae7d32]"
         defaultValue={defaultValue}
-        max={2_000_000_000}
+        max={maxProductPriceKz}
         min={0}
         name={name}
         required={required}

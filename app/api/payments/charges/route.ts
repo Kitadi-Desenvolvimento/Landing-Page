@@ -92,11 +92,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Verificação de aluno inválida." }, { status: 400 });
     }
     try {
-      const student = await getVerifiedStudent(body.studentToken);
-      if (!student) return NextResponse.json({ error: "A verificação de aluno expirou. Confirme novamente." }, { status: 401 });
-      name = student.name;
-      email = student.email;
-      phone = student.phone;
+      const studentVerified = await getVerifiedStudent(body.studentToken);
+      if (!studentVerified) return NextResponse.json({ error: "A verificação de aluno expirou. Confirme novamente." }, { status: 401 });
       if (amountKz !== undefined) {
         discountPercent = studentDiscountPercent(amountKz);
         amountKz = studentDiscountedAmount(amountKz);

@@ -3,8 +3,7 @@ import Link from "next/link";
 
 const navItems = [
   { label: "Início", href: "/#inicio" },
-  { label: "Serviços", href: "/#servicos" },
-  { label: "Produtos", href: "/#produtos" },
+  { label: "Produtos e Serviços", href: "/#produtos" },
   { label: "Quem somos", href: "/#quem-somos" },
   { label: "Contactos", href: "/#contactos" },
 ];
@@ -41,11 +40,11 @@ export default function SiteHeader() {
 
         <nav
           aria-label="Navegação principal"
-          className="hidden items-center gap-[45px] md:flex"
+          className="hidden items-center gap-4 md:flex lg:gap-[45px]"
         >
           {navItems.map((item) => (
             <Link
-              className="text-[14px] font-normal text-white/90 transition-colors hover:text-[#d1aa64]"
+              className="whitespace-nowrap text-[14px] font-normal text-white/90 transition-colors hover:text-[#d1aa64]"
               href={item.href}
               key={item.label}
             >

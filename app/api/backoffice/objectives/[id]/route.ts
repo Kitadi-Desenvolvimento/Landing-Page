@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isRecord, isObjectiveValue, parseObjective } from "../../../../lib/objectives";
+import {
+  canManageObjective,
+  loadObjectiveAccess,
+  validateObjectiveRelations,
+  validateObjectiveScope,
+} from "../../../../lib/objective-access";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
-import { canManageArea, requireBackofficeUser } from "../../../../lib/supabase/require-admin";
+import { requireBackofficeUser } from "../../../../lib/supabase/require-admin";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -41,7 +47,7 @@ export async function PATCH(
   const admin = createSupabaseAdminClient();
   const { data: existing, error: existingError } = await admin
     .from("objectives")
-    .select("area_id,parent_objective_id,archived")
+    .select("area_id,scope_type,assigned_to,parent_objective_id,archived")
     .eq("id", id)
     .maybeSingle();
   if (existingError) {
@@ -53,35 +59,34 @@ export async function PATCH(
   if (existing.parent_objective_id !== objective.parent_objective_id) {
     return NextResponse.json({ error: "parent_objective_immutable" }, { status: 400 });
   }
-  if (existing.parent_objective_id) {
-    const { data: parent, error: parentError } = await admin
-      .from("objectives")
-      .select("active,archived")
-      .eq("id", existing.parent_objective_id)
-      .maybeSingle();
-    if (parentError) {
-      console.error("[backoffice] parent objective lookup failed", parentError.code);
-      return NextResponse.json({ error: "objective_unavailable" }, { status: 503 });
+
+  let access;
+  try {
+    access = await loadObjectiveAccess(
+      authorization.role,
+      authorization.user.id,
+      authorization.role === "manager" ? authorization.areaIds : null,
+    );
+    if (!canManageObjective(access, existing)) {
+      return NextResponse.json({ error: "objective_scope_forbidden" }, { status: 403 });
     }
-    if (!parent || !parent.active || parent.archived) {
-      return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
+    const scopeError = await validateObjectiveScope(access, objective, existing.area_id);
+    if (scopeError) {
+      return NextResponse.json(
+        { error: scopeError },
+        { status: scopeError === "objective_scope_forbidden" ? 403 : 400 },
+      );
     }
-  }
-  if (!canManageArea(authorization, existing.area_id) || !canManageArea(authorization, objective.area_id)) {
-    return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
-  }
-  if (existing.area_id !== objective.area_id) {
-    const { data: area, error: areaError } = await admin
-      .from("objective_areas")
-      .select("id")
-      .eq("id", objective.area_id)
-      .eq("active", true)
-      .maybeSingle();
-    if (areaError) {
-      console.error("[backoffice] objective area validation failed", areaError.code);
-      return NextResponse.json({ error: "areas_unavailable" }, { status: 503 });
+    const relationError = await validateObjectiveRelations(access, {
+      ...objective,
+      id,
+    });
+    if (relationError) {
+      return NextResponse.json({ error: relationError }, { status: 400 });
     }
-    if (!area) return NextResponse.json({ error: "invalid_area" }, { status: 400 });
+  } catch (error) {
+    console.error("[backoffice] objective validation failed", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "objective_validation_unavailable" }, { status: 503 });
   }
 
   const { data, error } = await admin
@@ -135,7 +140,7 @@ export async function POST(
   const admin = createSupabaseAdminClient();
   const { data: objective, error: loadError } = await admin
     .from("objectives")
-    .select("id,value_type,active,archived,area_id,parent_objective_id")
+    .select("id,value_type,active,archived,scope_type,area_id,assigned_to,parent_objective_id")
     .eq("id", id)
     .maybeSingle();
   if (loadError) {
@@ -143,22 +148,34 @@ export async function POST(
     return NextResponse.json({ error: "checkin_unavailable" }, { status: 503 });
   }
   if (!objective) return NextResponse.json({ error: "objective_not_found" }, { status: 404 });
-  if (!canManageArea(authorization, objective.area_id)) {
-    return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
+  let access;
+  try {
+    access = await loadObjectiveAccess(
+      authorization.role,
+      authorization.user.id,
+      authorization.role === "manager" ? authorization.areaIds : null,
+    );
+  } catch (error) {
+    console.error("[backoffice] objective access lookup failed", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "objective_access_unavailable" }, { status: 503 });
+  }
+  if (!canManageObjective(access, objective)) {
+    return NextResponse.json({ error: "objective_scope_forbidden" }, { status: 403 });
   }
   if (objective.archived) return NextResponse.json({ error: "objective_archived" }, { status: 409 });
   if (!objective.active) return NextResponse.json({ error: "objective_inactive" }, { status: 409 });
   if (objective.parent_objective_id) {
     const { data: parent, error: parentError } = await admin
       .from("objectives")
-      .select("active,archived")
+      .select("active,archived,scope_type,area_id,assigned_to,parent_objective_id")
       .eq("id", objective.parent_objective_id)
       .maybeSingle();
     if (parentError) {
       console.error("[backoffice] parent objective check-in lookup failed", parentError.code);
       return NextResponse.json({ error: "checkin_unavailable" }, { status: 503 });
     }
-    if (!parent || !parent.active || parent.archived) {
+    if (!parent || !parent.active || parent.archived ||
+        !canManageObjective(access, parent)) {
       return NextResponse.json({ error: "objective_parent_inactive" }, { status: 409 });
     }
   }

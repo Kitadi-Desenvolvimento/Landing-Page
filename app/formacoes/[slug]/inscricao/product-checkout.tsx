@@ -209,10 +209,7 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                 Não precisa de criar conta.
               </p>
               {studentEnabled ? (
-                <StudentVerification value={verifiedStudent} onChange={(value) => {
-                  setVerifiedStudent(value);
-                  if (value) setDetails((current) => ({ ...current, ...value.student }));
-                }} />
+                <StudentVerification value={verifiedStudent} onChange={setVerifiedStudent} />
               ) : null}
               <div className="mt-6 grid gap-4">
                 <label className="text-sm font-medium">
@@ -225,7 +222,6 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                     required
                     value={details.name}
                     onChange={(event) => setDetails({ ...details, name: event.target.value })}
-                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -239,7 +235,6 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                     type="email"
                     value={details.email}
                     onChange={(event) => setDetails({ ...details, email: event.target.value })}
-                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">
@@ -253,7 +248,6 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                     type="tel"
                     value={details.phone}
                     onChange={(event) => setDetails({ ...details, phone: event.target.value })}
-                    readOnly={Boolean(verifiedStudent)}
                   />
                 </label>
                 <label className="text-sm font-medium">

@@ -1,17 +1,33 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   objectiveValueTypes,
   type ObjectiveValueType,
 } from "../lib/objectives";
+import {
+  canAlignObjective,
+  objectivePeriodEnd,
+  objectivePeriodStart,
+  objectivePeriodTypes,
+  type ObjectivePeriodType,
+  type ReportPeriod,
+} from "../lib/objective-periods";
+import type { ObjectiveProduct, ObjectiveCollaborator as SimpleCollaborator } from "../lib/objective-products";
 
 type Objective = {
   id: string;
-  area_id: string;
+  area_id: string | null;
+  scope_type: "company" | "department" | "collaborator";
+  assigned_to: string | null;
+  period_type: ObjectivePeriodType | null;
+  period_start: string | null;
+  aligned_objective_id: string | null;
   parent_objective_id: string | null;
   due_date: string | null;
   archived: boolean;
+  product_id: string | null;
   title: string;
   description: string;
   value_type: ObjectiveValueType;
@@ -50,13 +66,23 @@ export type ObjectiveArea = {
   active: boolean;
 };
 
+type ObjectiveCollaborator = {
+  id: string;
+  email: string;
+  areaIds: string[];
+};
+
 type ObjectivesData = {
   objectives: Objective[];
   checkins: ObjectiveCheckIn[];
   edits: ObjectiveCheckInEdit[];
   areas: ObjectiveArea[];
+  collaborators: ObjectiveCollaborator[];
+  products: ObjectiveProduct[];
+  availableCollaborators: SimpleCollaborator[];
+  userId: string;
+  manageableAreaIds: string[];
   role: "admin" | "manager" | "collaborator";
-  readOnly: boolean;
 };
 
 const valueTypeLabels: Record<ObjectiveValueType, string> = {
@@ -74,8 +100,12 @@ export default function Objectives() {
   const [checkins, setCheckins] = useState<ObjectiveCheckIn[]>([]);
   const [edits, setEdits] = useState<ObjectiveCheckInEdit[]>([]);
   const [areas, setAreas] = useState<ObjectiveArea[]>([]);
+  const [collaborators, setCollaborators] = useState<ObjectiveCollaborator[]>([]);
+  const [userId, setUserId] = useState("");
+  const [manageableAreaIds, setManageableAreaIds] = useState<string[]>([]);
   const [role, setRole] = useState<ObjectivesData["role"]>("collaborator");
-  const [readOnly, setReadOnly] = useState(true);
+  const [products, setProducts] = useState<ObjectiveProduct[]>([]);
+  const [availableCollaborators, setAvailableCollaborators] = useState<SimpleCollaborator[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,8 +131,12 @@ export default function Objectives() {
       setCheckins(result.checkins);
       setEdits(result.edits);
       setAreas(result.areas);
+      setCollaborators(result.collaborators);
+      setProducts(result.products);
+      setAvailableCollaborators(result.availableCollaborators);
+      setUserId(result.userId);
+      setManageableAreaIds(result.manageableAreaIds);
       setRole(result.role);
-      setReadOnly(result.readOnly);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar os objectivos.");
     } finally {
@@ -195,7 +229,9 @@ export default function Objectives() {
   const today = luandaToday();
   const topLevelObjectives = objectives.filter((objective) => objective.parent_objective_id === null);
   const activeCount = topLevelObjectives.filter((objective) => objective.active && !objective.archived).length;
-  const canCreateObjective = !readOnly && areas.some((area) => area.active);
+  const canCreateObjective = role === "admin" ||
+    (role === "manager" && areas.some((area) => area.active)) ||
+    role === "collaborator";
   const visibleObjectives = topLevelObjectives.filter((objective) => objective.archived === showArchived);
   const selectedObjective = selectedObjectiveId
     ? objectives.find((objective) => objective.id === selectedObjectiveId) ?? null
@@ -205,6 +241,9 @@ export default function Objectives() {
     : formObjective?.parent_objective_id ?? null;
   const editorParentAreaId = editorParentObjectiveId
     ? objectives.find((item) => item.id === editorParentObjectiveId)?.area_id ?? null
+    : null;
+  const editorParentObjective = editorParentObjectiveId
+    ? objectives.find((item) => item.id === editorParentObjectiveId) ?? null
     : null;
   const todayCount = topLevelObjectives.filter((objective) =>
     !objective.archived &&
@@ -222,6 +261,20 @@ export default function Objectives() {
     const keyResults = isKeyResult
       ? []
       : objectives.filter((item) => item.parent_objective_id === objective.id);
+    const canManage = role === "admin" ||
+      (role === "manager" && objective.scope_type !== "company" &&
+        objective.area_id !== null && manageableAreaIds.includes(objective.area_id)) ||
+      (role === "collaborator" && objective.scope_type === "collaborator" &&
+        objective.assigned_to === userId);
+    const canCheckIn = canManage;
+    const areaName = objective.scope_type === "company"
+      ? "Empresa"
+      : objective.scope_type === "collaborator"
+        ? collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador"
+        : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento";
+    const alignedObjectiveTitle = objective.aligned_objective_id
+      ? objectives.find((item) => item.id === objective.aligned_objective_id)?.title ?? null
+      : null;
     return (
       <ObjectiveCard
         checkInDone={Boolean(todayCheckIn)}
@@ -247,10 +300,12 @@ export default function Objectives() {
           })();
         }}
         edits={edits.filter((edit) => history.some((item) => item.id === edit.checkin_id))}
-        areaName={areas.find((area) => area.id === objective.area_id)?.name ?? "Área"}
+        areaName={areaName}
+        alignedObjectiveTitle={alignedObjectiveTitle}
+        canManage={canManage}
+        canCheckIn={canCheckIn}
         key={`${inModal ? "modal" : "card"}-${objective.id}`}
         objective={objective}
-        readOnly={readOnly}
         saving={savingCheckIn === objective.id}
         onCheckIn={(value, note) => saveCheckIn(objective, value, note)}
         onEdit={() => setFormObjective(objective)}
@@ -268,13 +323,15 @@ export default function Objectives() {
           </p>
           <h2 className="mt-2 text-2xl font-bold text-[#302829]">Objectivos</h2>
           <p className="mt-2 max-w-2xl text-sm text-[#817773]">
-            {readOnly
-              ? "Consulte as metas e o progresso de todas as áreas. O seu perfil não pode alterar objectivos ou check-ins."
-              : "Crie objectivos principais, associe-lhes Key Results (KRs) mensuráveis e acompanhe o progresso diário."}
+            {role === "collaborator"
+              ? "Crie objectivos pessoais e registe o seu progresso diário."
+              : role === "manager"
+                ? "Gira os objectivos dos departamentos atribuídos e acompanhe os check-ins da equipa."
+                : "Crie objectivos para a empresa, departamentos ou colaboradores e acompanhe o progresso."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!readOnly ? (
+          {role !== "collaborator" || objectives.some((item) => item.scope_type === "collaborator" && item.assigned_to === userId && item.archived) ? (
             <button
               aria-pressed={showArchived}
               className="min-h-11 rounded-full border border-[#e9e3e0] px-4 text-[11px] font-semibold text-[#6d605b]"
@@ -299,6 +356,7 @@ export default function Objectives() {
         <ObjectiveStat label="Check-ins de hoje" value={`${todayCount} / ${activeCount}`} />
         <ObjectiveStat label="Registos no histórico" value={String(checkins.length)} />
       </div>
+      <ObjectiveReportExport />
 
       {error ? (
         <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
@@ -321,7 +379,7 @@ export default function Objectives() {
           <p className="mt-2 text-sm text-[#817773]">{showArchived ? "Os objectivos arquivados aparecerão aqui." : "Crie o primeiro para começar a acompanhar o progresso diário."}</p>
         </div>
       ) : null}
-      {!loading && !readOnly && areas.every((area) => !area.active) ? (
+      {!loading && role === "manager" && areas.every((area) => !area.active) ? (
         <p className="mt-4 rounded-xl bg-[#fff7f4] px-4 py-3 text-xs text-[#8f4c40]">
           Não há áreas activas para criar objectivos. Peça a um administrador que active uma área.
         </p>
@@ -357,12 +415,17 @@ export default function Objectives() {
                     <span className="block truncate text-[12px] font-bold text-[#352d2e]">{objective.title}</span>
                     <span className="mt-1 block text-[9px] text-[#8d837f]">
                       {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
+                      {objective.period_type ? ` · ${periodTypeLabel(objective.period_type)}` : ""}
                       {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
                     </span>
                   </span>
                   <span className="text-[10px] text-[#766d69]">
                     <span className="mr-1 text-[9px] font-semibold text-[#a19894] sm:hidden">Área:</span>
-                    {areas.find((area) => area.id === objective.area_id)?.name ?? "Área"}
+                    {objective.scope_type === "company"
+                      ? "Empresa"
+                      : objective.scope_type === "collaborator"
+                        ? collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador"
+                        : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento"}
                   </span>
                   <span className="min-w-0">
                     <span className="mb-1 block text-[9px] text-[#766d69]">
@@ -430,10 +493,17 @@ export default function Objectives() {
           objective={formObjective === "new" ? null : formObjective}
           parentObjectiveId={editorParentObjectiveId}
           parentAreaId={editorParentAreaId}
+          parentObjective={editorParentObjective}
+          role={role}
+          currentUserId={userId}
+          objectives={objectives}
+          collaborators={collaborators}
+          availableCollaborators={availableCollaborators}
           areas={areas.filter((area) =>
             area.active || (typeof formObjective === "object" &&
               formObjective !== null && area.id === formObjective.area_id),
           )}
+          products={products}
           onClose={() => {
             setFormObjective(null);
             setFormParentObjectiveId(null);
@@ -596,9 +666,11 @@ function ObjectiveCard({
   isKeyResult,
   parentAllowsChanges,
   areaName,
+  alignedObjectiveTitle,
+  canManage,
+  canCheckIn,
   checkInDone,
   saving,
-  readOnly,
   onEdit,
   onAddKeyResult,
   onArchive,
@@ -612,9 +684,11 @@ function ObjectiveCard({
   isKeyResult: boolean;
   parentAllowsChanges: boolean;
   areaName: string;
+  alignedObjectiveTitle: string | null;
+  canManage: boolean;
+  canCheckIn: boolean;
   checkInDone: boolean;
   saving: boolean;
-  readOnly: boolean;
   onEdit: () => void;
   onAddKeyResult: () => void;
   onArchive: (archived: boolean) => void;
@@ -663,6 +737,11 @@ function ObjectiveCard({
               <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">KR</span>
             ) : null}
             <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">{areaName}</span>
+            {objective.period_type ? (
+              <span className="rounded-full bg-[#f0e9f1] px-2.5 py-1 text-[9px] font-semibold text-[#6e4b71]">
+                {periodTypeLabel(objective.period_type)}
+              </span>
+            ) : null}
             <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
               objective.archived
                 ? "bg-[#f3efed] text-[#847a76]"
@@ -672,6 +751,9 @@ function ObjectiveCard({
             </span>
           </div>
           {objective.description ? <p className="mt-2 text-[11px] leading-5 text-[#817773]">{objective.description}</p> : null}
+          {alignedObjectiveTitle ? (
+            <p className="mt-2 text-[10px] text-[#6e4b71]">Alinhado a: {alignedObjectiveTitle}</p>
+          ) : null}
           {objective.due_date ? (
             <p className={`mt-2 text-[10px] font-semibold ${
               dueWarning?.level === "overdue" ? "text-[#b64c47]" :
@@ -683,7 +765,7 @@ function ObjectiveCard({
             </p>
           ) : null}
         </div>
-        {!readOnly && (!isKeyResult || parentAllowsChanges) ? (
+        {canManage && (!isKeyResult || parentAllowsChanges) ? (
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {!objective.archived ? (
               <button
@@ -736,7 +818,7 @@ function ObjectiveCard({
         <section className="mt-5 border-t border-[#f0ecea] pt-4">
           <div className="mb-3 flex items-center justify-between gap-3">
             <h4 className="text-[11px] font-bold text-[#443a3b]">Key Results ({keyResultCards.length})</h4>
-            {!readOnly && objective.active && !objective.archived ? (
+            {canManage && objective.active && !objective.archived ? (
               <button
                 className="rounded-full border border-[#e9e3e0] px-3 py-1.5 text-[10px] font-semibold text-[#6d605b] hover:bg-[#faf8f7]"
                 onClick={onAddKeyResult}
@@ -756,7 +838,7 @@ function ObjectiveCard({
         </section>
       ) : null}
 
-      {objective.active && !objective.archived && !readOnly && (!isKeyResult || parentAllowsChanges) ? (
+      {objective.active && !objective.archived && canCheckIn && (!isKeyResult || parentAllowsChanges) ? (
         <form className="mt-4 rounded-2xl border border-[#eee7e2] p-4" onSubmit={submit}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-[11px] font-bold text-[#443a3b]">Check-in diário</h4>
@@ -817,7 +899,7 @@ function ObjectiveCard({
                       <span className="mt-1 block">Editado por {item.updated_by_email} · {formatDateTime(item.updated_at)}</span>
                     ) : null}
                   </p>
-                  {!readOnly ? (
+                  {canManage ? (
                     <button
                       className="justify-self-start text-[9px] font-semibold text-[#8a5b38] hover:text-[#510f1d] sm:col-start-2"
                       onClick={() => onEditCheckIn(item)}
@@ -927,20 +1009,79 @@ function ObjectiveEditor({
   objective,
   parentObjectiveId,
   parentAreaId,
+  parentObjective,
+  role,
+  currentUserId,
+  objectives,
+  collaborators,
+  availableCollaborators,
   areas,
+  products,
   onClose,
   onSave,
 }: {
   objective: Objective | null;
   parentObjectiveId: string | null;
   parentAreaId: string | null;
+  parentObjective: Objective | null;
+  role: ObjectivesData["role"];
+  currentUserId: string;
+  objectives: Objective[];
+  collaborators: ObjectiveCollaborator[];
+  availableCollaborators: SimpleCollaborator[];
   areas: ObjectiveArea[];
+  products: ObjectiveProduct[];
   onClose: () => void;
   onSave: (payload: ObjectivePayload, objective: Objective | null) => Promise<void>;
 }) {
   const [valueType, setValueType] = useState<ObjectiveValueType>(objective?.value_type ?? "number");
+  const [scopeType, setScopeType] = useState<ObjectivePayload["scopeType"]>(
+    objective?.scope_type ?? parentObjective?.scope_type ?? (role === "collaborator" ? "collaborator" : "department"),
+  );
+  const [areaId, setAreaId] = useState(() => {
+    if (objective) return objective.area_id ?? "";
+    if (parentObjective) return parentObjective.area_id ?? "";
+    if (parentObjectiveId) return parentAreaId ?? "";
+    return role === "collaborator" ? "" : areas[0]?.id ?? "";
+  });
+  const [assignedTo, setAssignedTo] = useState(
+    objective?.assigned_to ?? parentObjective?.assigned_to ?? (role === "collaborator" ? currentUserId : ""),
+  );
+  const [productId, setProductId] = useState(objective?.product_id ?? "");
+  const [additionalCollaborators, setAdditionalCollaborators] = useState<string[]>([]);
+  const [periodType, setPeriodType] = useState<ObjectivePeriodType>(
+    objective?.period_type ?? parentObjective?.period_type ?? "daily",
+  );
+  const [periodAnchor, setPeriodAnchor] = useState(
+    objective?.period_start ?? parentObjective?.period_start ?? luandaToday(),
+  );
+  const [alignedObjectiveId, setAlignedObjectiveId] = useState(objective?.aligned_objective_id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const effectiveScopeType = parentObjective?.scope_type ?? scopeType;
+  const effectiveAreaId = parentObjective ? parentObjective.area_id : scopeType === "company" ? null : areaId || null;
+  const effectiveAssignedTo = effectiveScopeType === "collaborator"
+    ? parentObjective?.assigned_to ?? (role === "collaborator" ? currentUserId : assignedTo || null)
+    : null;
+  const assignableCollaborators = collaborators.filter((member) =>
+    !effectiveAreaId || member.areaIds.includes(effectiveAreaId),
+  );
+  const periodStart = objectivePeriodStart(periodType, periodAnchor);
+  const alignmentCandidates = objectives.filter((candidate) => {
+    if (candidate.id === objective?.id || candidate.parent_objective_id ||
+        candidate.archived || !candidate.active || !candidate.period_type ||
+        candidate.scope_type !== effectiveScopeType ||
+        candidate.area_id !== effectiveAreaId ||
+        candidate.assigned_to !== effectiveAssignedTo ||
+        !canAlignObjective(periodType, candidate.period_type)) return false;
+    const candidateEnd = candidate.period_start
+      ? objectivePeriodEnd(candidate.period_type, candidate.period_start)
+      : null;
+    return Boolean(
+      periodStart && candidate.period_start && candidateEnd &&
+      periodStart >= candidate.period_start && periodStart < candidateEnd,
+    );
+  });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -954,16 +1095,39 @@ function ObjectiveEditor({
       setSaving(false);
       return;
     }
+    if (!periodStart) {
+      setError("Indique uma data válida para o período.");
+      setSaving(false);
+      return;
+    }
+    const selectedAreaId = parentObjective
+      ? parentObjective.area_id
+      : scopeType === "company"
+        ? null
+        : String(form.get("areaId") ?? "") || null;
+    const selectedAssignedTo = effectiveScopeType === "collaborator"
+      ? parentObjective
+        ? parentObjective.assigned_to
+        : role === "collaborator"
+          ? currentUserId
+          : String(form.get("assignedTo") ?? "") || null
+      : null;
     const payload: ObjectivePayload = {
       title: String(form.get("title") ?? ""),
       description: String(form.get("description") ?? ""),
-      areaId: parentAreaId ?? String(form.get("areaId") ?? ""),
+      scopeType: effectiveScopeType,
+      areaId: selectedAreaId,
+      assignedTo: selectedAssignedTo,
+      periodType,
+      periodStart: parentObjective?.period_start ?? periodStart,
+      alignedObjectiveId: parentObjective ? null : String(form.get("alignedObjectiveId") ?? "") || null,
       parentObjectiveId,
       dueDate: String(form.get("dueDate") ?? "") || null,
       valueType,
       targetValue: target.value,
       unit: String(form.get("unit") ?? ""),
       active: form.get("active") === "on",
+      productId: String(form.get("productId") ?? "") || null,
     };
     try {
       await onSave(payload, objective);
@@ -997,17 +1161,98 @@ function ObjectiveEditor({
             Descrição (opcional)
             <textarea className="mt-1 min-h-20 w-full rounded-xl border border-[#e9e3e0] px-3 py-2 text-[12px] text-[#302829]" defaultValue={objective?.description} maxLength={2000} name="description" />
           </label>
-          {parentObjectiveId ? (
+          {parentObjectiveId && parentObjective ? (
             <p className="rounded-xl bg-[#faf8f6] px-3 py-2.5 text-[10px] text-[#817773]">
-              Este KR ficará associado à área do objectivo principal.
+              Este KR herda o âmbito, o período e a atribuição do objectivo principal.
             </p>
           ) : (
-            <label className="block text-[10px] font-semibold text-[#817773]">
-              Área
-              <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" defaultValue={objective?.area_id ?? areas[0]?.id ?? ""} name="areaId" required>
-                {areas.map((area) => <option key={area.id} value={area.id}>{area.name}{area.active ? "" : " · inactiva"}</option>)}
-              </select>
-            </label>
+            <div className="space-y-3">
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Âmbito
+                {role === "collaborator" ? (
+                  <span className="mt-1 block rounded-xl bg-[#faf8f6] px-3 py-3 text-[11px] font-normal text-[#625858]">
+                    Objectivo pessoal
+                  </span>
+                ) : (
+                  <select
+                    className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]"
+                    onChange={(event) => {
+                      const nextScope = event.target.value as ObjectivePayload["scopeType"];
+                      setScopeType(nextScope);
+                      setAlignedObjectiveId("");
+                    }}
+                    value={scopeType}
+                  >
+                    {role === "admin" ? <option value="company">Empresa</option> : null}
+                    <option value="department">Departamento</option>
+                    <option value="collaborator">Colaborador</option>
+                  </select>
+                )}
+              </label>
+              {scopeType !== "company" ? (
+                <label className="block text-[10px] font-semibold text-[#817773]">
+                  Departamento{scopeType === "collaborator" && role === "admin" ? " (opcional)" : ""}
+                  <select
+                    className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]"
+                    name="areaId"
+                    onChange={(event) => {
+                      const nextAreaId = event.target.value;
+                      setAreaId(nextAreaId);
+                      setAlignedObjectiveId("");
+                      if (scopeType === "collaborator" && assignedTo) {
+                        const selected = collaborators.find((member) => member.id === assignedTo);
+                        if (selected && nextAreaId && !selected.areaIds.includes(nextAreaId)) setAssignedTo("");
+                      }
+                    }}
+                    required={scopeType === "department" || role === "manager"}
+                    value={areaId}
+                  >
+                    <option value="">Sem departamento</option>
+                    {areas.map((area) => <option key={area.id} value={area.id}>{area.name}{area.active ? "" : " · inactiva"}</option>)}
+                  </select>
+                </label>
+              ) : null}
+              {scopeType === "collaborator" ? (
+                role === "collaborator" ? (
+                  <p className="rounded-xl bg-[#faf8f6] px-3 py-2.5 text-[10px] text-[#817773]">
+                    Este objectivo ficará atribuído à sua conta.
+                  </p>
+                ) : (
+                  <label className="block text-[10px] font-semibold text-[#817773]">
+                    Colaborador
+                    <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" name="assignedTo" onChange={(event) => {
+                      setAssignedTo(event.target.value);
+                      setAlignedObjectiveId("");
+                    }} required value={assignedTo}>
+                      <option value="">Seleccionar colaborador</option>
+                      {assignableCollaborators.map((member) => <option key={member.id} value={member.id}>{member.email}</option>)}
+                    </select>
+                  </label>
+                )
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-[10px] font-semibold text-[#817773]">
+                  Periodicidade
+                  <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" onChange={(event) => {
+                    setPeriodType(event.target.value as ObjectivePeriodType);
+                    setAlignedObjectiveId("");
+                  }} value={periodType}>
+                    {objectivePeriodTypes.map((type) => <option key={type} value={type}>{periodTypeLabel(type)}</option>)}
+                  </select>
+                </label>
+                <label className="block text-[10px] font-semibold text-[#817773]">
+                  Data de referência
+                  <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" name="periodAnchor" onChange={(event) => setPeriodAnchor(event.target.value)} required type="date" value={periodAnchor} />
+                </label>
+              </div>
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Alinhado com (opcional)
+                <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" name="alignedObjectiveId" onChange={(event) => setAlignedObjectiveId(event.target.value)} value={alignedObjectiveId}>
+                  <option value="">Sem alinhamento</option>
+                  {alignmentCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.title} · {periodTypeLabel(candidate.period_type!)}</option>)}
+                </select>
+              </label>
+            </div>
           )}
           <label className="block text-[10px] font-semibold text-[#817773]">
             Data de fim (opcional)
@@ -1033,6 +1278,26 @@ function ObjectiveEditor({
             type={valueType}
             unit={String(objective?.unit ?? "")}
           />
+          {!parentObjectiveId ? (
+            <div className="space-y-3">
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Produto associado (opcional)
+                <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" name="productId" onChange={(event) => setProductId(event.target.value)} value={productId}>
+                  <option value="">Sem produto</option>
+                  {products.map((product) => <option key={product.slug} value={product.slug}>{product.title}</option>)}
+                </select>
+              </label>
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Colaboradores adicionais (opcional)
+                <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" multiple onChange={(event) => {
+                  const selected = Array.from(event.target.selectedOptions, (option) => option.value);
+                  setAdditionalCollaborators(selected);
+                }} value={additionalCollaborators}>
+                  {availableCollaborators.map((collaborator) => <option key={collaborator.id} value={collaborator.id}>{collaborator.email}</option>)}
+                </select>
+              </label>
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-[11px] font-semibold text-[#554b4b]">
             <input defaultChecked={objective?.active ?? true} name="active" type="checkbox" />
             {parentObjectiveId ? "KR activo" : "Objectivo activo"}
@@ -1114,13 +1379,19 @@ function ObjectiveValueInput({
 type ObjectivePayload = {
   title: string;
   description: string;
-  areaId: string;
+  scopeType: "company" | "department" | "collaborator";
+  areaId: string | null;
+  assignedTo: string | null;
+  periodType: ObjectivePeriodType;
+  periodStart: string;
+  alignedObjectiveId: string | null;
   parentObjectiveId: string | null;
   dueDate: string | null;
   valueType: ObjectiveValueType;
   targetValue: unknown;
   unit: string;
   active: boolean;
+  productId: string | null;
 };
 
 function parseInputValue(
@@ -1160,24 +1431,42 @@ function isObjectiveResponse(value: unknown): value is {
   checkins: ObjectiveCheckIn[];
   edits: ObjectiveCheckInEdit[];
   areas: ObjectiveArea[];
+  collaborators: ObjectiveCollaborator[];
+  products: ObjectiveProduct[];
+  availableCollaborators: SimpleCollaborator[];
+  userId: string;
+  manageableAreaIds: string[];
   role: ObjectivesData["role"];
-  readOnly: boolean;
 } {
   if (typeof value !== "object" || value === null ||
       !("objectives" in value) || !Array.isArray(value.objectives) ||
       !("checkins" in value) || !Array.isArray(value.checkins) ||
       !("edits" in value) || !Array.isArray(value.edits) ||
       !("areas" in value) || !Array.isArray(value.areas) ||
-      !("role" in value) || !["admin", "manager", "collaborator"].includes(String(value.role)) ||
-      !("readOnly" in value) || typeof value.readOnly !== "boolean") return false;
+      !("collaborators" in value) || !Array.isArray(value.collaborators) ||
+      !("products" in value) || !Array.isArray(value.products) ||
+      !("availableCollaborators" in value) || !Array.isArray(value.availableCollaborators) ||
+      !("userId" in value) || typeof value.userId !== "string" ||
+      !("manageableAreaIds" in value) || !Array.isArray(value.manageableAreaIds) ||
+      !("role" in value) || !["admin", "manager", "collaborator"].includes(String(value.role))) return false;
   return value.objectives.every((item: unknown) =>
     typeof item === "object" && item !== null &&
     "id" in item && typeof item.id === "string" &&
-    "area_id" in item && typeof item.area_id === "string" &&
+    "area_id" in item && (typeof item.area_id === "string" || item.area_id === null) &&
+    "scope_type" in item && ["company", "department", "collaborator"].includes(String(item.scope_type)) &&
+    "assigned_to" in item && (typeof item.assigned_to === "string" || item.assigned_to === null) &&
+    "period_type" in item && (
+      (typeof item.period_type === "string" &&
+        objectivePeriodTypes.includes(item.period_type as ObjectivePeriodType)) ||
+      item.period_type === null
+    ) &&
+    "period_start" in item && (typeof item.period_start === "string" || item.period_start === null) &&
+    "aligned_objective_id" in item && (typeof item.aligned_objective_id === "string" || item.aligned_objective_id === null) &&
     "parent_objective_id" in item &&
     (typeof item.parent_objective_id === "string" || item.parent_objective_id === null) &&
     "due_date" in item && (typeof item.due_date === "string" || item.due_date === null) &&
     "archived" in item && typeof item.archived === "boolean" &&
+    "product_id" in item && (typeof item.product_id === "string" || item.product_id === null) &&
     "title" in item && typeof item.title === "string" &&
     "description" in item && typeof item.description === "string" &&
     "value_type" in item && typeof item.value_type === "string" &&
@@ -1210,13 +1499,28 @@ function isObjectiveResponse(value: unknown): value is {
     "name" in item && typeof item.name === "string" &&
     "slug" in item && typeof item.slug === "string" &&
     "active" in item && typeof item.active === "boolean",
-  );
+  ) && value.collaborators.every((item: unknown) =>
+    typeof item === "object" && item !== null &&
+    "id" in item && typeof item.id === "string" &&
+    "email" in item && typeof item.email === "string" &&
+    "areaIds" in item && Array.isArray(item.areaIds) &&
+    item.areaIds.every((areaId) => typeof areaId === "string"),
+  ) && value.availableCollaborators.every((item: unknown) =>
+    typeof item === "object" && item !== null &&
+    "id" in item && typeof item.id === "string" &&
+    "email" in item && typeof item.email === "string",
+  ) && value.products.every((item: unknown) =>
+    typeof item === "object" && item !== null &&
+    "slug" in item && typeof item.slug === "string" &&
+    "title" in item && typeof item.title === "string" &&
+    "image" in item && (typeof item.image === "string" || item.image === null),
+  ) && value.manageableAreaIds.every((areaId) => typeof areaId === "string");
 }
 
 function objectiveLoadError(code: unknown, status: number) {
   switch (code) {
     case "objectives_schema_missing":
-      return "A tabela de objectivos ou as colunas de prazo, arquivo e KRs ainda não existem. Aplique as migrações 20261113020000, 20261113030000, 20261113040000 e 20261113080000 no Supabase.";
+      return "A estrutura de objectivos, âmbitos e períodos ainda não existe. Aplique as migrações de objectivos 20261113020000, 20261113030000, 20261113040000, 20261113080000 e 20261124010000 no Supabase.";
     case "areas_schema_missing":
       return "As tabelas das áreas ainda não existem. Aplique a migração 20261113030000 no Supabase.";
     case "checkins_schema_missing":
@@ -1249,6 +1553,107 @@ function ObjectiveStat({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-xl font-bold text-[#342c2d]">{value}</p>
     </div>
   );
+}
+
+function ObjectiveReportExport() {
+  const [period, setPeriod] = useState<ReportPeriod>("day");
+  const [date, setDate] = useState(luandaToday());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function download(format: "csv" | "pdf") {
+    setBusy(true);
+    setError("");
+    try {
+      const query = new URLSearchParams({ period, date, format });
+      const response = await fetch(`/api/backoffice/objectives/reports?${query}`, { cache: "no-store" });
+      if (!response.ok) {
+        const result: unknown = await response.json().catch(() => null);
+        const code = typeof result === "object" && result !== null && "error" in result
+          ? result.error
+          : null;
+        throw new Error(reportExportError(code, response.status));
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] ??
+        `kitadi-relatorio-objectivos-${period}-${date}.${format}`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível exportar o relatório.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-label="Exportar relatório de objectivos" className="mt-4 rounded-[18px] border border-[#eee9e6] bg-white p-4 sm:flex sm:items-end sm:justify-between sm:gap-4">
+      <div>
+        <div className="flex items-center gap-3">
+          <Image
+            alt="Kitadi"
+            className="h-auto w-[86px] shrink-0"
+            height={36}
+            src="/kitadi-logo.png"
+            width={88}
+          />
+          <div>
+            <h2 className="text-sm font-bold text-[#342c2d]">Relatório de objectivos</h2>
+            <p className="mt-1 text-[10px] leading-4 text-[#918783]">
+              Objectivos criados ou actualizados e progresso registado. Não inclui actividade comercial.
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-3">
+          <label className="text-[10px] font-semibold text-[#817773]">
+            Período
+            <select className="mt-1 block min-h-9 rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" onChange={(event) => setPeriod(event.target.value as ReportPeriod)} value={period}>
+              <option value="day">Dia</option>
+              <option value="week">Semana</option>
+              <option value="month">Mês</option>
+            </select>
+          </label>
+          <label className="text-[10px] font-semibold text-[#817773]">
+            Data de referência
+            <input className="mt-1 block min-h-9 rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+          </label>
+        </div>
+        {error ? <p className="mt-2 text-[10px] text-red-700" role="alert">{error}</p> : null}
+      </div>
+      <div className="mt-3 flex gap-2 sm:mt-0">
+        <button className="min-h-9 rounded-full border border-[#e9e3e0] px-4 text-[10px] font-semibold text-[#625858] disabled:opacity-50" disabled={busy || !date} onClick={() => void download("csv")} type="button">
+          {busy ? "A preparar…" : "Descarregar CSV"}
+        </button>
+        <button className="min-h-9 rounded-full bg-[#510f1d] px-4 text-[10px] font-semibold text-white disabled:opacity-50" disabled={busy || !date} onClick={() => void download("pdf")} type="button">
+          {busy ? "A preparar…" : "Descarregar PDF"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function reportExportError(code: unknown, status: number) {
+  if (code === "report_schema_missing") {
+    return "A estrutura do relatório não está instalada. Aplique a migração de histórico de actividades no Supabase.";
+  }
+  if (code === "unauthorized" || status === 401) return "A sessão expirou. Inicie sessão novamente.";
+  if (code === "forbidden" || status === 403) return "Não tem permissão para exportar este relatório.";
+  return "Não foi possível exportar o relatório. Tente novamente e consulte os registos do servidor se o erro persistir.";
+}
+
+function periodTypeLabel(type: ObjectivePeriodType) {
+  switch (type) {
+    case "annual": return "Anual";
+    case "monthly": return "Mensal";
+    case "weekly": return "Semanal";
+    case "daily": return "Diário";
+  }
 }
 
 function displayValue(value: unknown, type: ObjectiveValueType, unit: string) {

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isValidStageChangeReason } from "../../../../lib/commercial-stage";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { requireAdmin } from "../../../../lib/supabase/require-admin";
 
@@ -140,6 +141,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     !("toStage" in body) ||
     typeof body.toStage !== "string" ||
     !stages.has(body.toStage) ||
+    !("stageChangeReason" in body) ||
+    typeof body.stageChangeReason !== "string" ||
+    body.stageChangeReason.length > 300 ||
     !("editOpportunityId" in body) ||
     typeof body.editOpportunityId !== "string" ||
     !uuidPattern.test(body.editOpportunityId) ||
@@ -157,9 +161,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "invalid_update" }, { status: 400 });
   }
 
+  if (!isValidStageChangeReason(body.fromStage, body.toStage, body.stageChangeReason)) {
+    return NextResponse.json({ error: "stage_change_reason_required" }, { status: 400 });
+  }
+
   const lostReason = "lostReason" in body && typeof body.lostReason === "string"
     ? body.lostReason.trim()
     : "";
+  const stageChangeReason = body.stageChangeReason.trim();
   if (body.toStage === "lost" && (!lostReason || lostReason.length > 300)) {
     return NextResponse.json({ error: "lost_reason_required" }, { status: 400 });
   }
@@ -176,6 +185,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       p_actor_id: authorization.user.id,
       p_actor_email: authorization.user.email ?? "",
       p_lost_reason: body.toStage === "lost" ? lostReason : null,
+      p_stage_change_reason: body.fromStage === body.toStage ? null : stageChangeReason,
     },
   );
   if (error) {

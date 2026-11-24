@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST='{"app/lib/qr-code-service.ts -> qrcode":{"id":6601,"files":["static/chunks/6601.2d3f805b21e76354.js"]}}';

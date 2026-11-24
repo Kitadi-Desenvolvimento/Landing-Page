@@ -164,6 +164,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/backoffice/commercial/reports/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/commercial/reports">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/commercial/reports/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/backoffice/commercial/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/commercial">> = Specific
@@ -258,6 +267,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/objectives/[id]">> = Specific
   const handler = {} as typeof import("../../app/api/backoffice/objectives/[id]/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/api/backoffice/objectives/reports/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/objectives/reports">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/objectives/reports/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -429,15 +447,6 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/site-analytics">> = Specific
   const handler = {} as typeof import("../../app/api/site-analytics/route.js")
-  type __Check = __IsExpected<typeof handler>
-  // @ts-ignore
-  type __Unused = __Check
-}
-
-// Validate ../../app/api/students/verification/confirm/route.ts
-{
-  type __IsExpected<Specific extends RouteHandlerConfig<"/api/students/verification/confirm">> = Specific
-  const handler = {} as typeof import("../../app/api/students/verification/confirm/route.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

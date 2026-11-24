@@ -586,10 +586,7 @@ export default function Checkout({
                 </p>
               </div>
               {studentEnabled ? (
-                <StudentVerification value={verifiedStudent} onChange={(value) => {
-                  setVerifiedStudent(value);
-                  if (value) setEnrollment((current) => ({ ...current, ...value.student }));
-                }} />
+                <StudentVerification value={verifiedStudent} onChange={setVerifiedStudent} />
               ) : null}
 
               <fieldset className="mt-6">
@@ -650,7 +647,6 @@ export default function Checkout({
                       setEnrollment({ ...enrollment, name: event.target.value })
                     }
                     placeholder="O seu nome completo"
-                    readOnly={Boolean(verifiedStudent)}
                     required
                     value={enrollment.name}
                   />
@@ -672,7 +668,6 @@ export default function Checkout({
                       setEnrollment({ ...enrollment, email: event.target.value })
                     }
                     placeholder="nome@exemplo.com"
-                    readOnly={Boolean(verifiedStudent)}
                     required
                     type="email"
                     value={enrollment.email}
@@ -712,7 +707,6 @@ export default function Checkout({
                   }
                   pattern="^\+?[0-9 ]{9,17}$"
                   placeholder="+244 923 000 000"
-                  readOnly={Boolean(verifiedStudent)}
                   required
                   type="tel"
                   value={enrollment.phone}
@@ -826,15 +820,16 @@ export default function Checkout({
             <span className="font-medium text-[#211d1e]">
               Precisa de ajuda?
             </span>
-            <a className="hover:text-[#862f3b]" href="tel:+244927313220">
-              +244 927 313 220
+            <span className="font-medium text-[#211d1e]">Comercial:</span>
+            <a className="hover:text-[#862f3b]" href="tel:+244936250151">
+              +244 936 250 151
             </a>
             <span aria-hidden="true">·</span>
             <a
               className="hover:text-[#862f3b]"
-              href="mailto:contacto@kitadi.co.ao"
+              href="mailto:comercial@kitadi.co.ao"
             >
-              contacto@kitadi.co.ao
+              comercial@kitadi.co.ao
             </a>
           </p>
         </SectionContainer>

@@ -1,7 +1,19 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { parseObjective } from "../../../lib/objectives";
+import {
+  canReadObjective,
+  loadObjectiveAccess,
+  validateObjectiveRelations,
+  validateObjectiveScope,
+} from "../../../lib/objective-access";
+import {
+  loadAvailableProducts,
+  loadObjectiveCollaborators,
+  type ObjectiveCollaborator,
+  type ObjectiveProduct,
+} from "../../../lib/objective-products";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
-import { canManageArea, requireBackofficeUser } from "../../../lib/supabase/require-admin";
+import { requireBackofficeUser } from "../../../lib/supabase/require-admin";
 
 function isSchemaError(code?: string) {
   return Boolean(code && (
@@ -24,46 +36,69 @@ export async function GET() {
   }
 
   const admin = createSupabaseAdminClient();
-  let areasQuery = admin.from("objective_areas")
+  let access;
+  try {
+    access = await loadObjectiveAccess(
+      authorization.role,
+      authorization.user.id,
+      authorization.role === "manager" ? authorization.areaIds : null,
+    );
+  } catch (error) {
+    console.error("[backoffice] objective access load failed", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "objective_access_unavailable" }, { status: 503 });
+  }
+
+  const areasResult = await admin.from("objective_areas")
     .select("id,name,slug,active,created_at,updated_at,created_by")
     .order("name");
-  let objectivesQuery = admin.from("objectives")
-    .select("id,area_id,parent_objective_id,due_date,archived,title,description,value_type,target_value,unit,active,created_at,updated_at,created_by,updated_by")
-    .order("active", { ascending: false }).order("title");
-  if (authorization.role === "manager") {
-    if (authorization.areaIds.length === 0) {
-      return NextResponse.json({
-        objectives: [],
-        checkins: [],
-        edits: [],
-        areas: [],
-        role: authorization.role,
-        readOnly: false,
-      }, { headers: { "Cache-Control": "no-store" } });
-    }
-    areasQuery = areasQuery.in("id", authorization.areaIds);
-    objectivesQuery = objectivesQuery.in("area_id", authorization.areaIds);
-  }
-
-  const [{ data: objectives, error: objectivesError }, { data: areas, error: areasError }] =
-    await Promise.all([objectivesQuery, areasQuery]);
-
-  if (objectivesError) {
-    console.error("[backoffice] objective data load failed", objectivesError.code ?? "unknown");
-    return NextResponse.json(
-      { error: isSchemaError(objectivesError.code) ? "objectives_schema_missing" : "objectives_unavailable" },
-      { status: isSchemaError(objectivesError.code) ? 503 : 500 },
-    );
-  }
-  if (areasError) {
-    console.error("[backoffice] objective areas load failed", areasError.code ?? "unknown");
+  if (areasResult.error) {
+    console.error("[backoffice] objective areas load failed", areasResult.error.code ?? "unknown");
     return NextResponse.json({
-      error: isSchemaError(areasError.code) ? "areas_schema_missing" : "areas_unavailable",
+      error: isSchemaError(areasResult.error.code) ? "areas_schema_missing" : "areas_unavailable",
     }, { status: 503 });
   }
+  const visibleAreas = (areasResult.data ?? []).filter((area) =>
+    access.areaIds === null || access.areaIds.includes(area.id),
+  );
+  const objectives = [];
+  try {
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin.from("objectives")
+        .select("id,area_id,scope_type,assigned_to,period_type,period_start,aligned_objective_id,parent_objective_id,due_date,archived,product_id,title,description,value_type,target_value,unit,active,created_at,updated_at,created_by,updated_by")
+        .order("active", { ascending: false })
+        .order("title")
+        .range(from, from + 999);
+      if (error) throw error;
+      objectives.push(...(data ?? []));
+      if (!data || data.length < 1000) break;
+    }
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "unknown";
+    console.error("[backoffice] objective data load failed", code);
+    return NextResponse.json(
+      { error: isSchemaError(code) ? "objectives_schema_missing" : "objectives_unavailable" },
+      { status: isSchemaError(code) ? 503 : 500 },
+    );
+  }
+  const visibleObjectives = objectives.filter((objective) =>
+    canReadObjective(access, objective),
+  );
 
-  const checkins = [];
-  const objectiveIds = (objectives ?? []).map((objective) => objective.id);
+  let products: ObjectiveProduct[] = [];
+  let availableCollaborators: ObjectiveCollaborator[] = [];
+  try {
+    products = await loadAvailableProducts();
+    availableCollaborators = await loadObjectiveCollaborators(
+      access.areaIds ?? null,
+    );
+  } catch (error) {
+    console.error("[backoffice] objective products/collaborators load failed", error instanceof Error ? error.message : "unknown");
+  }
+
+  const allCheckins = [];
+  const objectiveIds = visibleObjectives.map((objective) => objective.id);
   if (objectiveIds.length > 0) {
     for (let from = 0; ; from += 1000) {
       const { data, error } = await admin
@@ -80,11 +115,21 @@ export async function GET() {
           { status: isSchemaError(error.code) ? 503 : 500 },
         );
       }
-      checkins.push(...(data ?? []));
+      allCheckins.push(...(data ?? []));
       if (!data || data.length < 1000) break;
     }
   }
 
+  const objectiveById = new Map(visibleObjectives.map((objective) => [objective.id, objective]));
+  const checkins = allCheckins.filter((checkin) => {
+    const objective = objectiveById.get(checkin.objective_id);
+    if (!objective) return false;
+    if (access.role === "collaborator") return checkin.checked_in_by === access.userId;
+    if (access.role === "manager" && objective.scope_type === "company") {
+      return access.memberIds?.includes(checkin.checked_in_by ?? "") ?? false;
+    }
+    return true;
+  });
   const checkinIds = checkins.map((checkin) => checkin.id);
   let edits: unknown[] = [];
   if (checkinIds.length > 0) {
@@ -108,12 +153,16 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      objectives: objectives ?? [],
+      objectives: visibleObjectives,
       checkins,
       edits,
-      areas: areas ?? [],
+      areas: visibleAreas,
+      products,
+      availableCollaborators,
       role: authorization.role,
-      readOnly: authorization.role === "collaborator",
+      userId: authorization.user.id,
+      manageableAreaIds: access.areaIds ?? [],
+      collaborators: access.collaborators,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
@@ -143,38 +192,31 @@ export async function POST(request: NextRequest) {
   }
   const objective = parseObjective(payload);
   if (!objective) return NextResponse.json({ error: "invalid_objective" }, { status: 400 });
-  if (!canManageArea(authorization, objective.area_id)) {
-    return NextResponse.json({ error: "area_forbidden" }, { status: 403 });
+
+  let access;
+  try {
+    access = await loadObjectiveAccess(
+      authorization.role,
+      authorization.user.id,
+      authorization.role === "manager" ? authorization.areaIds : null,
+    );
+    const scopeError = await validateObjectiveScope(access, objective);
+    if (scopeError) {
+      return NextResponse.json(
+        { error: scopeError },
+        { status: scopeError === "objective_scope_forbidden" ? 403 : 400 },
+      );
+    }
+    const relationError = await validateObjectiveRelations(access, objective);
+    if (relationError) {
+      return NextResponse.json({ error: relationError }, { status: 400 });
+    }
+  } catch (error) {
+    console.error("[backoffice] objective validation failed", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "objective_validation_unavailable" }, { status: 503 });
   }
 
   const admin = createSupabaseAdminClient();
-  const { data: area, error: areaError } = await admin
-    .from("objective_areas")
-    .select("id")
-    .eq("id", objective.area_id)
-    .eq("active", true)
-    .maybeSingle();
-  if (areaError) {
-    console.error("[backoffice] objective area validation failed", areaError.code);
-    return NextResponse.json({ error: "areas_unavailable" }, { status: 503 });
-  }
-  if (!area) return NextResponse.json({ error: "invalid_area" }, { status: 400 });
-
-  if (objective.parent_objective_id) {
-    const { data: parent, error: parentError } = await admin
-      .from("objectives")
-      .select("id,area_id,parent_objective_id,active,archived")
-      .eq("id", objective.parent_objective_id)
-      .maybeSingle();
-    if (parentError) {
-      console.error("[backoffice] parent objective validation failed", parentError.code);
-      return NextResponse.json({ error: "objective_unavailable" }, { status: 503 });
-    }
-    if (!parent || parent.area_id !== objective.area_id || parent.parent_objective_id ||
-        !parent.active || parent.archived || !canManageArea(authorization, parent.area_id)) {
-      return NextResponse.json({ error: "invalid_parent_objective" }, { status: 400 });
-    }
-  }
 
   const { data, error } = await admin
     .from("objectives")

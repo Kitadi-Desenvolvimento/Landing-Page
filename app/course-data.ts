@@ -670,16 +670,21 @@ export function getCourseVariant(course: Course, variantId?: string | null) {
 }
 
 export const kitadiWhatsAppNumber = "244936250151";
-export const checkoutPriceLimit = 100_000;
+export const maxProductPriceKz = 2_000_000_000;
+
+function isValidCheckoutPrice(amount: number | undefined) {
+  return typeof amount === "number" &&
+    Number.isSafeInteger(amount) &&
+    amount > 0 &&
+    amount <= maxProductPriceKz;
+}
 
 export function offersCheckout(course: Course) {
   return (
-    course.priceAmount > 0 &&
-    course.priceAmount < checkoutPriceLimit &&
+    isValidCheckoutPrice(course.priceAmount) &&
     course.variants.length > 0 &&
     course.variants.every(
-      (variant) =>
-        variant.priceAmount > 0 && variant.priceAmount < checkoutPriceLimit,
+      (variant) => isValidCheckoutPrice(variant.priceAmount),
     )
   );
 }
@@ -691,11 +696,7 @@ export function offersPublicCheckout(product: {
 }) {
   if (product.checkoutEnabled !== true) return false;
   if (product.course) return offersCheckout(product.course);
-  return (
-    Number.isSafeInteger(product.priceAmount) &&
-    (product.priceAmount ?? 0) > 0 &&
-    (product.priceAmount ?? 0) < checkoutPriceLimit
-  );
+  return isValidCheckoutPrice(product.priceAmount);
 }
 
 export function getProductPath(course: Pick<Course, "slug">) {

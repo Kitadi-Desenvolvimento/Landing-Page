@@ -1,4 +1,5 @@
 import type { ProductData } from "../product-types";
+import { maxProductPriceKz } from "../course-data";
 
 export type ProductVariantInput = {
   id: string;
@@ -60,7 +61,7 @@ export function parseProductInput(value: unknown): ProductInput | null {
       priceAmount === null ||
       (Number.isSafeInteger(priceAmount) &&
         priceAmount >= 0 &&
-        priceAmount <= 2_000_000_000)
+        priceAmount <= maxProductPriceKz)
     )
     || !Array.isArray(variants)
   ) {
@@ -78,7 +79,7 @@ export function parseProductInput(value: unknown): ProductInput | null {
       typeof variant.priceAmount !== "number" ||
       !Number.isSafeInteger(variant.priceAmount) ||
       variant.priceAmount < 0 ||
-      variant.priceAmount > 2_000_000_000
+      variant.priceAmount > maxProductPriceKz
     ) {
       return null;
     }
