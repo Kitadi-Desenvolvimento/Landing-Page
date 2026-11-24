@@ -326,6 +326,15 @@ export default function Checkout({
   });
 
   useEffect(() => {
+    if (verifiedStudent?.student.name && !enrollment.name) {
+      setEnrollment((current) => ({
+        ...current,
+        name: verifiedStudent.student.name,
+      }));
+    }
+  }, [verifiedStudent?.student.name]);
+
+  useEffect(() => {
     if (!paymentCharge || paymentCharge.status !== "pending") return;
 
     let active = true;
