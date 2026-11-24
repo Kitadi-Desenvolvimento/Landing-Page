@@ -1,8 +1,7 @@
 {
   "version": 4,
   "routes": {
-    "/_not-found": {
-      "initialStatus": 404,
+    "/formacoes": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -15,32 +14,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/_not-found",
-      "dataRoute": "/_not-found.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/backoffice/definir-senha": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "next-action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/backoffice/definir-senha",
-      "dataRoute": "/backoffice/definir-senha.rsc",
+      "srcRoute": "/formacoes",
+      "dataRoute": "/formacoes.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -74,7 +49,8 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/formacoes": {
+    "/_not-found": {
+      "initialStatus": 404,
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -87,8 +63,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/formacoes",
-      "dataRoute": "/formacoes.rsc",
+      "srcRoute": "/_not-found",
+      "dataRoute": "/_not-found.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -113,6 +89,30 @@
       "initialRevalidateSeconds": false,
       "srcRoute": "/backoffice/acesso-negado",
       "dataRoute": "/backoffice/acesso-negado.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/backoffice/definir-senha": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "next-action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/backoffice/definir-senha",
+      "dataRoute": "/backoffice/definir-senha.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
