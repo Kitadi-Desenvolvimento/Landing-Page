@@ -37,16 +37,22 @@ export async function loadObjectiveCollaborators(
 ): Promise<ObjectiveCollaborator[]> {
   const admin = createSupabaseAdminClient();
   
-  let query = admin.auth.admin.listUsers({ perPage: 1000 });
+  const collaborators: ObjectiveCollaborator[] = [];
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) return [];
+    
+    collaborators.push(
+      ...data.users
+        .filter((user) => user.email && user.app_metadata?.role === "collaborator")
+        .map((user) => ({
+          id: user.id,
+          email: user.email || "",
+        })),
+    );
+    
+    if (data.users.length < 1000) break;
+  }
   
-  const { data, error } = await query;
-  if (error || !data) return [];
-  
-  return data.users
-    .filter((user) => user.email && user.app_metadata?.role === "collaborator")
-    .map((user) => ({
-      id: user.id,
-      email: user.email || "",
-    }))
-    .sort((a, b) => a.email.localeCompare(b.email));
+  return collaborators.sort((a, b) => a.email.localeCompare(b.email));
 }
