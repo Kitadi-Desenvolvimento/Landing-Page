@@ -100,7 +100,30 @@ function contactName(contact: OpportunityRow["contact"]) {
 }
 
 function numericTarget(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function formatDay(date: string) {
+  return new Intl.DateTimeFormat("pt-PT", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 10)}T00:00:00Z`));
+}
+
+function formatMeasure(value: unknown, measure?: { value_type: string; unit: string }) {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))
+      ? Number(value)
+      : null;
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  if (numeric !== null) {
+    const number = new Intl.NumberFormat("pt-PT", { maximumFractionDigits: 2 }).format(numeric);
+    if (measure?.value_type === "percentage") return `${number}%`;
+    if (measure?.value_type === "currency") return `${number} Kz`;
+    return measure?.unit ? `${number} ${measure.unit}` : number;
+  }
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return "";
 }
 
 function elapsedFraction(type: ObjectivePeriodType, start: string, end: string, now = new Date()) {
@@ -215,15 +238,17 @@ async function loadCommandActivity(input: {
   const admin = createSupabaseAdminClient();
   const objectiveTitle = new Map(input.objectives.map((objective) => [objective.id, objective.title]));
   const objectiveProduct = new Map(input.objectives.map((objective) => [objective.id, objective.product_id]));
+  const objectiveMeasure = new Map(input.objectives.map((objective) => [objective.id, { value_type: objective.value_type, unit: objective.unit }]));
   const opportunityTitle = new Map(input.opportunities.map((opportunity) => [opportunity.id, opportunity.title]));
   const opportunityProduct = new Map(input.opportunities.map((opportunity) => [opportunity.id, opportunity.product_slug]));
+  const opportunityContact = new Map(input.opportunities.map((opportunity) => [opportunity.id, contactName(opportunity.contact)]));
   const names = new Map(input.people.map((person) => [person.id, personLabel(person.displayName, person.email)]));
   const nameFor = (id: string, email: string) => names.get(id) ?? personLabel("", email);
 
   const [history, checkins, edits, commercial, registered, reconciled, blocksOpened, blocksLifted] = await Promise.all([
     rowsOrEmpty(admin.from("objective_activity_history").select("id,objective_id,objective_title,event_type,actor_id,actor_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
-    rowsOrEmpty(admin.from("objective_checkins").select("id,objective_id,checked_in_by,checked_in_by_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
-    rowsOrEmpty(admin.from("objective_checkin_edits").select("id,checkin_id,edited_by,edited_by_email,edited_at").gte("edited_at", input.bounds.from).lt("edited_at", input.bounds.to).order("edited_at", { ascending: false }).limit(200)),
+    rowsOrEmpty(admin.from("objective_checkins").select("id,objective_id,value,checked_in_by,checked_in_by_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
+    rowsOrEmpty(admin.from("objective_checkin_edits").select("id,checkin_id,previous_value,edited_by,edited_by_email,edited_at").gte("edited_at", input.bounds.from).lt("edited_at", input.bounds.to).order("edited_at", { ascending: false }).limit(200)),
     rowsOrEmpty(admin.from("crm_opportunity_history").select("id,opportunity_id,event_type,to_stage,details,changed_by,changed_by_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
     rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,created_by,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).not("created_by", "is", null).order("created_at", { ascending: false }).limit(200)),
     rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,reconciled_by,reconciled_at").gte("reconciled_at", input.bounds.from).lt("reconciled_at", input.bounds.to).not("reconciled_by", "is", null).order("reconciled_at", { ascending: false }).limit(200)),
@@ -238,23 +263,32 @@ async function loadCommandActivity(input: {
     ...(blocksLifted as { subject_type: string; subject_id: string }[]).filter((block) => block.subject_type === "opportunity").map((block) => block.subject_id),
   ])].filter((id) => id && !opportunityTitle.has(id));
   if (missingOpportunities.length > 0) {
-    const extra = await rowsOrEmpty<{ id: string; title: string; product_slug: string | null }>(
-      admin.from("crm_opportunities").select("id,title,product_slug").in("id", missingOpportunities.slice(0, 200)),
+    const extra = await rowsOrEmpty<{ id: string; title: string; product_slug: string | null; contact: OpportunityRow["contact"] }>(
+      admin.from("crm_opportunities").select("id,title,product_slug,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)").in("id", missingOpportunities.slice(0, 200)),
     );
     for (const opportunity of extra) {
       opportunityTitle.set(opportunity.id, opportunity.title);
       opportunityProduct.set(opportunity.id, opportunity.product_slug);
+      opportunityContact.set(opportunity.id, contactName(opportunity.contact));
     }
   }
 
-  const editRows = edits as { id: string; checkin_id: string; edited_by: string | null; edited_by_email: string; edited_at: string }[];
-  const missingCheckins = [...new Set(editRows.map((edit) => edit.checkin_id))];
+  const editRows = edits as { id: string; checkin_id: string; previous_value: unknown; edited_by: string | null; edited_by_email: string; edited_at: string }[];
+  const checkinValue = new Map<string, unknown>();
   const checkinObjective = new Map<string, string>();
+  for (const checkin of checkins as { id: string; objective_id: string; value: unknown }[]) {
+    checkinValue.set(checkin.id, checkin.value);
+    checkinObjective.set(checkin.id, checkin.objective_id);
+  }
+  const missingCheckins = [...new Set(editRows.map((edit) => edit.checkin_id))].filter((id) => !checkinObjective.has(id));
   if (missingCheckins.length > 0) {
-    const linked = await rowsOrEmpty<{ id: string; objective_id: string }>(
-      admin.from("objective_checkins").select("id,objective_id").in("id", missingCheckins.slice(0, 200)),
+    const linked = await rowsOrEmpty<{ id: string; objective_id: string; value: unknown }>(
+      admin.from("objective_checkins").select("id,objective_id,value").in("id", missingCheckins.slice(0, 200)),
     );
-    for (const checkin of linked) checkinObjective.set(checkin.id, checkin.objective_id);
+    for (const checkin of linked) {
+      checkinObjective.set(checkin.id, checkin.objective_id);
+      checkinValue.set(checkin.id, checkin.value);
+    }
   }
 
   const knownObjectives = new Set([...objectiveTitle.keys()]);
@@ -282,21 +316,26 @@ async function loadCommandActivity(input: {
   for (const row of history as { id: string; objective_id: string | null; objective_title: string; event_type: string; actor_id: string | null; actor_email: string; created_at: string }[]) {
     if (!actorMatches(input.person, row.actor_id) || !row.actor_id) continue;
     if (!productMatches(input.product, row.objective_id ? objectiveProduct.get(row.objective_id) : null)) continue;
-    const verb = row.event_type === "created" ? "Criou o objectivo" : row.event_type === "archived" ? "Arquivou o objectivo" : row.event_type === "restored" ? "Reactivou o objectivo" : "Actualizou o objectivo";
+    const verb = row.event_type === "created" ? "Criou a meta" : row.event_type === "archived" ? "Arquivou a meta" : row.event_type === "restored" ? "Reactivou a meta" : "Actualizou os dados da meta";
     push({ id: `objective-${row.id}`, at: row.created_at, actorId: row.actor_id, actorName: nameFor(row.actor_id, row.actor_email), domain: "objectives", verb, subject: row.objective_title });
   }
 
-  for (const row of checkins as { id: string; objective_id: string; checked_in_by: string | null; checked_in_by_email: string; created_at: string }[]) {
+  for (const row of checkins as { id: string; objective_id: string; value: unknown; checked_in_by: string | null; checked_in_by_email: string; created_at: string }[]) {
     if (!actorMatches(input.person, row.checked_in_by) || !row.checked_in_by) continue;
     if (!productMatches(input.product, objectiveProduct.get(row.objective_id))) continue;
-    push({ id: `checkin-${row.id}`, at: row.created_at, actorId: row.checked_in_by, actorName: nameFor(row.checked_in_by, row.checked_in_by_email), domain: "objectives", verb: "Registou progresso", subject: objectiveTitle.get(row.objective_id) ?? "Objectivo" });
+    const measured = formatMeasure(row.value, objectiveMeasure.get(row.objective_id));
+    push({ id: `checkin-${row.id}`, at: row.created_at, actorId: row.checked_in_by, actorName: nameFor(row.checked_in_by, row.checked_in_by_email), domain: "objectives", verb: measured ? `Registou ${measured}` : "Registou progresso sem valor", subject: objectiveTitle.get(row.objective_id) ?? "Meta" });
   }
 
   for (const row of editRows) {
     const objectiveId = checkinObjective.get(row.checkin_id);
     if (!actorMatches(input.person, row.edited_by) || !row.edited_by || !objectiveId) continue;
     if (!productMatches(input.product, objectiveProduct.get(objectiveId))) continue;
-    push({ id: `edit-${row.id}`, at: row.edited_at, actorId: row.edited_by, actorName: nameFor(row.edited_by, row.edited_by_email), domain: "objectives", verb: "Corrigiu um check-in", subject: objectiveTitle.get(objectiveId) ?? "Objectivo" });
+    const measure = objectiveMeasure.get(objectiveId);
+    const before = formatMeasure(row.previous_value, measure);
+    const after = formatMeasure(checkinValue.get(row.checkin_id), measure);
+    const verb = before && after ? `Corrigiu o progresso de ${before} para ${after}` : before ? `Corrigiu o progresso, que estava em ${before}` : "Corrigiu o progresso";
+    push({ id: `edit-${row.id}`, at: row.edited_at, actorId: row.edited_by, actorName: nameFor(row.edited_by, row.edited_by_email), domain: "objectives", verb, subject: objectiveTitle.get(objectiveId) ?? "Meta" });
   }
 
   for (const row of commercialRows) {
@@ -305,22 +344,44 @@ async function loadCommandActivity(input: {
     if (!actorMatches(input.person, row.changed_by)) continue;
     if (!productMatches(input.product, opportunityProduct.get(row.opportunity_id))) continue;
     const stage = stageLabels[row.to_stage ?? ""] ?? "nova etapa";
-    const verb = row.event_type === "created" ? "Criou a oportunidade" : row.event_type === "stage_changed" ? `Moveu para ${stage}` : row.event_type === "payment_updated" ? "Actualizou o pagamento" : "Actualizou o seguimento";
+    const contact = opportunityContact.get(row.opportunity_id) || "o contacto";
+    const verb = row.event_type === "created"
+      ? `Criou a oportunidade de ${contact}`
+      : row.event_type === "stage_changed"
+        ? `Passou ${contact} para ${stage}`
+        : row.event_type === "payment_updated"
+          ? `Actualizou o pagamento de ${contact}`
+          : `Actualizou o próximo contacto de ${contact}`;
     push({ id: `commercial-${row.id}`, at: row.created_at, actorId: row.changed_by, actorName: nameFor(row.changed_by, row.changed_by_email), domain: "commercial", verb, subject: opportunityTitle.get(row.opportunity_id) ?? "Oportunidade" });
   }
 
   for (const row of registered as { reference: string; amount_kz: number; product_title: string; course_slug: string; created_by: string | null; created_at: string }[]) {
     if (!actorMatches(input.person, row.created_by) || !row.created_by) continue;
     if (!productMatches(input.product, row.course_slug)) continue;
-    push({ id: `payment-${row.reference}`, at: row.created_at, actorId: row.created_by, actorName: nameFor(row.created_by, ""), domain: "payments", verb: "Registou o pagamento", subject: `${row.product_title} · ${formatKz(Number(row.amount_kz ?? 0))}` });
+    push({ id: `payment-${row.reference}`, at: row.created_at, actorId: row.created_by, actorName: nameFor(row.created_by, ""), domain: "payments", verb: `Registou o pagamento de ${formatKz(Number(row.amount_kz ?? 0))}`, subject: row.product_title });
   }
 
   for (const row of reconciled as { reference: string; amount_kz: number; product_title: string; course_slug: string; reconciled_by: string | null; reconciled_at: string | null }[]) {
     if (!row.reconciled_at || !actorMatches(input.person, row.reconciled_by) || !row.reconciled_by) continue;
     if (!productMatches(input.product, row.course_slug)) continue;
-    push({ id: `reconcile-${row.reference}`, at: row.reconciled_at, actorId: row.reconciled_by, actorName: nameFor(row.reconciled_by, ""), domain: "payments", verb: "Reconciliou", subject: `${row.product_title} · ${formatKz(Number(row.amount_kz ?? 0))}` });
+    push({ id: `reconcile-${row.reference}`, at: row.reconciled_at, actorId: row.reconciled_by, actorName: nameFor(row.reconciled_by, ""), domain: "payments", verb: `Conferiu o pagamento de ${formatKz(Number(row.amount_kz ?? 0))}`, subject: row.product_title });
   }
 
+  const blockIds = [
+    ...(blocksOpened as { id: string }[]).map((block) => block.id),
+    ...(blocksLifted as { id: string }[]).map((block) => block.id),
+  ];
+  const blockPeople = new Map<string, string[]>();
+  if (blockIds.length > 0) {
+    const peopleRows = await rowsOrEmpty<{ block_id: string; user_id: string }>(
+      admin.from("work_block_people").select("block_id,user_id").in("block_id", blockIds.slice(0, 200)),
+    );
+    for (const personRow of peopleRows) {
+      const personName = names.get(personRow.user_id);
+      if (!personName) continue;
+      blockPeople.set(personRow.block_id, [...(blockPeople.get(personRow.block_id) ?? []), personName]);
+    }
+  }
   const blockSubject = (subjectType: string, subjectId: string) => {
     if (subjectType === "opportunity") return { domain: "commercial" as const, title: opportunityTitle.get(subjectId) ?? "Oportunidade", product: opportunityProduct.get(subjectId) };
     return { domain: "objectives" as const, title: objectiveTitle.get(subjectId) ?? "Objectivo", product: objectiveProduct.get(subjectId) };
@@ -329,13 +390,17 @@ async function loadCommandActivity(input: {
     if (!actorMatches(input.person, row.created_by) || !row.created_by) continue;
     const subject = blockSubject(row.subject_type, row.subject_id);
     if (!productMatches(input.product, subject.product)) continue;
-    push({ id: `block-${row.id}`, at: row.created_at, actorId: row.created_by, actorName: nameFor(row.created_by, ""), domain: subject.domain, verb: "Marcou um bloqueio", subject: subject.title });
+    const named = blockPeople.get(row.id) ?? [];
+    const verb = named.length > 0 ? `Marcou um bloqueio e indicou ${named.join(" e ")}` : "Marcou um bloqueio";
+    push({ id: `block-${row.id}`, at: row.created_at, actorId: row.created_by, actorName: nameFor(row.created_by, ""), domain: subject.domain, verb, subject: subject.title });
   }
   for (const row of blocksLifted as { id: string; subject_type: string; subject_id: string; lifted_by: string | null; lifted_at: string | null }[]) {
     if (!row.lifted_at || !actorMatches(input.person, row.lifted_by) || !row.lifted_by) continue;
     const subject = blockSubject(row.subject_type, row.subject_id);
     if (!productMatches(input.product, subject.product)) continue;
-    push({ id: `unblock-${row.id}`, at: row.lifted_at, actorId: row.lifted_by, actorName: nameFor(row.lifted_by, ""), domain: subject.domain, verb: "Retirou o bloqueio", subject: subject.title });
+    const named = blockPeople.get(row.id) ?? [];
+    const verb = named.length > 0 ? `Retirou o bloqueio de ${named.join(" e ")}` : "Retirou o bloqueio";
+    push({ id: `unblock-${row.id}`, at: row.lifted_at, actorId: row.lifted_by, actorName: nameFor(row.lifted_by, ""), domain: subject.domain, verb, subject: subject.title });
   }
 
   const sorted = events.sort((a, b) => b.at.localeCompare(a.at));
@@ -396,19 +461,25 @@ export async function buildCommandDashboard(input: {
       (areasByUser.get(person) ?? []).includes(objective.area_id);
   };
   const productOk = (slug: string | null) => input.product === "all" || slug === input.product;
-  const objectiveIds = new Set(objectives.map((objective) => objective.id));
-  const checkinsResult = objectiveIds.size === 0
-    ? { data: [], error: null }
-    : await admin.from("objective_checkins").select("objective_id,checkin_date,value").in("objective_id", [...objectiveIds]).order("checkin_date", { ascending: false }).limit(5000);
-  if (checkinsResult.error) throw checkinsResult.error;
+  const objectiveIds = objectives.map((objective) => objective.id);
   const latestCheckin = new Map<string, { date: string; value: unknown }>();
-  const checkinInWindow = new Set<string>();
-  for (const checkin of checkinsResult.data ?? []) {
-    if (!latestCheckin.has(checkin.objective_id)) {
-      latestCheckin.set(checkin.objective_id, { date: checkin.checkin_date, value: checkin.value });
-    }
-    if (checkin.checkin_date >= bounds.fromDate && checkin.checkin_date < bounds.toDate) {
-      checkinInWindow.add(checkin.objective_id);
+  for (let index = 0; index < objectiveIds.length; index += 150) {
+    const slice = objectiveIds.slice(index, index + 150);
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await admin
+        .from("objective_checkins")
+        .select("objective_id,checkin_date,value,created_at")
+        .in("objective_id", slice)
+        .order("checkin_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, from + 999);
+      if (error) throw error;
+      for (const checkin of data ?? []) {
+        if (!latestCheckin.has(checkin.objective_id)) {
+          latestCheckin.set(checkin.objective_id, { date: String(checkin.checkin_date).slice(0, 10), value: checkin.value });
+        }
+      }
+      if (!data || data.length < 1000) break;
     }
   }
 
@@ -440,7 +511,7 @@ export async function buildCommandDashboard(input: {
   type Pace = { id: string; title: string; detail: string };
   const behind: Pace[] = [];
   const attention: Pace[] = [];
-  const presentation = new Map<string, { detail: string; progress: number | null }>();
+  const presentation = new Map<string, { pace: string; progress: number | null; silent: boolean; dueSoon: boolean }>();
   for (const objective of parents) {
     const keyResults = objectives.filter((item) => item.parent_objective_id === objective.id && item.active);
     const metric = keyResults.find((item) =>
@@ -449,6 +520,8 @@ export async function buildCommandDashboard(input: {
     const target = metric ? numericTarget(metric.target_value) : null;
     let paceDetail = "";
     let progress: number | null = null;
+    let isBehind = false;
+    let comparedWithSales = false;
     if (metric && target !== null && objective.product_id && objective.period_type && objective.period_start) {
       const end = objectivePeriodEnd(objective.period_type, objective.period_start);
       if (end) {
@@ -457,22 +530,78 @@ export async function buildCommandDashboard(input: {
         const expected = target * elapsedFraction(objective.period_type, objective.period_start, end);
         const shown = metric.value_type === "currency" ? formatKz(actual) : String(actual);
         const goal = metric.value_type === "currency" ? formatKz(target) : String(target);
-        paceDetail = `${shown} de ${goal}`;
+        const expectedShown = metric.value_type === "currency" ? formatKz(Math.round(expected)) : String(Math.round(expected));
+        paceDetail = metric.value_type === "currency"
+          ? `Já entrou ${shown} de ${goal}. Nesta altura já deviam ser cerca de ${expectedShown}.`
+          : `Feitos ${shown} de ${goal}. Nesta altura já deviam ser cerca de ${expectedShown}.`;
         progress = target > 0 ? Math.round((actual / target) * 100) : null;
-        if (actual < expected) behind.push({ id: objective.id, title: objective.title, detail: `${paceDetail} · abaixo do ritmo` });
+        isBehind = actual < expected;
+        comparedWithSales = true;
       }
     }
+    const readings: { id: string; line: string }[] = [];
+    const ratios: number[] = [];
+    for (const row of [objective, ...keyResults]) {
+      const latest = latestCheckin.get(row.id);
+      if (!latest) continue;
+      const actual = numericTarget(latest.value);
+      const goal = numericTarget(row.target_value);
+      const shown = formatMeasure(latest.value, row) || "um valor";
+      const goalText = goal !== null ? formatMeasure(goal, row) : "";
+      const outside = latest.date < bounds.fromDate || latest.date >= bounds.toDate;
+      const when = outside ? ` O registo é de ${formatDay(latest.date)}.` : "";
+      const label = row.id === objective.id ? "O progresso registado é" : `${row.title} está em`;
+      readings.push({ id: row.id, line: `${label} ${goalText ? `${shown} de ${goalText}` : shown}.${when}` });
+      if (actual !== null && goal !== null && goal > 0) ratios.push(actual / goal);
+    }
+    if (progress === null && ratios.length > 0) {
+      const parentLatest = latestCheckin.get(objective.id);
+      const parentActual = parentLatest ? numericTarget(parentLatest.value) : null;
+      const parentTarget = numericTarget(objective.target_value);
+      progress = parentActual !== null && parentTarget !== null && parentTarget > 0
+        ? Math.round((parentActual / parentTarget) * 100)
+        : Math.round((ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length) * 100);
+    }
+    let coveredId = "";
+    if (!comparedWithSales && readings.length > 0) {
+      const source = metric && latestCheckin.has(metric.id) ? metric : latestCheckin.has(objective.id) ? objective : keyResults.find((item) => latestCheckin.has(item.id)) ?? null;
+      const latest = source ? latestCheckin.get(source.id) : null;
+      const actual = latest ? numericTarget(latest.value) : null;
+      const goal = source ? numericTarget(source.target_value) : null;
+      if (source?.period_type && source.period_start && actual !== null && goal !== null && latest) {
+        const end = objectivePeriodEnd(source.period_type, source.period_start);
+        if (end) {
+          const expected = goal * elapsedFraction(source.period_type, source.period_start, end);
+          const shown = formatMeasure(actual, source);
+          const goalText = formatMeasure(goal, source);
+          const expectedShown = source.value_type === "currency" ? formatKz(Math.round(expected)) : formatMeasure(Math.round(expected), source);
+          const outside = latest.date < bounds.fromDate || latest.date >= bounds.toDate;
+          const when = outside ? ` O registo é de ${formatDay(latest.date)}.` : "";
+          paceDetail = `Feitos ${shown} de ${goalText}. Nesta altura já deviam ser cerca de ${expectedShown}.${when}`;
+          isBehind = actual < expected;
+          coveredId = source.id;
+        }
+      }
+    }
+    const extraReadings = readings.filter((item) => item.id !== coveredId);
+    if (extraReadings.length > 0) {
+      const recorded = extraReadings.slice(0, 4).map((item) => item.line).join(" ");
+      const more = extraReadings.length > 4 ? ` E mais ${extraReadings.length - 4} ${extraReadings.length - 4 === 1 ? "resultado" : "resultados"}.` : "";
+      paceDetail = paceDetail ? `${paceDetail} ${recorded}${more}` : `${recorded}${more}`;
+    }
     const dueSoon = objective.due_date !== null && objective.due_date >= bounds.fromDate && objective.due_date < bounds.toDate;
-    const silent = !checkinInWindow.has(objective.id);
-    if (silent || dueSoon) {
+    const silent = readings.length === 0 && progress === null;
+    if (isBehind) {
+      const extra = silent ? " Ainda ninguém registou progresso nesta meta." : dueSoon ? " O prazo chega neste período." : "";
+      behind.push({ id: objective.id, title: objective.title, detail: `Está atrasada. ${paceDetail}${extra}` });
+    } else if (silent || dueSoon) {
       attention.push({
         id: objective.id,
         title: objective.title,
-        detail: silent ? "Sem check-in neste período" : "Prazo dentro deste período",
+        detail: silent ? "Ainda ninguém registou progresso nesta meta." : "O prazo chega neste período.",
       });
     }
-    const periodLabel = objective.period_type === "daily" ? "Diário" : objective.period_type === "weekly" ? "Semanal" : objective.period_type === "monthly" ? "Mensal" : objective.period_type === "annual" ? "Anual" : "Sem período";
-    presentation.set(objective.id, { detail: paceDetail || periodLabel, progress });
+    presentation.set(objective.id, { pace: paceDetail, progress, silent, dueSoon });
   }
 
   const acceptedInWindow = orders.filter((order) =>
@@ -572,50 +701,67 @@ export async function buildCommandDashboard(input: {
     productOk(step.productSlug) &&
     (person === "all" || step.createdBy === person),
   );
-  const notices = dueSteps.slice(0, 20).map((step) => ({
-    id: step.id,
-    personName: step.createdBy ? staffNames.get(step.createdBy) ?? "Equipa" : "Sem responsável",
-    title: step.title,
-    contactName: step.contactName,
-    stageLabel: stageStepLimits[step.stage].label,
-    days: step.days,
-    next: step.next ?? "",
-  }));
+  const notices = dueSteps.slice(0, 20).map((step) => {
+    const personName = step.createdBy ? staffNames.get(step.createdBy) ?? "Equipa" : "";
+    const contact = step.contactName || "este contacto";
+    const stageLabel = stageStepLimits[step.stage].label;
+    const dayLabel = `há ${step.days} ${step.days === 1 ? "dia" : "dias"}`;
+    const next = step.next ?? "";
+    const action = next.startsWith("Contactar e passar")
+      ? "ligar e passar para Em conversa"
+      : next.startsWith("Enviar a proposta")
+        ? "enviar a proposta ou marcar o próximo contacto"
+        : next.startsWith("Confirmar")
+          ? "confirmar a decisão ou o pagamento"
+          : "fazer o contacto que ficou marcado";
+    const line = personName
+      ? `Contactar ${contact} sobre ${step.title}. Está ${dayLabel} em ${stageLabel}. ${personName} deve ${action}.`
+      : `Contactar ${contact} sobre ${step.title}. Está ${dayLabel} em ${stageLabel} e ainda ninguém da equipa assumiu este contacto. O passo é ${action}.`;
+    return {
+      id: step.id,
+      personName: personName || "Sem responsável",
+      title: step.title,
+      contactName: step.contactName,
+      stageLabel,
+      days: step.days,
+      next: step.next ?? "",
+      line,
+    };
+  });
 
   const blockedObjectiveIds = new Set(visibleBlocks.filter((block) => block.subjectType === "objective").map((block) => block.subjectId));
   const behindIds = new Set(behind.map((item) => item.id));
   const attentionById = new Map(attention.map((item) => [item.id, item.detail]));
   const rankObjective = (id: string) => blockedObjectiveIds.has(id) ? 0 : behindIds.has(id) ? 1 : attentionById.has(id) ? 2 : 3;
   const rankedObjectives = [...visibleParents].sort((left, right) => rankObjective(left.id) - rankObjective(right.id) || left.title.localeCompare(right.title, "pt"));
-  const objectiveStatus = (id: string) => blockedObjectiveIds.has(id) ? "Bloqueio" : behindIds.has(id) ? "Abaixo do ritmo" : attentionById.get(id) ?? "No ritmo";
   const mixLabel = (id: string) => {
-    if (blockedObjectiveIds.has(id)) return "Bloqueio";
-    if (behindIds.has(id)) return "Abaixo do ritmo";
+    if (blockedObjectiveIds.has(id)) return "Bloqueadas";
+    if (behindIds.has(id)) return "Atrasadas";
     const note = attentionById.get(id);
-    if (note?.startsWith("Sem check-in")) return "Sem check-in";
-    if (note) return "Prazo no período";
-    return "No ritmo";
+    if (note?.startsWith("Ainda ninguém registou")) return "Sem progresso";
+    if (note) return "Prazo neste período";
+    return "Vão a tempo";
   };
-  const objectiveMix = ["No ritmo", "Abaixo do ritmo", "Sem check-in", "Prazo no período", "Bloqueio"].map((label) => ({
+  const objectiveMix = ["Vão a tempo", "Atrasadas", "Sem progresso", "Prazo neste período", "Bloqueadas"].map((label) => ({
     label,
     count: rankedObjectives.filter((objective) => mixLabel(objective.id) === label).length,
   }));
   const progressBands = [
-    { label: "Sem medida", test: (value: number | null) => value === null },
-    { label: "Até 50%", test: (value: number | null) => value !== null && value < 50 },
-    { label: "De 50 a 99%", test: (value: number | null) => value !== null && value >= 50 && value < 100 },
-    { label: "Meta atingida", test: (value: number | null) => value !== null && value >= 100 },
+    { label: "Metas ainda sem número para comparar com o alvo", test: (value: number | null) => value === null },
+    { label: "Metas abaixo de metade do alvo", test: (value: number | null) => value !== null && value < 50 },
+    { label: "Metas entre metade e o alvo", test: (value: number | null) => value !== null && value >= 50 && value < 100 },
+    { label: "Metas que já chegaram ao alvo", test: (value: number | null) => value !== null && value >= 100 },
   ].map((band) => ({
     label: band.label,
     count: rankedObjectives.filter((objective) => band.test(presentation.get(objective.id)?.progress ?? null)).length,
   }));
   const paymentLabels: Record<string, string> = {
-    accepted: "Aceite",
-    pending: "Pendente",
+    accepted: "Já entrou",
+    pending: "Ainda não pagou",
     rejected: "Recusado",
-    expired: "Expirado",
+    expired: "Expirou",
     canceled: "Cancelado",
-    refunded: "Reembolsado",
+    refunded: "Devolvido",
   };
   const paymentBreakdown = Object.entries(paymentLabels).map(([status, label]) => {
     const rows = filteredOrders.filter((order) => order.status === status);
@@ -634,7 +780,7 @@ export async function buildCommandDashboard(input: {
       id: `block-${block.id}`,
       section: "objectives" as const,
       title: block.title || "Bloqueio",
-      detail: `${block.people.map((item) => item.displayName || item.email).join(", ") || "Sem pessoa"} · ${block.reason}`,
+      detail: `${block.people.map((item) => item.displayName || item.email).join(" e ") || "Sem pessoa indicada"} está a impedir o avanço. ${block.reason}`,
       tone: "block" as const,
     })),
     ...behind.map((item) => ({ id: `pace-${item.id}`, section: "objectives" as const, title: item.title, detail: item.detail, tone: "risk" as const })),
@@ -645,14 +791,14 @@ export async function buildCommandDashboard(input: {
       id: `block-${block.id}`,
       section: "commercial" as const,
       title: block.title || "Bloqueio",
-      detail: `${block.people.map((item) => item.displayName || item.email).join(", ") || "Sem pessoa"} · ${block.reason}`,
+      detail: `${block.people.map((item) => item.displayName || item.email).join(" e ") || "Sem pessoa indicada"} está a impedir o avanço. ${block.reason}`,
       tone: "block" as const,
     })),
     ...proposalsWaiting.map((opportunity) => ({
       id: `proposal-${opportunity.id}`,
       section: "commercial" as const,
       title: opportunity.title,
-      detail: `${contactName(opportunity.contact) || "Proposta"} · enviada sem pagamento aceite`,
+      detail: `${contactName(opportunity.contact) || "O contacto"} ainda não pagou esta proposta${opportunity.amount_kz ? ` de ${formatKz(Number(opportunity.amount_kz))}` : ""}.`,
       tone: "risk" as const,
     })),
   ];
@@ -660,7 +806,7 @@ export async function buildCommandDashboard(input: {
     id: `reconcile-${order.reference}`,
     section: "payments" as const,
     title: order.product_title,
-    detail: `${order.reference} · ${formatKz(Number(order.amount_kz ?? 0))} por reconciliar`,
+    detail: `${formatKz(Number(order.amount_kz ?? 0))} já entraram e ainda não foram conferidos. Referência ${order.reference}.`,
     tone: "risk" as const,
   }));
   const actions = [
@@ -680,8 +826,8 @@ export async function buildCommandDashboard(input: {
 
   const attentionCount = new Set([...behind.map((item) => item.id), ...attention.map((item) => item.id)]).size;
   const paceSentence = behind.length > 0
-    ? `${behind.length} ${behind.length === 1 ? "meta abaixo do ritmo" : "metas abaixo do ritmo"}`
-    : "Metas dentro do ritmo";
+    ? `${behind.length} ${behind.length === 1 ? "meta está atrasada face ao que já devia ter feito até hoje" : "metas estão atrasadas face ao que já deviam ter feito até hoje"}`
+    : "As metas com número vão a tempo";
 
   return {
     period: input.period,
@@ -689,17 +835,19 @@ export async function buildCommandDashboard(input: {
     toDate: bounds.toDate,
     metrics: {
       revenue: formatKz(revenueKz),
-      revenueNote: paceSentence,
+      revenueNote: `${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento já entrou" : "pagamentos já entraram"}`,
       pipeline: formatKz(pipelineKz),
-      pipelineNote: `${overdueFollowUps.length} follow-ups em atraso`,
+      pipelineNote: overdueFollowUps.length === 0
+        ? "Este valor ainda não entrou"
+        : `${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto com a hora já passada" : "contactos com a hora já passada"}. Este valor ainda não entrou`,
       attention: String(attentionCount),
-      attentionNote: attentionCount === 1 ? "objectivo a tratar" : "objectivos a tratar",
+      attentionNote: attentionCount === 1 ? "meta que pede uma decisão" : "metas que pedem uma decisão",
     },
     revenueSeries,
     sentences: [
-      `Receita aceite: ${formatKz(revenueKz)}. ${paceSentence}.`,
-      `Pipeline aberto: ${formatKz(pipelineKz)}. ${overdueFollowUps.length} follow-ups em atraso.`,
-      `${attentionCount} objectivos pedem atenção.`,
+      `Já entraram ${formatKz(revenueKz)}, em ${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento" : "pagamentos"}.`,
+      `Ainda estão por fechar ${formatKz(pipelineKz)}. ${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto já devia ter sido feito" : "contactos já deviam ter sido feitos"}.`,
+      `${attentionCount} ${attentionCount === 1 ? "meta pede uma decisão" : "metas pedem uma decisão"}. ${paceSentence}.`,
     ],
     actions,
     actionCounts: {
@@ -717,7 +865,7 @@ export async function buildCommandDashboard(input: {
     objectiveStats: {
       total: rankedObjectives.length,
       behind: rankedObjectives.filter((objective) => behindIds.has(objective.id)).length,
-      silent: rankedObjectives.filter((objective) => attentionById.get(objective.id)?.startsWith("Sem check-in")).length,
+      silent: rankedObjectives.filter((objective) => attentionById.get(objective.id)?.startsWith("Ainda ninguém registou") || (behindIds.has(objective.id) && presentation.get(objective.id)?.silent)).length,
       blocked: rankedObjectives.filter((objective) => blockedObjectiveIds.has(objective.id)).length,
     },
     commercialStats: {
@@ -727,13 +875,23 @@ export async function buildCommandDashboard(input: {
       overdue: overdueFollowUps.length,
       proposals: proposalsWaiting.length,
     },
-    objectives: rankedObjectives.slice(0, 20).map((objective) => ({
-      id: objective.id,
-      title: objective.title,
-      detail: presentation.get(objective.id)?.detail ?? "Sem período",
-      progress: presentation.get(objective.id)?.progress ?? null,
-      status: objectiveStatus(objective.id),
-    })),
+    objectives: rankedObjectives.slice(0, 20).map((objective) => {
+      const card = presentation.get(objective.id);
+      const parts: string[] = [];
+      if (blockedObjectiveIds.has(objective.id)) parts.push("Está bloqueada.");
+      if (behindIds.has(objective.id)) parts.push("Está atrasada face ao que já devia ter feito até hoje.");
+      else if (!card?.silent && !card?.dueSoon) parts.push("Vai a tempo.");
+      if (card?.pace) parts.push(card.pace);
+      if (card?.silent) parts.push("Ainda ninguém registou progresso nesta meta.");
+      else if (card?.dueSoon) parts.push("O prazo chega neste período.");
+      return {
+        id: objective.id,
+        title: objective.title,
+        detail: parts.join(" ") || "Esta meta não tem um número comparável neste período.",
+        progress: card?.progress ?? null,
+        status: mixLabel(objective.id),
+      };
+    }),
     objectiveTotal: rankedObjectives.length,
     funnel,
     payments: {

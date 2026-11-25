@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   if (!authorization.authorized) {
     return failure(authorization.reason === "unauthenticated" ? "unauthorized" : "forbidden", authorization.reason === "unauthenticated" ? 401 : 403);
   }
-  const period = request.nextUrl.searchParams.get("period") ?? "month";
+  const period = request.nextUrl.searchParams.get("period") ?? "day";
   if (!periods.has(period as CommandPeriod)) return failure("invalid_period", 400);
   const person = request.nextUrl.searchParams.get("person") ?? "all";
   const personId = person === "mine" ? authorization.user.id : person;
