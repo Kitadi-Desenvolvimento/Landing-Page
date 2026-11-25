@@ -16,6 +16,7 @@ import {
 } from "../lib/objective-periods";
 import type { ObjectiveProduct, ObjectiveCollaborator as SimpleCollaborator } from "../lib/objective-products";
 import { messageForApiError, messageFromApiBody } from "../lib/api-error-messages";
+import { DateField } from "./date-field";
 import { personLabel } from "../lib/person-label";
 import type { OkrTemplate } from "../lib/okr-templates";
 import { useErrorToast } from "./error-toast";
@@ -1465,7 +1466,7 @@ function ObjectiveEditor({
                 </label>
                 <label className="block text-[10px] font-semibold text-[#817773]">
                   Data de referência
-                  <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" name="periodAnchor" onChange={(event) => setPeriodAnchor(event.target.value)} required type="date" value={periodAnchor} />
+                  <DateField className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" mode="date" name="periodAnchor" onChange={(event) => setPeriodAnchor(event.target.value)} required value={periodAnchor} />
                 </label>
               </div>
               <label className="block text-[10px] font-semibold text-[#817773]">
@@ -1479,7 +1480,7 @@ function ObjectiveEditor({
           )}
           <label className="block text-[10px] font-semibold text-[#817773]">
             Data de fim (opcional)
-            <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" defaultValue={objective?.due_date ?? ""} name="dueDate" type="date" />
+            <DateField className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" defaultValue={objective?.due_date ?? ""} mode="date" name="dueDate" />
           </label>
           {draftKeyResults ? null : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1854,7 +1855,7 @@ function ObjectiveReportExport() {
           </label>
           <label className="text-[10px] font-semibold text-[#817773]">
             Data de referência
-            <input className="mt-1 block min-h-9 rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" onChange={(event) => setDate(event.target.value)} type="date" value={date} />
+            <DateField className="mt-1 block min-h-9 rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" mode="date" onChange={(event) => setDate(event.target.value)} value={date} />
           </label>
         </div>
         {error ? <p className="mt-2 text-[10px] text-red-700" role="alert">{error}</p> : null}

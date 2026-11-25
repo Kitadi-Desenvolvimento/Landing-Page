@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { ReportPeriod } from "../lib/objective-periods";
+import { DateField } from "./date-field";
 import { messageForApiError } from "../lib/api-error-messages";
 
 function luandaToday() {
@@ -98,10 +99,10 @@ export default function CommercialReportExport() {
           </label>
           <label className="text-[10px] font-semibold text-[#817773]">
             Data de referência
-            <input
+            <DateField
               className="mt-1 block min-h-9 rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]"
+              mode="date"
               onChange={(event) => setDate(event.target.value)}
-              type="date"
               value={date}
             />
           </label>

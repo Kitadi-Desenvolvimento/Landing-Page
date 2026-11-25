@@ -7,6 +7,7 @@ import { formatKz, formatPaymentDate, type DashboardProduct } from "./dashboard-
 import { ScrollTable } from "./scroll-table";
 import type { CashSummary, KitadiOrder } from "../lib/payments/orders";
 import type { Withdrawal } from "../lib/payments/withdrawals";
+import { DateField } from "./date-field";
 import { messageForApiError } from "../lib/api-error-messages";
 
 const migrationFile = "20261122000000_add_payment_reconciliation.sql";
@@ -165,7 +166,7 @@ function ManualPaymentModal({ products, onClose }: { products: DashboardProduct[
           </label>
           <label className="text-[11px] font-semibold text-[#514849]">
             Data do pagamento
-            <input className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} name="paidAt" required type="date" />
+            <DateField className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} mode="date" name="paidAt" required />
           </label>
           <label className="text-[11px] font-semibold text-[#514849]">
             Nome do cliente
@@ -232,7 +233,7 @@ function WithdrawalModal({ onClose }: { onClose: () => void }) {
           </label>
           <label className="text-[11px] font-semibold text-[#514849]">
             Data do levantamento
-            <input className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} name="withdrawnAt" required type="date" />
+            <DateField className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} mode="date" name="withdrawnAt" required />
           </label>
           <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
             Referência WiPay

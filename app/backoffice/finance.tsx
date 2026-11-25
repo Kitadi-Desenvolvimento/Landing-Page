@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { formatKz, formatPaymentDate } from "./dashboard-data";
+import { DateField } from "./date-field";
 import {
   FormFooter,
   inputClass,
@@ -299,7 +300,7 @@ function ExpenseModal({ onClose }: { onClose: () => void }) {
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="text-[11px] font-semibold text-[#514849]">
             Data
-            <input className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} name="spentOn" required type="date" />
+            <DateField className={inputClass} defaultValue={todayInLuanda()} max={todayInLuanda()} mode="date" name="spentOn" required />
           </label>
           <label className="text-[11px] font-semibold text-[#514849]">
             Categoria
@@ -429,7 +430,7 @@ function RecurringModal({ onClose }: { onClose: () => void }) {
           </label>
           <label className="text-[11px] font-semibold text-[#514849]">
             Começa em
-            <input className={inputClass} defaultValue={todayInLuanda().slice(0, 7)} name="startMonth" required type="month" />
+            <DateField className={inputClass} defaultValue={todayInLuanda().slice(0, 7)} mode="month" name="startMonth" required />
           </label>
           <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
             Fornecedor
@@ -640,7 +641,11 @@ function SingleFieldForm({
     <form className="mt-5" onSubmit={submit}>
       <label className="text-[11px] font-semibold text-[#514849]">
         {label}
-        <input autoFocus className={inputClass} defaultValue={defaultValue} min={type === "number" ? "1" : min} name="value" required step={type === "number" ? "1" : undefined} type={type} />
+        {type === "month" ? (
+          <DateField autoFocus className={inputClass} defaultValue={defaultValue} min={min} mode="month" name="value" required />
+        ) : (
+          <input autoFocus className={inputClass} defaultValue={defaultValue} min="1" name="value" required step="1" type="number" />
+        )}
       </label>
       <FormFooter error={error} onClose={onClose} saving={saving} submitLabel={submitLabel} />
     </form>

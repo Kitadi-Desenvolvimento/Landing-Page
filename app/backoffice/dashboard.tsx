@@ -14,6 +14,7 @@ import NameButton from "./name-button";
 import NotificationBell from "./notification-bell";
 import { ExpensesPanel, FinancePanel } from "./finance";
 import { PaymentReconciliationCell, ReconciliationPanel } from "./reconciliation";
+import { DateField, localInputToIso } from "./date-field";
 import { ImportContactsModal } from "./import-contacts-modal";
 import {
   dashboardNavigation,
@@ -570,8 +571,8 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           toStage,
           stageChangeReason,
           editOpportunityId: opportunity.id,
-          notes: opportunity.notes,
-          followUpAt: opportunity.follow_up_at,
+          notes: opportunity.notes ?? "",
+          followUpAt: opportunity.follow_up_at ? new Date(opportunity.follow_up_at).toISOString() : null,
           lostReason: toStage === "lost" ? stageChangeReason.trim() : "",
         }),
       });
@@ -1085,6 +1086,12 @@ function CommercialCreateModal({
     const amountValue = String(form.get("amountKz") ?? "").trim();
     const amountKz = amountValue ? Number(amountValue) : null;
     const followUpValue = String(form.get("followUpAt") ?? "");
+    const followUpAt = followUpValue ? localInputToIso(followUpValue) : null;
+    if (followUpValue && !followUpAt) {
+      setSaving(false);
+      setError("Escolha o dia e a hora no calendário.");
+      return;
+    }
 
     try {
       const response = await fetch("/api/backoffice/commercial", {
@@ -1104,7 +1111,7 @@ function CommercialCreateModal({
             productTitle: selectedProduct?.title ?? null,
             amountKz,
             notes: form.get("notes"),
-            followUpAt: followUpValue ? new Date(followUpValue).toISOString() : null,
+            followUpAt,
           },
         }),
       });
@@ -1175,7 +1182,7 @@ function CommercialCreateModal({
             </label>
             <label className="text-[11px] font-semibold text-[#514849]">
               Próximo contacto
-              <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" name="followUpAt" type="datetime-local" />
+              <DateField className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" mode="datetime" name="followUpAt" />
             </label>
             <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
               Notas
@@ -1277,6 +1284,11 @@ function CommercialDetailsModal({
       setError("Indique o motivo da perda.");
       return;
     }
+    const followUpIso = followUpAt ? localInputToIso(followUpAt) : null;
+    if (followUpAt && !followUpIso) {
+      setError("Escolha o dia e a hora no calendário.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -1290,7 +1302,7 @@ function CommercialDetailsModal({
           stageChangeReason: stageChanged ? stageChangeReason.trim() : "",
           editOpportunityId: opportunity.id,
           notes,
-          followUpAt: followUpAt ? new Date(followUpAt).toISOString() : null,
+          followUpAt: followUpIso,
           lostReason: stage === "lost"
             ? stageChanged ? stageChangeReason.trim() : lostReason.trim()
             : "",
@@ -1305,7 +1317,7 @@ function CommercialDetailsModal({
         stage,
         lost_reason: stage === "lost" ? lostReason.trim() : null,
         notes,
-        follow_up_at: followUpAt ? new Date(followUpAt).toISOString() : null,
+        follow_up_at: followUpIso,
         converted_at: stage === "converted"
           ? opportunity.converted_at ?? new Date().toISOString()
           : opportunity.converted_at,
@@ -1412,7 +1424,7 @@ function CommercialDetailsModal({
             </label>
             <label className="text-[11px] font-semibold text-[#514849]">
               Próximo contacto
-              <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" onChange={(event) => setFollowUpAt(event.target.value)} type="datetime-local" value={followUpAt} />
+              <DateField className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" mode="datetime" onChange={(event) => setFollowUpAt(event.target.value)} value={followUpAt} />
             </label>
             {stageChanged ? (
               <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">

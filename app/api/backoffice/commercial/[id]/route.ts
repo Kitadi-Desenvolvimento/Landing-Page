@@ -129,6 +129,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
+  if (typeof body === "object" && body !== null) {
+    if ("notes" in body && body.notes === null) body.notes = "";
+    if ("followUpAt" in body && typeof body.followUpAt === "string" && body.followUpAt.length <= 40) {
+      const parsedFollowUp = Date.parse(body.followUpAt);
+      if (!Number.isNaN(parsedFollowUp)) body.followUpAt = new Date(parsedFollowUp).toISOString();
+    }
+  }
+
   if (
     typeof body !== "object" ||
     body === null ||

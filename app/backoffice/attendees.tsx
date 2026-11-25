@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { DashboardProduct } from "./dashboard-data";
+import { DateField } from "./date-field";
 import { messageFromApiBody } from "../lib/api-error-messages";
 
 type Attendee = {
@@ -210,19 +211,19 @@ export default function Attendees({ products }: { products: DashboardProduct[] }
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <label className="text-[10px] font-semibold text-[#817773]">
             De
-            <input
+            <DateField
               className="mt-1 block min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]"
+              mode="date"
               onChange={(event) => setStartDate(event.target.value)}
-              type="date"
               value={startDate}
             />
           </label>
           <label className="text-[10px] font-semibold text-[#817773]">
             Até
-            <input
+            <DateField
               className="mt-1 block min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]"
+              mode="date"
               onChange={(event) => setEndDate(event.target.value)}
-              type="date"
               value={endDate}
             />
           </label>
