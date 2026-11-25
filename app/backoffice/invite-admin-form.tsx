@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { messageForApiError } from "../lib/api-error-messages";
 
 type InviteRole = "admin" | "manager" | "collaborator";
 type InviteArea = { id: string; name: string };
@@ -47,24 +48,8 @@ export default function InviteAdminForm({
       };
 
       if (!response.ok) {
-        const messages: Record<string, string> = {
-          invite_exists: "Não foi possível convidar esse endereço. Verifique se já tem conta.",
-          invite_unavailable: "Não foi possível gerar o link. Verifique a configuração do Supabase e tente novamente.",
-          invite_link_missing: "O Supabase não devolveu o link. Tente novamente.",
-          supabase_not_configured: "O serviço de convites não está configurado no servidor.",
-          invite_role_update_failed:
-            "Não foi possível atribuir a função à pessoa convidada. Contacte o suporte antes de gerar outro link.",
-          invite_areas_update_failed:
-            "O link foi gerado, mas não foi possível atribuir as áreas. Reveja os acessos da equipa.",
-          area_membership_forbidden:
-            "Só pode atribuir pessoas às áreas que gere.",
-        };
         setIsError(true);
-        setMessage(
-          result.error
-            ? messages[result.error] ?? "Não foi possível enviar o convite."
-            : "Não foi possível enviar o convite.",
-        );
+        setMessage(messageForApiError(result.error, "Não foi possível enviar o convite."));
         return;
       }
 

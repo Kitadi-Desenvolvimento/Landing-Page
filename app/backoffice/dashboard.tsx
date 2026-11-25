@@ -8,12 +8,14 @@ import SignOutButton from "./sign-out-button";
 import Attendees from "./attendees";
 import QrCodeGenerator from "../components/QrCodeGenerator";
 import { EbookCopyButton, EbookUploader } from "./ebook-tools";
-import Objectives, { OverviewObjectives } from "./objectives";
+import Objectives from "./objectives";
+import CommandDashboard from "./command-dashboard";
+import NameButton from "./name-button";
+import NotificationBell from "./notification-bell";
 import { ExpensesPanel, FinancePanel } from "./finance";
 import { PaymentReconciliationCell, ReconciliationPanel } from "./reconciliation";
 import { ImportContactsModal } from "./import-contacts-modal";
 import {
-  dashboardMetrics,
   dashboardNavigation,
   formatKz,
   formatPaymentDate,
@@ -32,6 +34,8 @@ import type { FinanceData } from "../lib/finance";
 import type { Withdrawal } from "../lib/payments/withdrawals";
 import type { CommercialSummary } from "../lib/commercial";
 import type { DragEvent, FormEvent, ReactNode } from "react";
+import { messageFromApiBody } from "../lib/api-error-messages";
+import BlockDialog from "./block-dialog";
 
 const sectionTitles: Record<DashboardSection, { title: string; subtitle: string }> = {
   overview: { title: "Visão geral", subtitle: "Uma leitura rápida da actividade da Kitadi." },
@@ -56,12 +60,9 @@ export default function BackofficeDashboard({
   productSales,
   siteAnalytics,
   analyticsReady,
-  commercialSummary,
-  commercialReady,
   payments,
   paymentSummary,
   paymentsReady,
-  weeklyPaymentRevenue,
   cashSummary,
   withdrawals,
   reconciliationReady,
@@ -197,24 +198,14 @@ export default function BackofficeDashboard({
               <span className="size-1.5 rounded-full bg-[#66836c]" />
               Pagamentos, produtos e analytics reais
             </span>
-            <span className="flex size-9 items-center justify-center rounded-full bg-[#f1e8e4] text-[12px] font-bold text-[#652636]">
-              {initials(email)}
-            </span>
+            <NotificationBell onOpen={navigate} />
+            <NameButton email={email} />
           </div>
         </header>
 
         <main className="mx-auto max-w-[1480px] px-5 py-7 sm:px-8 sm:py-9 lg:px-10">
           {role === "admin" && activeSection === "overview" ? (
-            <Overview
-              onNavigate={navigate}
-              paymentSummary={paymentSummary}
-              payments={payments}
-              paymentsReady={paymentsReady}
-              weeklyPaymentRevenue={weeklyPaymentRevenue}
-              siteAnalytics={siteAnalytics}
-              commercialSummary={commercialSummary}
-              commercialReady={commercialReady}
-            />
+            <CommandDashboard onNavigate={navigate} />
           ) : null}
           {role === "admin" && activeSection === "payments" ? (
             <Payments
@@ -252,178 +243,6 @@ export default function BackofficeDashboard({
   );
 }
 
-function Overview({
-  onNavigate,
-  payments,
-  paymentSummary,
-  paymentsReady,
-  siteAnalytics,
-  commercialSummary,
-  commercialReady,
-  weeklyPaymentRevenue,
-}: {
-  onNavigate: (section: DashboardSection) => void;
-  payments: KitadiOrder[];
-  paymentSummary: PaymentSummary;
-  paymentsReady: boolean;
-  siteAnalytics: SiteAnalyticsSummary | null;
-  commercialSummary: CommercialSummary | null;
-  commercialReady: boolean;
-  weeklyPaymentRevenue: WeeklyPaymentRevenue[] | null;
-}) {
-  return (
-    <>
-      <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div>
-          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#a8792f]">
-            Hoje · Kitadi
-          </p>
-          <h2 className="mt-2 text-[28px] font-bold leading-tight tracking-[-0.03em] text-[#302829] sm:text-[34px]">
-            Bom dia, equipa <span aria-hidden="true">✦</span>
-          </h2>
-          <p className="mt-2 text-[14px] text-[#837a76]">
-            Aqui está o resumo do que está a acontecer no negócio.
-          </p>
-        </div>
-        <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-[#e9e3df] bg-white px-4 py-2.5 text-[12px] font-semibold text-[#615956]">
-          <Icon name="calendar" />
-          Últimos 30 dias
-          <Icon name="chevron" />
-        </span>
-      </div>
-
-      <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {dashboardMetrics.map((metric, index) => (
-          <MetricCard
-            key={metric.label}
-            metric={
-              index === 0
-                ? {
-                    ...metric,
-                    label: "Pagamentos concluídos",
-                    value: formatKz(paymentSummary.acceptedAmountKz),
-                    change: String(paymentSummary.acceptedCount),
-                    note: "transacções confirmadas",
-                  }
-                : index === 1
-                  ? {
-                      ...metric,
-                      value: formatKz(paymentSummary.pendingAmountKz),
-                      change: `${paymentSummary.pendingCount} pedidos`,
-                      note: "aguardam confirmação",
-                    }
-                  : index === 3
-                    ? {
-                        ...metric,
-                        value: siteAnalytics && siteAnalytics.visitors > 0
-                          ? `${((siteAnalytics.attributedPaidVisitors / siteAnalytics.visitors) * 100).toFixed(1).replace(".", ",")}%`
-                          : "—",
-                        change: siteAnalytics
-                          ? String(siteAnalytics.attributedPaidVisitors)
-                          : "—",
-                        note: "pagamentos atribuídos · 30 dias",
-                      }
-                  : index === 2
-                    ? {
-                        ...metric,
-                        value: commercialSummary ? String(commercialSummary.openCount) : "—",
-                        change: commercialSummary ? String(commercialSummary.convertedCount) : "—",
-                        note: !commercialReady
-                          ? "CRM não configurado"
-                          : commercialSummary && commercialSummary.followUpDueCount > 0
-                            ? `convertidas · ${commercialSummary.followUpDueCount} seguimento(s) para hoje`
-                            : "convertidas",
-                      }
-                    : metric
-            }
-          />
-        ))}
-      </div>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,0.9fr)]">
-        <section className="rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-            <div>
-              <p className="text-[14px] font-bold text-[#302829]">Receita ao longo do tempo</p>
-              <p className="mt-1 text-[11px] text-[#a19894]">Receita de pagamentos confirmados · semana actual e anterior</p>
-            </div>
-            <div className="flex gap-4 text-[10px] font-semibold text-[#847b77]">
-              <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#510f1d]" />Esta semana</span>
-              <span className="inline-flex items-center gap-1.5"><i className="size-2 rounded-full bg-[#e8dcd7]" />Semana anterior</span>
-            </div>
-          </div>
-          <RevenueChart revenue={weeklyPaymentRevenue} />
-        </section>
-
-        <section className="rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
-          <SectionHeading title="Actividade de pagamentos" action="Ver todos" onAction={() => onNavigate("payments")} />
-          <div className="mt-3 divide-y divide-[#f1edeb]">
-            {payments.slice(0, 3).map((payment) => (
-              <div className="flex gap-3 py-4" key={payment.reference}>
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#f7f3f0] text-[#8b5b39]">
-                  <Icon name="payment" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12px] font-semibold text-[#393132]">
-                    {paymentStatusLabel(payment.status)} · {payment.name}
-                  </p>
-                  <p className="mt-1 truncate text-[11px] text-[#958b87]">
-                    {payment.productTitle} · {payment.reference}
-                  </p>
-                </div>
-                <span className="shrink-0 pt-0.5 text-[10px] text-[#aaa19d]">
-                  {formatPaymentDate(payment.updatedAt)}
-                </span>
-              </div>
-            ))}
-            {payments.length === 0 ? (
-              <p className="py-6 text-[11px] text-[#968c88]">
-                {paymentsReady ? "Ainda não há actividade de pagamentos." : "Aplique a migração de pagamentos para consultar a actividade."}
-              </p>
-            ) : null}
-          </div>
-          <button
-            className="mt-1 w-full rounded-xl border border-[#eee8e5] py-2.5 text-[11px] font-semibold text-[#746b67] transition hover:bg-[#faf8f7]"
-            onClick={() => onNavigate("payments")}
-            type="button"
-          >
-            Abrir pagamentos
-          </button>
-        </section>
-      </div>
-
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <section className="rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
-          <SectionHeading title="Pagamentos recentes" action="Ver todos" onAction={() => onNavigate("payments")} />
-          <PaymentTable compact orders={payments} paymentsReady={paymentsReady} />
-        </section>
-        <section className="rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
-          <SectionHeading title="Funil do site" action="Ver análise" onAction={() => onNavigate("funnel")} />
-          <div className="mt-5 space-y-4">
-            {getSiteFunnelSteps(siteAnalytics).slice(0, 4).map((step) => (
-              <div key={step.label}>
-                <div className="mb-1.5 flex items-center justify-between text-[11px]">
-                  <span className="font-medium text-[#6e6561]">{step.label}</span>
-                  <span className="font-bold text-[#393132]">{step.count}</span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-[#f0ece9]">
-                  <div className={`h-full rounded-full ${step.color}`} style={{ width: `${step.percent}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="mt-4 text-[10px] text-[#9b918d]">
-            {siteAnalytics ? "Eventos recolhidos nos últimos 30 dias." : "Aguardando configuração do analytics."}
-          </p>
-        </section>
-      </div>
-
-      <div className="mt-5">
-        <OverviewObjectives onNavigate={() => onNavigate("objectives")} />
-      </div>
-    </>
-  );
-}
 
 function Payments({
   cashSummary,
@@ -559,6 +378,8 @@ type CommercialOpportunity = {
   payment_reason: string | null;
   notes: string;
   follow_up_at: string | null;
+  days_in_stage?: number | null;
+  next_step?: string | null;
   created_at: string;
   converted_at: string | null;
   contact: CommercialContact;
@@ -650,14 +471,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
         const response = await fetch("/api/backoffice/commercial", { cache: "no-store" });
         const result: unknown = await response.json();
         if (!response.ok) {
-          const code = isObjectRecord(result) && typeof result.error === "string"
-            ? result.error
-            : "";
-          throw new Error(
-            code === "commercial_not_configured"
-              ? "Aplique a migração 20261113060000_create_commercial_crm.sql no Supabase."
-              : "Não foi possível carregar o funil comercial.",
-          );
+          throw new Error(messageFromApiBody(result, "Não foi possível carregar o funil comercial."));
         }
         if (
           !isObjectRecord(result) ||
@@ -763,16 +577,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
       });
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
-        throw new Error(
-          code === "commercial_not_configured"
-            ? "Aplique as migrações do CRM, incluindo 20261124020000_require_crm_stage_change_reason.sql, no Supabase."
-            : code === "commercial_stage_locked"
-              ? "Os pagamentos confirmados permanecem na etapa Convertido."
-              : code === "stage_change_reason_required"
-                ? "Explique o motivo antes de mover esta oportunidade."
-              : "Não foi possível mover o cartão.",
-        );
+        throw new Error(messageFromApiBody(result, "Não foi possível mover o cartão."));
       }
       setReloadCounter((current) => current + 1);
     } catch (moveError) {
@@ -938,6 +743,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
               <StageCardList>
                 {cards.map((card) => {
                   const item = card.opportunities[0];
+                  const stageItem = card.opportunities.find((entry) => entry.next_step) ?? item;
                   const cardAmount = card.opportunities.reduce((sum, current) => sum + (current.amount_kz ?? 0), 0);
                   return (
                   <button
@@ -989,6 +795,14 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
                     ) : null}
                     {stage.id === "lost" && item.lost_reason ? (
                       <span className="mt-2 block truncate text-[9px] text-[#928783]">Motivo: {item.lost_reason}</span>
+                    ) : null}
+                    {typeof stageItem.days_in_stage === "number" ? (
+                      <span className="mt-2 block text-[9px] text-[#84756e]">
+                        {stageItem.days_in_stage === 0 ? "Entrou hoje nesta etapa" : `Há ${stageItem.days_in_stage} ${stageItem.days_in_stage === 1 ? "dia" : "dias"} nesta etapa`}
+                      </span>
+                    ) : null}
+                    {stageItem.next_step ? (
+                      <span className="mt-2 block text-[9px] font-semibold leading-4 text-[#8c6a2c]">{stageItem.next_step}</span>
                     ) : null}
                     {(() => {
                       const state = card.opportunities.some((entry) => followUpState(entry) === "overdue")
@@ -1296,12 +1110,7 @@ function CommercialCreateModal({
       });
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
-        throw new Error(
-          code === "commercial_not_configured"
-            ? "Aplique a migração CRM do Supabase antes de registar contactos."
-            : "Não foi possível registar o contacto. Verifique os dados e tente novamente.",
-        );
+        throw new Error(messageFromApiBody(result, "Não foi possível registar o contacto. Verifique os dados e tente novamente."));
       }
       onCreated();
     } catch (submitError) {
@@ -1409,6 +1218,7 @@ function CommercialDetailsModal({
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [blockOpen, setBlockOpen] = useState(false);
   const company = opportunity.contact.company_id
     ? contacts.find((contact) => contact.id === opportunity.contact.company_id)
     : null;
@@ -1424,8 +1234,10 @@ function CommercialDetailsModal({
       try {
         const response = await fetch(`/api/backoffice/commercial/${opportunity.id}`, { cache: "no-store" });
         const result: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(messageFromApiBody(result, "Não foi possível carregar o histórico desta oportunidade."));
+        }
         if (
-          !response.ok ||
           !isObjectRecord(result) ||
           !Array.isArray(result.history) ||
           !Array.isArray(result.opportunities) ||
@@ -1486,16 +1298,7 @@ function CommercialDetailsModal({
       });
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
-        throw new Error(
-          code === "commercial_not_configured"
-            ? "Aplique as migrações do CRM, incluindo 20261124020000_require_crm_stage_change_reason.sql, no Supabase."
-            : code === "commercial_stage_locked"
-              ? "Os pagamentos confirmados permanecem na etapa Convertido."
-              : code === "stage_change_reason_required"
-                ? "Explique o motivo da mudança de etapa."
-              : "Não foi possível guardar as alterações desta oportunidade.",
-        );
+        throw new Error(messageFromApiBody(result, "Não foi possível guardar as alterações desta oportunidade."));
       }
       onSaved({
         ...opportunity,
@@ -1547,7 +1350,10 @@ function CommercialDetailsModal({
             <h2 className="mt-1 truncate text-[20px] font-bold text-[#302829]" id="commercial-detail-title">{opportunity.contact.name}</h2>
             <p className="mt-1 text-[12px] text-[#827976]">{opportunity.title}</p>
           </div>
-          <button aria-label="Fechar" className="rounded-full px-3 py-1 text-[20px] text-[#857b77] hover:bg-[#f5f2f1]" onClick={onClose} type="button">×</button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button className="rounded-full border border-[#e2d6c4] px-3 py-1.5 text-[10px] font-semibold text-[#762838]" onClick={() => setBlockOpen(true)} type="button">Bloquear</button>
+            <button aria-label="Fechar" className="rounded-full px-3 py-1 text-[20px] text-[#857b77] hover:bg-[#f5f2f1]" onClick={onClose} type="button">×</button>
+          </div>
         </div>
         <div className="mt-4">
           <ContactActions contact={opportunity.contact} />
@@ -1653,6 +1459,14 @@ function CommercialDetailsModal({
           </ol>
         </section>
       </section>
+      {blockOpen ? (
+        <BlockDialog
+          onClose={() => setBlockOpen(false)}
+          subjectId={opportunity.id}
+          subjectType="opportunity"
+          title={opportunity.title}
+        />
+      ) : null}
     </div>
   );
 }
@@ -2035,22 +1849,7 @@ function ProductEditor({
       );
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code =
-          typeof result === "object" &&
-          result !== null &&
-          "error" in result &&
-          typeof result.error === "string"
-            ? result.error
-            : "";
-        throw new Error(
-          code === "product_already_exists"
-            ? "Já existe um produto com este nome."
-            : code === "invalid_product"
-              ? "Verifique os campos, preços e use o caminho de uma imagem existente."
-              : code === "checkout_not_available"
-                ? "Para activar o pagamento, configure um preço válido e, para formações, preços válidos em todas as variantes."
-              : "Não foi possível guardar o produto. Tente novamente.",
-        );
+        throw new Error(messageFromApiBody(result, "Não foi possível guardar o produto. Tente novamente."));
       }
 
       const record = parseProductRecord(result);
@@ -2298,7 +2097,10 @@ function Team({ email, role }: { email: string; role: BackofficeRole }) {
     try {
       const response = await fetch("/api/backoffice/team", { cache: "no-store" });
       const result: unknown = await response.json();
-      if (!response.ok || !isTeamData(result)) throw new Error("Não foi possível carregar a equipa.");
+      if (!response.ok) {
+        throw new Error(messageFromApiBody(result, "Não foi possível carregar a equipa."));
+      }
+      if (!isTeamData(result)) throw new Error("Não foi possível carregar a equipa.");
       setData(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível carregar a equipa.");
@@ -2393,12 +2195,7 @@ function TeamAreaManager({
       });
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code = typeof result === "object" && result !== null && "error" in result
-          ? result.error
-          : null;
-        throw new Error(code === "area_already_exists"
-          ? "Já existe uma área com esse nome."
-          : "Não foi possível criar a área.");
+        throw new Error(messageFromApiBody(result, "Não foi possível criar a área."));
       }
       setName("");
       onSaved();
@@ -2422,7 +2219,8 @@ function TeamAreaManager({
           active: formData.get("active") === "on",
         }),
       });
-      if (!response.ok) throw new Error("Não foi possível actualizar a área.");
+      const result: unknown = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(messageFromApiBody(result, "Não foi possível actualizar a área."));
       onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível actualizar a área.");
@@ -2494,7 +2292,7 @@ function TeamAreaManager({
 }
 
 type TeamData = {
-  users: { id: string; email: string; role: string }[];
+  users: { id: string; email: string; displayName?: string; role: string }[];
   areas: { id: string; name: string; active: boolean }[];
   memberships: { area_id: string; user_id: string }[];
   role: BackofficeRole;
@@ -2544,7 +2342,10 @@ function TeamMemberEditor({
           areaIds,
         }),
       });
-      if (!response.ok) throw new Error("Não foi possível actualizar o acesso desta pessoa.");
+      const result: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(messageFromApiBody(result, "Não foi possível actualizar o acesso desta pessoa."));
+      }
       onSaved();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível actualizar o acesso.");
@@ -2567,14 +2368,7 @@ function TeamMemberEditor({
       });
       const result: unknown = await response.json();
       if (!response.ok) {
-        const code = isObjectRecord(result) && typeof result.error === "string" ? result.error : "";
-        throw new Error(
-          code === "cannot_delete_last_admin"
-            ? "Não é possível apagar o último administrador."
-            : code === "cannot_delete_self"
-              ? "Não pode apagar a sua própria conta."
-              : "Não foi possível apagar a conta desta pessoa.",
-        );
+        throw new Error(messageFromApiBody(result, "Não foi possível apagar a conta desta pessoa."));
       }
       onSaved();
     } catch (cause) {
@@ -2588,7 +2382,8 @@ function TeamMemberEditor({
     <article className="rounded-2xl border border-[#eee9e6] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="break-all text-xs font-bold text-[#3a3233]">{user.email || "Sem e-mail"}</p>
+          <p className="break-all text-xs font-bold text-[#3a3233]">{user.displayName?.trim() || user.email || "Sem e-mail"}</p>
+          {user.displayName?.trim() ? <p className="break-all text-[10px] text-[#8d837f]">{user.email}</p> : null}
           <p className="mt-1 text-[9px] text-[#928884]">Função: {user.role}</p>
         </div>
         {role === "admin" ? (
@@ -2663,34 +2458,6 @@ function MetricCard({
         <span className="text-[#a19894]">{metric.note}</span>
       </div>
     </article>
-  );
-}
-
-function RevenueChart({ revenue }: { revenue: WeeklyPaymentRevenue[] | null }) {
-  const maximum = Math.max(1, ...(revenue ?? []).flatMap((day) => [day.current, day.previous]));
-  const chartDays = revenue ?? [];
-  return (
-    <div className="mt-7">
-      <div className="relative flex h-[190px] items-end justify-between gap-2 border-b border-[#f0ece9] px-1 sm:gap-4">
-        {[0, 1, 2, 3].map((line) => (
-          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#f0ece9]" key={line} style={{ bottom: `${25 + line * 20}%` }} />
-        ))}
-        {chartDays.map((day) => (
-          <div className="relative z-[1] flex h-full flex-1 items-end justify-center gap-1.5 pb-0.5" key={day.day}>
-            <div className="w-[30%] max-w-7 rounded-t-md bg-[#e9dfdb]" style={{ height: `${day.previous ? Math.max(3, (day.previous / maximum) * 100) : 0}%` }} title={`Semana anterior: ${formatKz(day.previous)}`} />
-            <div className="w-[30%] max-w-7 rounded-t-md bg-[#641d2d] transition-opacity hover:opacity-80" style={{ height: `${day.current ? Math.max(3, (day.current / maximum) * 100) : 0}%` }} title={`Esta semana: ${formatKz(day.current)}`} />
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 flex justify-between px-1">
-        {chartDays.map((day) => <span className="flex-1 text-center text-[9px] text-[#a69d99]" key={day.day}>{day.day}</span>)}
-      </div>
-      <p className="mt-5 text-[10px] text-[#a49a96]">
-        {revenue
-          ? "Valores calculados a partir dos pagamentos confirmados no registo."
-          : "Aplique a migração de pagamentos para consultar a receita."}
-      </p>
-    </div>
   );
 }
 

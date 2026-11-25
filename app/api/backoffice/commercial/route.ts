@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { loadCommercialSteps, notifyDueCommercialSteps } from "../../../lib/commercial-steps";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { requireAdmin } from "../../../lib/supabase/require-admin";
 
@@ -81,14 +82,28 @@ export async function GET() {
     );
   }
 
+  let steps: Awaited<ReturnType<typeof loadCommercialSteps>> = [];
+  try {
+    steps = await loadCommercialSteps();
+    await notifyDueCommercialSteps(steps);
+  } catch (noticeError) {
+    console.error("[commercial] step notices failed", noticeError instanceof Error ? noticeError.message : "unknown");
+  }
+  const stepById = new Map(steps.map((step) => [step.id, step]));
+
   return NextResponse.json(
     {
-      opportunities: opportunities.map((opportunity) => ({
-        ...opportunity,
-        payment: opportunity.payment_reference
-          ? paymentByReference.get(opportunity.payment_reference) ?? null
-          : null,
-      })),
+      opportunities: opportunities.map((opportunity) => {
+        const step = stepById.get(opportunity.id);
+        return {
+          ...opportunity,
+          days_in_stage: step?.days ?? null,
+          next_step: step?.next ?? null,
+          payment: opportunity.payment_reference
+            ? paymentByReference.get(opportunity.payment_reference) ?? null
+            : null,
+        };
+      }),
       contacts: contactsResult.data ?? [],
     },
     { headers: { "Cache-Control": "no-store" } },

@@ -15,6 +15,12 @@ import {
   type ReportPeriod,
 } from "../lib/objective-periods";
 import type { ObjectiveProduct, ObjectiveCollaborator as SimpleCollaborator } from "../lib/objective-products";
+import { messageForApiError, messageFromApiBody } from "../lib/api-error-messages";
+import { personLabel } from "../lib/person-label";
+import type { OkrTemplate } from "../lib/okr-templates";
+import { useErrorToast } from "./error-toast";
+import BlockDialog from "./block-dialog";
+import OkrTemplatePicker from "./okr-template-picker";
 
 type Objective = {
   id: string;
@@ -69,6 +75,7 @@ export type ObjectiveArea = {
 type ObjectiveCollaborator = {
   id: string;
   email: string;
+  displayName?: string;
   areaIds: string[];
 };
 
@@ -96,6 +103,7 @@ const valueTypeLabels: Record<ObjectiveValueType, string> = {
 };
 
 export default function Objectives() {
+  const showError = useErrorToast();
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [checkins, setCheckins] = useState<ObjectiveCheckIn[]>([]);
   const [edits, setEdits] = useState<ObjectiveCheckInEdit[]>([]);
@@ -106,14 +114,25 @@ export default function Objectives() {
   const [role, setRole] = useState<ObjectivesData["role"]>("collaborator");
   const [products, setProducts] = useState<ObjectiveProduct[]>([]);
   const [availableCollaborators, setAvailableCollaborators] = useState<SimpleCollaborator[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
+  const [query, setQuery] = useState("");
+  const [periodFilter, setPeriodFilter] = useState<"all" | ObjectivePeriodType>("all");
+  const [scopeFilter, setScopeFilter] = useState<"all" | Objective["scope_type"]>("all");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [personFilter, setPersonFilter] = useState("mine");
+  const [productFilter, setProductFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"open" | "active" | "inactive" | "archived" | "all">("open");
+  const [situationFilter, setSituationFilter] = useState<"all" | "no_checkin" | "in_progress" | "complete" | "soon" | "overdue">("all");
+  const [shapeFilter, setShapeFilter] = useState<"all" | "with_krs" | "without_krs">("all");
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [formObjective, setFormObjective] = useState<Objective | null | "new">(null);
   const [formParentObjectiveId, setFormParentObjectiveId] = useState<string | null>(null);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [draftTemplate, setDraftTemplate] = useState<OkrTemplate | null>(null);
   const [formCheckIn, setFormCheckIn] = useState<{ objective: Objective; checkin: ObjectiveCheckIn } | null>(null);
   const [savingCheckIn, setSavingCheckIn] = useState("");
+  const [blockObjective, setBlockObjective] = useState<Objective | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -125,7 +144,7 @@ export default function Objectives() {
         const code = typeof result === "object" && result !== null && "error" in result
           ? result.error
           : null;
-        throw new Error(objectiveLoadError(code, response.status));
+        throw new Error(messageForApiError(code, objectiveLoadFallback(response.status)));
       }
       setObjectives(result.objectives);
       setCheckins(result.checkins);
@@ -148,7 +167,17 @@ export default function Objectives() {
     void loadData();
   }, [loadData]);
 
-  async function saveObjective(payload: ObjectivePayload, objective: Objective | null) {
+  function closeObjectiveEditor() {
+    setFormObjective(null);
+    setFormParentObjectiveId(null);
+    setDraftTemplate(null);
+  }
+
+  async function saveObjective(
+    payload: ObjectivePayload,
+    objective: Objective | null,
+    options?: { keepOpen?: boolean },
+  ) {
     const response = await fetch(
       objective
         ? `/api/backoffice/objectives/${encodeURIComponent(objective.id)}`
@@ -162,10 +191,19 @@ export default function Objectives() {
         }),
       },
     );
-    if (!response.ok) throw new Error("Não foi possível guardar o objectivo.");
-    setFormObjective(null);
-    setFormParentObjectiveId(null);
-    await loadData();
+    const result: unknown = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(messageFromApiBody(result, "Não foi possível guardar o objectivo."));
+    }
+    const id = typeof result === "object" && result !== null && "id" in result && typeof result.id === "string"
+      ? result.id
+      : "";
+    if (!id) throw new Error("Não foi possível guardar o objectivo.");
+    if (!options?.keepOpen) {
+      closeObjectiveEditor();
+      await loadData();
+    }
+    return id;
   }
 
   async function saveCheckIn(
@@ -174,7 +212,6 @@ export default function Objectives() {
     note: string,
   ) {
     setSavingCheckIn(objective.id);
-    setError("");
     try {
       const response = await fetch(
         `/api/backoffice/objectives/${encodeURIComponent(objective.id)}`,
@@ -184,30 +221,28 @@ export default function Objectives() {
           body: JSON.stringify({ value, note }),
         },
       );
-      const result: unknown = await response.json();
+      const result: unknown = await response.json().catch(() => null);
       if (!response.ok) {
-        const duplicate =
+        if (
           typeof result === "object" &&
           result !== null &&
           "error" in result &&
-          result.error === "already_checked_in_today";
-        if (duplicate) await loadData();
-        throw new Error(
-          duplicate
-            ? "O check-in diário deste objectivo já foi registado."
-            : "Não foi possível guardar o check-in.",
-        );
+          result.error === "already_checked_in_today"
+        ) {
+          await loadData();
+        }
+        showError(messageFromApiBody(result, "Não foi possível guardar o check-in."));
+        return;
       }
       await loadData();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível guardar o check-in.");
+    } catch {
+      showError("Não foi possível guardar o check-in.");
     } finally {
       setSavingCheckIn("");
     }
   }
 
   async function setObjectiveArchived(objective: Objective, archived: boolean): Promise<boolean> {
-    setError("");
     try {
       const response = await fetch(
         `/api/backoffice/objectives/${encodeURIComponent(objective.id)}/archive`,
@@ -217,22 +252,49 @@ export default function Objectives() {
           body: JSON.stringify({ archived }),
         },
       );
-      if (!response.ok) throw new Error("Não foi possível actualizar o estado do objectivo.");
+      if (!response.ok) {
+        const result: unknown = await response.json().catch(() => null);
+        showError(messageFromApiBody(result, "Não foi possível actualizar o estado do objectivo."));
+        return false;
+      }
       await loadData();
       return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível actualizar o estado do objectivo.");
+    } catch {
+      showError("Não foi possível actualizar o estado do objectivo.");
       return false;
     }
   }
 
   const today = luandaToday();
   const topLevelObjectives = objectives.filter((objective) => objective.parent_objective_id === null);
-  const activeCount = topLevelObjectives.filter((objective) => objective.active && !objective.archived).length;
   const canCreateObjective = role === "admin" ||
     (role === "manager" && areas.some((area) => area.active)) ||
     role === "collaborator";
-  const visibleObjectives = topLevelObjectives.filter((objective) => objective.archived === showArchived);
+  const people = collaborators
+    .filter((person) => person.id !== userId)
+    .sort((left, right) => left.email.localeCompare(right.email, "pt"));
+  const filtersNarrowed = query.trim() !== "" || periodFilter !== "all" || scopeFilter !== "all" ||
+    areaFilter !== "all" || personFilter !== "mine" || productFilter !== "all" ||
+    statusFilter !== "open" || situationFilter !== "all" || shapeFilter !== "all";
+  const visibleObjectives = topLevelObjectives.filter((objective) =>
+    objectiveMatchesFilters(objective, {
+      objectives,
+      checkins,
+      collaborators,
+      manageableAreaIds,
+      userId,
+      today,
+      query,
+      periodFilter,
+      scopeFilter,
+      areaFilter,
+      personFilter,
+      productFilter,
+      statusFilter,
+      situationFilter,
+      shapeFilter,
+    }),
+  );
   const selectedObjective = selectedObjectiveId
     ? objectives.find((objective) => objective.id === selectedObjectiveId) ?? null
     : null;
@@ -245,7 +307,13 @@ export default function Objectives() {
   const editorParentObjective = editorParentObjectiveId
     ? objectives.find((item) => item.id === editorParentObjectiveId) ?? null
     : null;
-  const todayCount = topLevelObjectives.filter((objective) =>
+  const activeCount = visibleObjectives.filter((objective) => objective.active && !objective.archived).length;
+  const visibleIds = new Set(visibleObjectives.flatMap((objective) => [
+    objective.id,
+    ...objectives.filter((item) => item.parent_objective_id === objective.id).map((item) => item.id),
+  ]));
+  const visibleCheckins = checkins.filter((checkin) => visibleIds.has(checkin.objective_id));
+  const todayCount = visibleObjectives.filter((objective) =>
     !objective.archived &&
       checkins.some((checkin) => checkin.objective_id === objective.id && checkin.checkin_date === today),
   ).length;
@@ -270,7 +338,7 @@ export default function Objectives() {
     const areaName = objective.scope_type === "company"
       ? "Empresa"
       : objective.scope_type === "collaborator"
-        ? collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador"
+        ? personLabel(collaborators.find((member) => member.id === objective.assigned_to)?.displayName, collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador")
         : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento";
     const alignedObjectiveTitle = objective.aligned_objective_id
       ? objectives.find((item) => item.id === objective.aligned_objective_id)?.title ?? null
@@ -308,6 +376,7 @@ export default function Objectives() {
         objective={objective}
         saving={savingCheckIn === objective.id}
         onCheckIn={(value, note) => saveCheckIn(objective, value, note)}
+        onBlock={() => setBlockObjective(objective)}
         onEdit={() => setFormObjective(objective)}
         onEditCheckIn={(checkin) => setFormCheckIn({ objective, checkin })}
       />
@@ -331,30 +400,34 @@ export default function Objectives() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {role !== "collaborator" || objectives.some((item) => item.scope_type === "collaborator" && item.assigned_to === userId && item.archived) ? (
-            <button
-              aria-pressed={showArchived}
-              className="min-h-11 rounded-full border border-[#e9e3e0] px-4 text-[11px] font-semibold text-[#6d605b]"
-              onClick={() => setShowArchived((current) => !current)}
-              type="button"
-            >
-              {showArchived ? "Ver objectivos activos" : `Arquivados (${objectives.filter((item) => item.archived).length})`}
-            </button>
+          {canCreateObjective ? (
+            <>
+              <button
+                className="min-h-11 rounded-full border border-[#e2d6c4] bg-white px-5 text-[12px] font-semibold text-[#762838] hover:bg-[#fbf6ee]"
+                onClick={() => setTemplatePickerOpen(true)}
+                type="button"
+              >
+                Templates OKR
+              </button>
+              <button
+                className="min-h-11 rounded-full bg-[#510f1d] px-5 text-[12px] font-semibold text-white hover:bg-[#762838]"
+                onClick={() => {
+                  setDraftTemplate(null);
+                  setFormObjective("new");
+                }}
+                type="button"
+              >
+                Novo objectivo
+              </button>
+            </>
           ) : null}
-          {canCreateObjective && !showArchived ? <button
-            className="min-h-11 rounded-full bg-[#510f1d] px-5 text-[12px] font-semibold text-white hover:bg-[#762838]"
-            onClick={() => setFormObjective("new")}
-            type="button"
-          >
-            Novo objectivo
-          </button> : null}
         </div>
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <ObjectiveStat label="Objectivos activos" value={String(activeCount)} />
         <ObjectiveStat label="Check-ins de hoje" value={`${todayCount} / ${activeCount}`} />
-        <ObjectiveStat label="Registos no histórico" value={String(checkins.length)} />
+        <ObjectiveStat label="Registos no histórico" value={String(visibleCheckins.length)} />
       </div>
       <ObjectiveReportExport />
 
@@ -373,10 +446,56 @@ export default function Objectives() {
           A carregar objectivos e histórico…
         </p>
       ) : null}
+      {!loading && !error ? (
+        <ObjectiveFilters
+          areaFilter={areaFilter}
+          areas={areas}
+          filtersNarrowed={filtersNarrowed}
+          people={people}
+          periodFilter={periodFilter}
+          personFilter={personFilter}
+          productFilter={productFilter}
+          products={products}
+          query={query}
+          resultCount={visibleObjectives.length}
+          scopeFilter={scopeFilter}
+          shapeFilter={shapeFilter}
+          situationFilter={situationFilter}
+          statusFilter={statusFilter}
+          onAreaFilter={setAreaFilter}
+          onClear={() => {
+            setQuery("");
+            setPeriodFilter("all");
+            setScopeFilter("all");
+            setAreaFilter("all");
+            setPersonFilter("mine");
+            setProductFilter("all");
+            setStatusFilter("open");
+            setSituationFilter("all");
+            setShapeFilter("all");
+          }}
+          onPeriodFilter={setPeriodFilter}
+          onPersonFilter={setPersonFilter}
+          onProductFilter={setProductFilter}
+          onQuery={setQuery}
+          onScopeFilter={setScopeFilter}
+          onShapeFilter={setShapeFilter}
+          onSituationFilter={setSituationFilter}
+          onStatusFilter={setStatusFilter}
+        />
+      ) : null}
       {!loading && visibleObjectives.length === 0 && !error ? (
         <div className="mt-6 rounded-2xl border border-dashed border-[#d8cdc7] bg-white p-8 text-center">
-          <h3 className="font-bold text-[#302829]">{showArchived ? "Não há objectivos arquivados" : "Ainda não há objectivos"}</h3>
-          <p className="mt-2 text-sm text-[#817773]">{showArchived ? "Os objectivos arquivados aparecerão aqui." : "Crie o primeiro para começar a acompanhar o progresso diário."}</p>
+          <h3 className="font-bold text-[#302829]">
+            {topLevelObjectives.length === 0 ? "Ainda não há objectivos" : "Nenhum objectivo com estes filtros"}
+          </h3>
+          <p className="mt-2 text-sm text-[#817773]">
+            {topLevelObjectives.length === 0
+              ? "Crie o primeiro para começar a acompanhar o progresso diário."
+              : personFilter === "mine"
+                ? "Os meus mostra o que está atribuído a si ou ao seu departamento. Escolha Todas as pessoas para ver o resto."
+                : "Altere os filtros para ver outros objectivos."}
+          </p>
         </div>
       ) : null}
       {!loading && role === "manager" && areas.every((area) => !area.active) ? (
@@ -405,7 +524,7 @@ export default function Objectives() {
                       ? "border-l-2 border-l-[#c4544f]"
                       : dueWarning?.level === "soon"
                         ? "border-l-2 border-l-[#c89a42]"
-                        : "border-l-2 border-l-transparent"
+                        : `border-l-2 ${periodAccentClass(objective.period_type)}`
                   }`}
                   key={objective.id}
                   onClick={() => setSelectedObjectiveId(objective.id)}
@@ -413,10 +532,13 @@ export default function Objectives() {
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-[12px] font-bold text-[#352d2e]">{objective.title}</span>
-                    <span className="mt-1 block text-[9px] text-[#8d837f]">
-                      {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
-                      {objective.period_type ? ` · ${periodTypeLabel(objective.period_type)}` : ""}
-                      {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
+                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                      <ObjectivePeriodBadge period={objective.period_type} />
+                      <ObjectiveScopeBadge scope={objective.scope_type} />
+                      <span className="text-[9px] text-[#8d837f]">
+                        {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
+                        {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
+                      </span>
                     </span>
                   </span>
                   <span className="text-[10px] text-[#766d69]">
@@ -424,7 +546,7 @@ export default function Objectives() {
                     {objective.scope_type === "company"
                       ? "Empresa"
                       : objective.scope_type === "collaborator"
-                        ? collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador"
+                        ? personLabel(collaborators.find((member) => member.id === objective.assigned_to)?.displayName, collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador")
                         : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento"}
                   </span>
                   <span className="min-w-0">
@@ -488,9 +610,10 @@ export default function Objectives() {
       {formObjective !== null ? (
         <ObjectiveEditor
           key={formObjective === "new"
-            ? `new-objective-${formParentObjectiveId ?? "root"}`
+            ? `new-objective-${draftTemplate?.id ?? "blank"}-${formParentObjectiveId ?? "root"}`
             : formObjective.id}
           objective={formObjective === "new" ? null : formObjective}
+          template={formObjective === "new" && !formParentObjectiveId ? draftTemplate : null}
           parentObjectiveId={editorParentObjectiveId}
           parentAreaId={editorParentAreaId}
           parentObjective={editorParentObjective}
@@ -503,9 +626,10 @@ export default function Objectives() {
               formObjective !== null && area.id === formObjective.area_id),
           )}
           products={products}
-          onClose={() => {
-            setFormObjective(null);
-            setFormParentObjectiveId(null);
+          onClose={closeObjectiveEditor}
+          onFinished={async () => {
+            closeObjectiveEditor();
+            await loadData();
           }}
           onSave={saveObjective}
         />
@@ -524,10 +648,32 @@ export default function Objectives() {
                 body: JSON.stringify({ value, note }),
               },
             );
-            if (!response.ok) throw new Error("Não foi possível editar o check-in.");
+            if (!response.ok) {
+              const result: unknown = await response.json().catch(() => null);
+              throw new Error(messageFromApiBody(result, "Não foi possível editar o check-in."));
+            }
             setFormCheckIn(null);
             await loadData();
           }}
+        />
+      ) : null}
+      {templatePickerOpen ? (
+        <OkrTemplatePicker
+          onClose={() => setTemplatePickerOpen(false)}
+          onSelect={(template) => {
+            setDraftTemplate(template);
+            setFormParentObjectiveId(null);
+            setFormObjective("new");
+            setTemplatePickerOpen(false);
+          }}
+        />
+      ) : null}
+      {blockObjective ? (
+        <BlockDialog
+          onClose={() => setBlockObjective(null)}
+          subjectId={blockObjective.id}
+          subjectType="objective"
+          title={blockObjective.title}
         />
       ) : null}
     </>
@@ -551,7 +697,7 @@ export function OverviewObjectives({
           const code = typeof result === "object" && result !== null && "error" in result
             ? result.error
             : null;
-          throw new Error(objectiveLoadError(code, response.status));
+          throw new Error(messageForApiError(code, objectiveLoadFallback(response.status)));
         }
         if (active) setData(result);
       })
@@ -566,7 +712,16 @@ export function OverviewObjectives({
   }, []);
 
   const activeObjectives = data?.objectives.filter((objective) =>
-    objective.parent_objective_id === null && objective.active && !objective.archived,
+    objective.parent_objective_id === null &&
+    objective.active &&
+    !objective.archived &&
+    objectiveBelongsToPerson(
+      objective,
+      data.userId,
+      data.collaborators,
+      data.userId,
+      data.manageableAreaIds,
+    ),
   ) ?? [];
   const checkinsToday = data?.checkins.filter(
     (checkin) => checkin.checkin_date === luandaToday() &&
@@ -579,7 +734,7 @@ export function OverviewObjectives({
         <div>
           <p className="text-[14px] font-bold text-[#302829]">Projectos e objectivos</p>
           <p className="mt-1 text-[11px] text-[#a19894]">
-            Progresso da meta pelo check-in mais recente
+            Os seus objectivos e o progresso pelo check-in mais recente
           </p>
         </div>
         <button
@@ -619,7 +774,13 @@ export function OverviewObjectives({
                       : ""
                 }`} key={objective.id}>
                   <div className="flex items-start justify-between gap-3">
-                    <p className="text-[11px] font-semibold text-[#393132]">{objective.title}</p>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold text-[#393132]">{objective.title}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <ObjectivePeriodBadge period={objective.period_type} />
+                        <ObjectiveScopeBadge scope={objective.scope_type} />
+                      </div>
+                    </div>
                     <p className="shrink-0 text-right text-[10px] text-[#766d69]">
                       {latest
                         ? displayValue(latest.value, objective.value_type, objective.unit)
@@ -671,6 +832,7 @@ function ObjectiveCard({
   checkInDone,
   saving,
   onEdit,
+  onBlock,
   onAddKeyResult,
   onArchive,
   onEditCheckIn,
@@ -689,6 +851,7 @@ function ObjectiveCard({
   checkInDone: boolean;
   saving: boolean;
   onEdit: () => void;
+  onBlock: () => void;
   onAddKeyResult: () => void;
   onArchive: (archived: boolean) => void;
   onEditCheckIn: (checkin: ObjectiveCheckIn) => void;
@@ -736,11 +899,8 @@ function ObjectiveCard({
               <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">KR</span>
             ) : null}
             <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">{areaName}</span>
-            {objective.period_type ? (
-              <span className="rounded-full bg-[#f0e9f1] px-2.5 py-1 text-[9px] font-semibold text-[#6e4b71]">
-                {periodTypeLabel(objective.period_type)}
-              </span>
-            ) : null}
+            <ObjectivePeriodBadge period={objective.period_type} />
+            <ObjectiveScopeBadge scope={objective.scope_type} />
             <span className={`rounded-full px-2.5 py-1 text-[9px] font-bold ${
               objective.archived
                 ? "bg-[#f3efed] text-[#847a76]"
@@ -766,6 +926,15 @@ function ObjectiveCard({
         </div>
         {canManage && (!isKeyResult || parentAllowsChanges) ? (
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            {!objective.archived && !isKeyResult ? (
+              <button
+                className="rounded-full border border-[#e2d6c4] px-3 py-1.5 text-[10px] font-semibold text-[#762838] hover:bg-[#fbf6ee]"
+                onClick={onBlock}
+                type="button"
+              >
+                Bloquear
+              </button>
+            ) : null}
             {!objective.archived ? (
               <button
                 className="rounded-full border border-[#e9e3e0] px-3 py-1.5 text-[10px] font-semibold text-[#6d605b] hover:bg-[#faf8f7]"
@@ -1006,6 +1175,7 @@ function CheckInEditor({
 
 function ObjectiveEditor({
   objective,
+  template,
   parentObjectiveId,
   parentAreaId,
   parentObjective,
@@ -1016,9 +1186,11 @@ function ObjectiveEditor({
   areas,
   products,
   onClose,
+  onFinished,
   onSave,
 }: {
   objective: Objective | null;
+  template: OkrTemplate | null;
   parentObjectiveId: string | null;
   parentAreaId: string | null;
   parentObjective: Objective | null;
@@ -1029,9 +1201,24 @@ function ObjectiveEditor({
   areas: ObjectiveArea[];
   products: ObjectiveProduct[];
   onClose: () => void;
-  onSave: (payload: ObjectivePayload, objective: Objective | null) => Promise<void>;
+  onFinished: () => Promise<void>;
+  onSave: (
+    payload: ObjectivePayload,
+    objective: Objective | null,
+    options?: { keepOpen?: boolean },
+  ) => Promise<string>;
 }) {
   const [valueType, setValueType] = useState<ObjectiveValueType>(objective?.value_type ?? "number");
+  const [draftKeyResults, setDraftKeyResults] = useState(() =>
+    template?.keyResults.map((item) => ({
+      title: item.title,
+      valueType: item.valueType,
+      target: String(item.target),
+      unit: item.unit,
+    })) ?? null,
+  );
+  const [createdParentId, setCreatedParentId] = useState<string | null>(null);
+  const [savedKeyResultCount, setSavedKeyResultCount] = useState(0);
   const [scopeType, setScopeType] = useState<ObjectivePayload["scopeType"]>(
     objective?.scope_type ?? parentObjective?.scope_type ?? (role === "collaborator" ? "collaborator" : "department"),
   );
@@ -1046,7 +1233,7 @@ function ObjectiveEditor({
   );
   const [productId, setProductId] = useState(objective?.product_id ?? "");
   const [periodType, setPeriodType] = useState<ObjectivePeriodType>(
-    objective?.period_type ?? parentObjective?.period_type ?? "daily",
+    objective?.period_type ?? parentObjective?.period_type ?? template?.period ?? "daily",
   );
   const [periodAnchor, setPeriodAnchor] = useState(
     objective?.period_start ?? parentObjective?.period_start ?? luandaToday(),
@@ -1124,6 +1311,48 @@ function ObjectiveEditor({
       productId: String(form.get("productId") ?? "") || null,
     };
     try {
+      if (draftKeyResults && !objective && !parentObjectiveId) {
+        const parsedKeyResults = draftKeyResults.map((item) => {
+          const parsed = parseInputValue(item.target, item.valueType);
+          return { item, parsed };
+        });
+        const invalid = parsedKeyResults.find((entry) => !entry.parsed.valid);
+        if (invalid && !invalid.parsed.valid) {
+          setError(`${invalid.item.title}: ${invalid.parsed.error}`);
+          setSaving(false);
+          return;
+        }
+        const parentId = createdParentId ?? await onSave(
+          { ...payload, valueType: "number", targetValue: null, unit: "" },
+          null,
+          { keepOpen: true },
+        );
+        setCreatedParentId(parentId);
+        for (let index = savedKeyResultCount; index < parsedKeyResults.length; index += 1) {
+          const entry = parsedKeyResults[index];
+          if (!entry.parsed.valid) continue;
+          await onSave({
+            title: entry.item.title,
+            description: "",
+            scopeType: payload.scopeType,
+            areaId: payload.areaId,
+            assignedTo: payload.assignedTo,
+            periodType: payload.periodType,
+            periodStart: payload.periodStart,
+            alignedObjectiveId: null,
+            parentObjectiveId: parentId,
+            dueDate: payload.dueDate,
+            valueType: entry.item.valueType,
+            targetValue: entry.parsed.value,
+            unit: entry.item.unit,
+            active: true,
+            productId: null,
+          }, null, { keepOpen: true });
+          setSavedKeyResultCount(index + 1);
+        }
+        await onFinished();
+        return;
+      }
       await onSave(payload, objective);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível guardar o objectivo.");
@@ -1134,14 +1363,14 @@ function ObjectiveEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#211d1e]/45 p-4">
-      <section aria-labelledby="objective-editor-title" aria-modal="true" className="my-auto w-full max-w-[620px] rounded-[24px] bg-white p-5 shadow-2xl sm:p-7" role="dialog">
+      <section aria-labelledby="objective-editor-title" aria-modal="true" className={`my-auto w-full rounded-[24px] bg-white p-5 shadow-2xl sm:p-7 ${draftKeyResults ? "max-w-[720px]" : "max-w-[620px]"}`} role="dialog">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#a8792f]">
-              {parentObjectiveId ? "Key Result" : objective ? "Actualizar meta" : "Nova meta"}
+              {draftKeyResults ? "Template OKR" : parentObjectiveId ? "Key Result" : objective ? "Actualizar meta" : "Nova meta"}
             </p>
             <h2 className="mt-1 text-xl font-bold text-[#302829]" id="objective-editor-title">
-              {parentObjectiveId ? objective ? "Editar KR" : "Adicionar Key Result" : objective ? "Editar objectivo" : "Criar objectivo"}
+              {draftKeyResults ? "Ajustar e guardar" : parentObjectiveId ? objective ? "Editar KR" : "Adicionar Key Result" : objective ? "Editar objectivo" : "Criar objectivo"}
             </h2>
           </div>
           <button aria-label="Fechar" className="flex size-9 items-center justify-center rounded-full bg-[#f6f2f0] text-[#625858]" onClick={onClose} type="button">×</button>
@@ -1149,11 +1378,11 @@ function ObjectiveEditor({
         <form className="mt-5 space-y-4" onSubmit={submit}>
           <label className="block text-[10px] font-semibold text-[#817773]">
             {parentObjectiveId ? "Nome do Key Result" : "Nome do objectivo"}
-            <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]" defaultValue={objective?.title} maxLength={160} name="title" required />
+            <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]" defaultValue={template?.title ?? objective?.title} maxLength={160} name="title" required />
           </label>
           <label className="block text-[10px] font-semibold text-[#817773]">
             Descrição (opcional)
-            <textarea className="mt-1 min-h-20 w-full rounded-xl border border-[#e9e3e0] px-3 py-2 text-[12px] text-[#302829]" defaultValue={objective?.description} maxLength={2000} name="description" />
+            <textarea className="mt-1 min-h-20 w-full rounded-xl border border-[#e9e3e0] px-3 py-2 text-[12px] text-[#302829]" defaultValue={template?.description ?? objective?.description} maxLength={2000} name="description" />
           </label>
           {parentObjectiveId && parentObjective ? (
             <p className="rounded-xl bg-[#faf8f6] px-3 py-2.5 text-[10px] text-[#817773]">
@@ -1219,7 +1448,7 @@ function ObjectiveEditor({
                       setAlignedObjectiveId("");
                     }} required value={assignedTo}>
                       <option value="">Seleccionar colaborador</option>
-                      {assignableCollaborators.map((member) => <option key={member.id} value={member.id}>{member.email}</option>)}
+                      {assignableCollaborators.map((member) => <option key={member.id} value={member.id}>{personLabel(member.displayName, member.email)}</option>)}
                     </select>
                   </label>
                 )
@@ -1252,26 +1481,65 @@ function ObjectiveEditor({
             Data de fim (opcional)
             <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[11px] text-[#302829]" defaultValue={objective?.due_date ?? ""} name="dueDate" type="date" />
           </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-[10px] font-semibold text-[#817773]">
-              Tipo de valor
-              <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" onChange={(event) => setValueType(event.target.value as ObjectiveValueType)} value={valueType}>
-                {objectiveValueTypes.map((type) => <option key={type} value={type}>{valueTypeLabels[type]}</option>)}
-              </select>
-            </label>
-            <label className="block text-[10px] font-semibold text-[#817773]">
-              Unidade (opcional)
-              <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]" defaultValue={objective?.unit} maxLength={40} name="unit" placeholder="ex.: vendas, Kz, pessoas" />
-            </label>
-          </div>
-          <ObjectiveValueInput
-            defaultValue={objective?.target_value ?? null}
-            key={valueType}
-            label="Meta / valor-alvo (opcional)"
-            name="targetValue"
-            type={valueType}
-            unit={String(objective?.unit ?? "")}
-          />
+          {draftKeyResults ? null : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Tipo de valor
+                <select className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]" onChange={(event) => setValueType(event.target.value as ObjectiveValueType)} value={valueType}>
+                  {objectiveValueTypes.map((type) => <option key={type} value={type}>{valueTypeLabels[type]}</option>)}
+                </select>
+              </label>
+              <label className="block text-[10px] font-semibold text-[#817773]">
+                Unidade (opcional)
+                <input className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] px-3 text-[12px] text-[#302829]" defaultValue={objective?.unit} maxLength={40} name="unit" placeholder="ex.: vendas, Kz, pessoas" />
+              </label>
+            </div>
+          )}
+          {draftKeyResults ? (
+            <div className="space-y-3 rounded-2xl bg-[#faf8f6] p-3">
+              <p className="text-[11px] font-semibold text-[#554b4b]">Key results de exemplo. Ajuste as metas antes de guardar.</p>
+              {draftKeyResults.map((item, index) => (
+                <div className="grid gap-2 sm:grid-cols-[1fr_120px_90px]" key={`${item.valueType}-${index}`}>
+                  <label className="block text-[10px] font-semibold text-[#817773]">
+                    Key result {index + 1}
+                    <input
+                      className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[12px] text-[#302829]"
+                      maxLength={160}
+                      onChange={(event) => setDraftKeyResults((current) => current?.map((entry, entryIndex) => entryIndex === index ? { ...entry, title: event.target.value } : entry) ?? null)}
+                      value={item.title}
+                    />
+                  </label>
+                  <label className="block text-[10px] font-semibold text-[#817773]">
+                    Meta
+                    <input
+                      className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[12px] text-[#302829]"
+                      onChange={(event) => setDraftKeyResults((current) => current?.map((entry, entryIndex) => entryIndex === index ? { ...entry, target: event.target.value } : entry) ?? null)}
+                      type="number"
+                      value={item.target}
+                    />
+                  </label>
+                  <label className="block text-[10px] font-semibold text-[#817773]">
+                    {valueTypeLabels[item.valueType]}
+                    <input
+                      className="mt-1 min-h-10 w-full rounded-xl border border-[#e9e3e0] bg-white px-3 text-[12px] text-[#302829]"
+                      maxLength={40}
+                      onChange={(event) => setDraftKeyResults((current) => current?.map((entry, entryIndex) => entryIndex === index ? { ...entry, unit: event.target.value } : entry) ?? null)}
+                      value={item.unit}
+                    />
+                  </label>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <ObjectiveValueInput
+              defaultValue={objective?.target_value ?? null}
+              key={valueType}
+              label="Meta / valor-alvo (opcional)"
+              name="targetValue"
+              type={valueType}
+              unit={String(objective?.unit ?? "")}
+            />
+          )}
           {!parentObjectiveId ? (
             <div className="space-y-3">
               <label className="block text-[10px] font-semibold text-[#817773]">
@@ -1290,7 +1558,7 @@ function ObjectiveEditor({
           {error ? <p className="text-[11px] text-red-700" role="alert">{error}</p> : null}
           <div className="flex justify-end gap-2 border-t border-[#f0ecea] pt-4">
             <button className="min-h-10 rounded-full border border-[#e9e3e0] px-4 text-[11px] font-semibold text-[#625858]" onClick={onClose} type="button">Cancelar</button>
-            <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} type="submit">{saving ? "A guardar…" : parentObjectiveId ? "Guardar KR" : "Guardar objectivo"}</button>
+            <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} type="submit">{saving ? "A guardar…" : draftKeyResults ? "Guardar OKR" : parentObjectiveId ? "Guardar KR" : "Guardar objectivo"}</button>
           </div>
         </form>
       </section>
@@ -1488,12 +1756,14 @@ function isObjectiveResponse(value: unknown): value is {
     typeof item === "object" && item !== null &&
     "id" in item && typeof item.id === "string" &&
     "email" in item && typeof item.email === "string" &&
+    (!("displayName" in item) || typeof item.displayName === "string") &&
     "areaIds" in item && Array.isArray(item.areaIds) &&
     item.areaIds.every((areaId) => typeof areaId === "string"),
   ) && value.availableCollaborators.every((item: unknown) =>
     typeof item === "object" && item !== null &&
     "id" in item && typeof item.id === "string" &&
-    "email" in item && typeof item.email === "string",
+    "email" in item && typeof item.email === "string" &&
+    (!("displayName" in item) || typeof item.displayName === "string"),
   ) && value.products.every((item: unknown) =>
     typeof item === "object" && item !== null &&
     "slug" in item && typeof item.slug === "string" &&
@@ -1502,33 +1772,11 @@ function isObjectiveResponse(value: unknown): value is {
   ) && value.manageableAreaIds.every((areaId) => typeof areaId === "string");
 }
 
-function objectiveLoadError(code: unknown, status: number) {
-  switch (code) {
-    case "objectives_schema_missing":
-      return "A estrutura de objectivos, âmbitos e períodos ainda não existe. Aplique as migrações de objectivos 20261113020000, 20261113030000, 20261113040000, 20261113080000 e 20261124010000 no Supabase.";
-    case "areas_schema_missing":
-      return "As tabelas das áreas ainda não existem. Aplique a migração 20261113030000 no Supabase.";
-    case "checkins_schema_missing":
-      return "A estrutura dos check-ins ainda não está actualizada. Aplique as migrações 20261113020000 e 20261113030000 no Supabase.";
-    case "checkin_edits_schema_missing":
-      return "O histórico de edições ainda não existe. Aplique a migração 20261113030000 no Supabase.";
-    case "area_access_unavailable":
-      return "Não foi possível verificar as áreas atribuídas. Confirme se a migração 20261113030000 foi aplicada.";
-    case "unauthorized":
-      return "A sessão expirou. Inicie sessão novamente.";
-    case "forbidden":
-      return "A sua conta não tem uma função autorizada para consultar os objectivos.";
-    case "objectives_unavailable":
-    case "areas_unavailable":
-    case "checkins_unavailable":
-    case "checkin_edits_unavailable":
-      return "O Supabase não conseguiu carregar os dados. Tente novamente e consulte os registos do servidor se o erro persistir.";
-    default:
-      if (status === 503) return "A estrutura do Supabase está incompleta. Aplique as migrações dos objectivos, áreas e prazos.";
-      if (status === 401) return "A sessão expirou. Inicie sessão novamente.";
-      if (status === 403) return "A sua conta não tem permissão para consultar os objectivos.";
-      return "Não foi possível carregar os objectivos. Verifique a ligação ao Supabase e tente novamente.";
-  }
+function objectiveLoadFallback(status: number) {
+  if (status === 503) return "A estrutura do Supabase está incompleta. Aplique as migrações dos objectivos, áreas e prazos.";
+  if (status === 401) return "A sessão expirou. Inicie sessão novamente.";
+  if (status === 403) return "A sua conta não tem permissão para consultar os objectivos.";
+  return "Não foi possível carregar os objectivos. Verifique a ligação ao Supabase e tente novamente.";
 }
 
 function ObjectiveStat({ label, value }: { label: string; value: string }) {
@@ -1557,7 +1805,7 @@ function ObjectiveReportExport() {
         const code = typeof result === "object" && result !== null && "error" in result
           ? result.error
           : null;
-        throw new Error(reportExportError(code, response.status));
+        throw new Error(messageForApiError(code, reportExportFallback(response.status)));
       }
 
       const blob = await response.blob();
@@ -1623,13 +1871,299 @@ function ObjectiveReportExport() {
   );
 }
 
-function reportExportError(code: unknown, status: number) {
-  if (code === "report_schema_missing") {
-    return "A estrutura do relatório não está instalada. Aplique a migração de histórico de actividades no Supabase.";
-  }
-  if (code === "unauthorized" || status === 401) return "A sessão expirou. Inicie sessão novamente.";
-  if (code === "forbidden" || status === 403) return "Não tem permissão para exportar este relatório.";
+function reportExportFallback(status: number) {
+  if (status === 401) return "A sessão expirou. Inicie sessão novamente.";
+  if (status === 403) return "Não tem permissão para exportar este relatório.";
   return "Não foi possível exportar o relatório. Tente novamente e consulte os registos do servidor se o erro persistir.";
+}
+
+type ObjectiveFilterState = {
+  objectives: Objective[];
+  checkins: ObjectiveCheckIn[];
+  collaborators: ObjectiveCollaborator[];
+  manageableAreaIds: string[];
+  userId: string;
+  today: string;
+  query: string;
+  periodFilter: "all" | ObjectivePeriodType;
+  scopeFilter: "all" | Objective["scope_type"];
+  areaFilter: string;
+  personFilter: string;
+  productFilter: string;
+  statusFilter: "open" | "active" | "inactive" | "archived" | "all";
+  situationFilter: "all" | "no_checkin" | "in_progress" | "complete" | "soon" | "overdue";
+  shapeFilter: "all" | "with_krs" | "without_krs";
+};
+
+function areasForPerson(
+  personId: string,
+  collaborators: ObjectiveCollaborator[],
+  currentUserId: string,
+  manageableAreaIds: string[],
+) {
+  const listed = collaborators.find((person) => person.id === personId)?.areaIds ?? [];
+  if (personId !== currentUserId) return listed;
+  return [...new Set([...listed, ...manageableAreaIds])];
+}
+
+function objectiveBelongsToPerson(
+  objective: Objective,
+  personId: string,
+  collaborators: ObjectiveCollaborator[],
+  currentUserId: string,
+  manageableAreaIds: string[],
+) {
+  if (objective.assigned_to === personId) return true;
+  const areas = areasForPerson(personId, collaborators, currentUserId, manageableAreaIds);
+  return objective.scope_type === "department" &&
+    objective.area_id !== null &&
+    areas.includes(objective.area_id);
+}
+
+function objectiveMatchesFilters(objective: Objective, filters: ObjectiveFilterState) {
+  if (filters.statusFilter === "archived" && !objective.archived) return false;
+  if (filters.statusFilter === "open" && objective.archived) return false;
+  if (filters.statusFilter === "active" && (!objective.active || objective.archived)) return false;
+  if (filters.statusFilter === "inactive" && (objective.active || objective.archived)) return false;
+  if (filters.periodFilter !== "all" && objective.period_type !== filters.periodFilter) return false;
+  if (filters.scopeFilter !== "all" && objective.scope_type !== filters.scopeFilter) return false;
+  if (filters.areaFilter !== "all" && objective.area_id !== filters.areaFilter) return false;
+  if (filters.productFilter === "none" && objective.product_id) return false;
+  if (filters.productFilter !== "all" && filters.productFilter !== "none" && objective.product_id !== filters.productFilter) return false;
+  if (filters.personFilter !== "all") {
+    const personId = filters.personFilter === "mine" ? filters.userId : filters.personFilter;
+    if (!objectiveBelongsToPerson(
+      objective,
+      personId,
+      filters.collaborators,
+      filters.userId,
+      filters.manageableAreaIds,
+    )) return false;
+  }
+  const keyResults = filters.objectives.filter((item) => item.parent_objective_id === objective.id);
+  if (filters.shapeFilter === "with_krs" && keyResults.length === 0) return false;
+  if (filters.shapeFilter === "without_krs" && keyResults.length > 0) return false;
+  const needle = filters.query.trim().toLocaleLowerCase("pt");
+  if (needle) {
+    const haystack = [objective.title, objective.description, ...keyResults.map((item) => item.title)]
+      .join(" ")
+      .toLocaleLowerCase("pt");
+    if (!haystack.includes(needle)) return false;
+  }
+  const latest = filters.checkins.find((item) => item.objective_id === objective.id);
+  const complete = isObjectiveComplete(objective, latest?.value);
+  const dueWarning = objective.archived || complete ? null : objectiveDueWarning(objective.due_date, filters.today);
+  if (filters.situationFilter === "no_checkin" && latest) return false;
+  if (filters.situationFilter === "in_progress" && (!latest || complete)) return false;
+  if (filters.situationFilter === "complete" && !complete) return false;
+  if (filters.situationFilter === "soon" && dueWarning?.level !== "soon") return false;
+  if (filters.situationFilter === "overdue" && dueWarning?.level !== "overdue") return false;
+  return true;
+}
+
+function ObjectiveFilters({
+  query,
+  periodFilter,
+  scopeFilter,
+  areaFilter,
+  personFilter,
+  productFilter,
+  statusFilter,
+  situationFilter,
+  shapeFilter,
+  areas,
+  people,
+  products,
+  resultCount,
+  filtersNarrowed,
+  onQuery,
+  onPeriodFilter,
+  onScopeFilter,
+  onAreaFilter,
+  onPersonFilter,
+  onProductFilter,
+  onStatusFilter,
+  onSituationFilter,
+  onShapeFilter,
+  onClear,
+}: {
+  query: string;
+  periodFilter: ObjectiveFilterState["periodFilter"];
+  scopeFilter: ObjectiveFilterState["scopeFilter"];
+  areaFilter: string;
+  personFilter: string;
+  productFilter: string;
+  statusFilter: ObjectiveFilterState["statusFilter"];
+  situationFilter: ObjectiveFilterState["situationFilter"];
+  shapeFilter: ObjectiveFilterState["shapeFilter"];
+  areas: ObjectiveArea[];
+  people: ObjectiveCollaborator[];
+  products: ObjectiveProduct[];
+  resultCount: number;
+  filtersNarrowed: boolean;
+  onQuery: (value: string) => void;
+  onPeriodFilter: (value: ObjectiveFilterState["periodFilter"]) => void;
+  onScopeFilter: (value: ObjectiveFilterState["scopeFilter"]) => void;
+  onAreaFilter: (value: string) => void;
+  onPersonFilter: (value: string) => void;
+  onProductFilter: (value: string) => void;
+  onStatusFilter: (value: ObjectiveFilterState["statusFilter"]) => void;
+  onSituationFilter: (value: ObjectiveFilterState["situationFilter"]) => void;
+  onShapeFilter: (value: ObjectiveFilterState["shapeFilter"]) => void;
+  onClear: () => void;
+}) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const controlClass = "h-8 rounded-full border border-[#e9e3e0] bg-white px-3 text-[11px] text-[#302829]";
+  const extraCount = [
+    scopeFilter !== "all",
+    areaFilter !== "all",
+    productFilter !== "all",
+    statusFilter !== "open",
+    situationFilter !== "all",
+    shapeFilter !== "all",
+  ].filter(Boolean).length;
+  const periods = [
+    { id: "all", label: "Todos" },
+    { id: "daily", label: "Diário" },
+    { id: "weekly", label: "Semanal" },
+    { id: "monthly", label: "Mensal" },
+    { id: "annual", label: "Anual" },
+  ] as const;
+  return (
+    <section aria-label="Filtros de objectivos" className="mt-4">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <input
+          aria-label="Procurar objectivo"
+          className={`${controlClass} w-40 max-w-full`}
+          onChange={(event) => onQuery(event.target.value)}
+          placeholder="Procurar"
+          value={query}
+        />
+        <select
+          aria-label="Pessoa"
+          className={`${controlClass} max-w-full`}
+          onChange={(event) => onPersonFilter(event.target.value)}
+          title="Os meus mostra objectivos atribuídos a si e os do departamento de que faz parte."
+          value={personFilter}
+        >
+          <option value="mine">Os meus</option>
+          <option value="all">Todas as pessoas</option>
+          {people.map((person) => <option key={person.id} value={person.id}>{personLabel(person.displayName, person.email)}</option>)}
+        </select>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Filtrar por período">
+          {periods.map((item) => (
+            <button
+              aria-pressed={periodFilter === item.id}
+              className={`h-8 rounded-full px-2.5 text-[11px] font-semibold ${periodFilter === item.id ? "bg-[#510f1d] text-white" : "border border-[#e9e3e0] text-[#625858]"}`}
+              key={item.id}
+              onClick={() => onPeriodFilter(item.id)}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <button
+          aria-expanded={moreOpen}
+          className={`h-8 rounded-full px-3 text-[11px] font-semibold ${moreOpen || extraCount > 0 ? "bg-[#f7f3ed] text-[#762838]" : "border border-[#e9e3e0] text-[#625858]"}`}
+          onClick={() => setMoreOpen((current) => !current)}
+          type="button"
+        >
+          {moreOpen ? "Menos filtros" : extraCount > 0 ? `Mais filtros · ${extraCount}` : "Mais filtros"}
+        </button>
+        {filtersNarrowed ? (
+          <button className="h-8 rounded-full px-2.5 text-[11px] font-semibold text-[#8a5b38]" onClick={onClear} type="button">
+            Limpar
+          </button>
+        ) : null}
+        <span className="px-1 text-[11px] text-[#817773]">{resultCount}</span>
+      </div>
+      {moreOpen ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <select aria-label="Âmbito" className={controlClass} onChange={(event) => onScopeFilter(event.target.value as ObjectiveFilterState["scopeFilter"])} value={scopeFilter}>
+            <option value="all">Âmbito</option>
+            <option value="company">Empresa</option>
+            <option value="department">Departamento</option>
+            <option value="collaborator">Pessoa</option>
+          </select>
+          <select aria-label="Área" className={controlClass} onChange={(event) => onAreaFilter(event.target.value)} value={areaFilter}>
+            <option value="all">Área</option>
+            {areas.map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}
+          </select>
+          <select aria-label="Produto" className={controlClass} onChange={(event) => onProductFilter(event.target.value)} value={productFilter}>
+            <option value="all">Produto</option>
+            <option value="none">Sem produto</option>
+            {products.map((product) => <option key={product.slug} value={product.slug}>{product.title}</option>)}
+          </select>
+          <select aria-label="Estado" className={controlClass} onChange={(event) => onStatusFilter(event.target.value as ObjectiveFilterState["statusFilter"])} value={statusFilter}>
+            <option value="open">Não arquivados</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+            <option value="archived">Arquivados</option>
+            <option value="all">Todos os estados</option>
+          </select>
+          <select aria-label="Situação" className={controlClass} onChange={(event) => onSituationFilter(event.target.value as ObjectiveFilterState["situationFilter"])} value={situationFilter}>
+            <option value="all">Situação</option>
+            <option value="no_checkin">Sem check-in</option>
+            <option value="in_progress">Em progresso</option>
+            <option value="complete">Concluídos</option>
+            <option value="soon">Prazo próximo</option>
+            <option value="overdue">Atrasados</option>
+          </select>
+          <select aria-label="Forma" className={controlClass} onChange={(event) => onShapeFilter(event.target.value as ObjectiveFilterState["shapeFilter"])} value={shapeFilter}>
+            <option value="all">Forma</option>
+            <option value="with_krs">Com key results</option>
+            <option value="without_krs">Só o objectivo</option>
+          </select>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function ObjectivePeriodBadge({ period }: { period: ObjectivePeriodType | null }) {
+  if (!period) return null;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${periodBadgeClass(period)}`}>
+      {periodTypeLabel(period)}
+    </span>
+  );
+}
+
+function ObjectiveScopeBadge({ scope }: { scope: Objective["scope_type"] }) {
+  const label = scope === "company" ? "Empresa" : scope === "department" ? "Departamento" : "Pessoa";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${scopeBadgeClass(scope)}`}>
+      {label}
+    </span>
+  );
+}
+
+function periodBadgeClass(period: ObjectivePeriodType) {
+  switch (period) {
+    case "daily": return "bg-[#e7f3f8] text-[#2d627c]";
+    case "weekly": return "bg-[#f0e9f1] text-[#6e4b71]";
+    case "monthly": return "bg-[#f8f1e4] text-[#8a6232]";
+    case "annual": return "bg-[#f6ecee] text-[#8d3d4a]";
+  }
+}
+
+function scopeBadgeClass(scope: Objective["scope_type"]) {
+  switch (scope) {
+    case "company": return "bg-[#f4f1ef] text-[#6a615e]";
+    case "department": return "bg-[#f7f3ed] text-[#7a6858]";
+    case "collaborator": return "bg-[#eef4ef] text-[#4d6b57]";
+  }
+}
+
+function periodAccentClass(period: ObjectivePeriodType | null) {
+  switch (period) {
+    case "daily": return "border-l-[#3d7ea6]";
+    case "weekly": return "border-l-[#7a4e86]";
+    case "monthly": return "border-l-[#c4923a]";
+    case "annual": return "border-l-[#8d3d4a]";
+    default: return "border-l-transparent";
+  }
 }
 
 function periodTypeLabel(type: ObjectivePeriodType) {

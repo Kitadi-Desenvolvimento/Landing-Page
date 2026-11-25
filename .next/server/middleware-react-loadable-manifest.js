@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST='{"app/lib/qr-code-service.ts -> qrcode":{"id":6601,"files":["static/chunks/6601.2d3f805b21e76354.js"]}}';
+self.__REACT_LOADABLE_MANIFEST="{\"app/lib/qr-code-service.ts -> qrcode\":{\"id\":\"app/lib/qr-code-service.ts -> qrcode\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_pnpm_qrcode_1_5_4_node_modules_qrcode_lib_browser_js.js\"]}}"

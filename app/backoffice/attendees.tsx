@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import type { DashboardProduct } from "./dashboard-data";
+import { messageFromApiBody } from "../lib/api-error-messages";
 
 type Attendee = {
   reference: string;
@@ -43,12 +44,16 @@ export default function Attendees({ products }: { products: DashboardProduct[] }
     })
       .then(async (response) => {
         const body: unknown = await response.json();
-        if (!response.ok || !isAttendeeList(body)) {
-          throw new Error(
+        if (!response.ok) {
+          throw new Error(messageFromApiBody(
+            body,
             response.status === 503
               ? "Aplique as migrações de pagamentos e participantes no Supabase."
               : "Não foi possível carregar a lista de participantes.",
-          );
+          ));
+        }
+        if (!isAttendeeList(body)) {
+          throw new Error("Não foi possível carregar a lista de participantes.");
         }
         if (active) setAttendees(body.attendees);
       })
@@ -103,7 +108,10 @@ export default function Attendees({ products }: { products: DashboardProduct[] }
         },
       );
       const body: unknown = await response.json();
-      if (!response.ok || !isCheckInResult(body, attendee.reference, checkedIn)) {
+      if (!response.ok) {
+        throw new Error(messageFromApiBody(body, "Não foi possível actualizar a presença. Tente novamente."));
+      }
+      if (!isCheckInResult(body, attendee.reference, checkedIn)) {
         throw new Error("Não foi possível actualizar a presença. Tente novamente.");
       }
       setAttendees((current) =>

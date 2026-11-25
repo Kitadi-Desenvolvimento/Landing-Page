@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { loadDisplayNames } from "../../../lib/staff-profiles";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { requireBackofficeUser } from "../../../lib/supabase/require-admin";
 
@@ -70,8 +71,20 @@ export async function GET() {
     }
   }
 
+  let displayNames = new Map<string, string>();
+  try {
+    displayNames = await loadDisplayNames(users.map((user) => user.id));
+  } catch (error) {
+    console.error("[backoffice] staff names failed", error instanceof Error ? error.message : "unknown");
+  }
+
   return NextResponse.json(
-    { users, areas: areas ?? [], memberships: memberships ?? [], role: authorization.role },
+    {
+      users: users.map((user) => ({ ...user, displayName: displayNames.get(user.id) ?? "" })),
+      areas: areas ?? [],
+      memberships: memberships ?? [],
+      role: authorization.role,
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

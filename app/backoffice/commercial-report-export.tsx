@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import type { ReportPeriod } from "../lib/objective-periods";
+import { messageForApiError } from "../lib/api-error-messages";
 
 function luandaToday() {
   const parts = new Intl.DateTimeFormat("en", {
@@ -16,12 +17,9 @@ function luandaToday() {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-function exportError(code: unknown, status: number) {
-  if (code === "commercial_report_schema_missing") {
-    return "O histórico comercial não está disponível. Confirme se as migrações do CRM, incluindo a 20261124020000, foram aplicadas no Supabase.";
-  }
-  if (code === "unauthorized" || status === 401) return "A sessão expirou. Inicie sessão novamente.";
-  if (code === "forbidden" || status === 403) return "Não tem permissão para exportar este relatório.";
+function exportFallback(status: number) {
+  if (status === 401) return "A sessão expirou. Inicie sessão novamente.";
+  if (status === 403) return "Não tem permissão para exportar este relatório.";
   return "Não foi possível gerar o relatório comercial. Tente novamente.";
 }
 
@@ -44,7 +42,7 @@ export default function CommercialReportExport() {
         const code = typeof result === "object" && result !== null && "error" in result
           ? result.error
           : null;
-        throw new Error(exportError(code, response.status));
+        throw new Error(messageForApiError(code, exportFallback(response.status)));
       }
 
       const blob = await response.blob();

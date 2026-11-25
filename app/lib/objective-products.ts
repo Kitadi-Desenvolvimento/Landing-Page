@@ -11,6 +11,7 @@ export type ObjectiveProduct = {
 export type ObjectiveCollaborator = {
   id: string;
   email: string;
+  displayName?: string;
 };
 
 export async function loadAvailableProducts(): Promise<ObjectiveProduct[]> {

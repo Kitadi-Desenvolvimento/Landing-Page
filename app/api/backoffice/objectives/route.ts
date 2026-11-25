@@ -13,6 +13,7 @@ import {
   type ObjectiveProduct,
 } from "../../../lib/objective-products";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
+import { loadDisplayNames } from "../../../lib/staff-profiles";
 import { requireBackofficeUser } from "../../../lib/supabase/require-admin";
 
 function isSchemaError(code?: string) {
@@ -151,6 +152,21 @@ export async function GET() {
     }
   }
 
+  const nameIds = [
+    ...access.collaborators.map((person) => person.id),
+    ...availableCollaborators.map((person) => person.id),
+  ];
+  let displayNames = new Map<string, string>();
+  try {
+    displayNames = await loadDisplayNames(nameIds);
+  } catch (error) {
+    console.error("[backoffice] staff names failed", error instanceof Error ? error.message : "unknown");
+  }
+  const withName = <T extends { id: string }>(person: T) => ({
+    ...person,
+    displayName: displayNames.get(person.id) ?? "",
+  });
+
   return NextResponse.json(
     {
       objectives: visibleObjectives,
@@ -158,11 +174,11 @@ export async function GET() {
       edits,
       areas: visibleAreas,
       products,
-      availableCollaborators,
+      availableCollaborators: availableCollaborators.map(withName),
       role: authorization.role,
       userId: authorization.user.id,
       manageableAreaIds: access.areaIds ?? [],
-      collaborators: access.collaborators,
+      collaborators: access.collaborators.map(withName),
     },
     { headers: { "Cache-Control": "no-store" } },
   );

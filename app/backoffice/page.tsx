@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "../lib/supabase/server";
 import BackofficeDashboard from "./dashboard";
+import { ErrorToastProvider } from "./error-toast";
 import {
   getAdminProducts,
   getPublishedProducts,
@@ -138,6 +139,7 @@ export default async function BackofficePage() {
   }
 
   return (
+    <ErrorToastProvider>
     <BackofficeDashboard
       catalogReady={catalogReady}
       email={user.email ?? ""}
@@ -158,5 +160,6 @@ export default async function BackofficePage() {
       commercialSummary={commercialSummary}
       commercialReady={commercialReady}
     />
+    </ErrorToastProvider>
   );
 }

@@ -4,6 +4,7 @@ import { useState, type ChangeEvent } from "react";
 import { createSupabaseBrowserClient } from "../lib/supabase/browser";
 import type { ProductRecord } from "../product-types";
 import type { DashboardProduct } from "./dashboard-data";
+import { messageForApiError } from "../lib/api-error-messages";
 
 const maxEbookBytes = 50 * 1024 * 1024;
 
@@ -76,15 +77,7 @@ export function EbookUploader({
       setMessage("E-book carregado. As próximas compras recebem este PDF.");
     } catch (caught) {
       const code = caught instanceof Error ? caught.message : "";
-      setError(
-        code === "ebook_invalid_pdf"
-          ? "O ficheiro não é um PDF válido ou já está protegido por palavra-passe. Carregue o PDF original, sem protecção."
-          : code === "ebook_too_large"
-            ? "O PDF não pode ter mais de 50 MB."
-            : code === "ebook_requires_simple_product"
-              ? "Os e-books só podem ser associados a produtos simples (sem variantes de formação)."
-              : "Não foi possível carregar o e-book. Tente novamente.",
-      );
+      setError(messageForApiError(code, "Não foi possível carregar o e-book. Tente novamente."));
     } finally {
       setUploading(false);
     }
@@ -146,8 +139,9 @@ export function EbookCopyButton({ reference }: { reference: string }) {
           : "";
       if (!response.ok || !url.startsWith("https://")) throw new Error(errorCode(body));
       window.location.assign(url);
-    } catch {
-      setError("Não foi possível gerar o PDF.");
+    } catch (caught) {
+      const code = caught instanceof Error ? caught.message : "";
+      setError(messageForApiError(code, "Não foi possível gerar o PDF."));
     } finally {
       setLoading(false);
     }

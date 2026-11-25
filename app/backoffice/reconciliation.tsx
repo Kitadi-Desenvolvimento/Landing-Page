@@ -7,33 +7,10 @@ import { formatKz, formatPaymentDate, type DashboardProduct } from "./dashboard-
 import { ScrollTable } from "./scroll-table";
 import type { CashSummary, KitadiOrder } from "../lib/payments/orders";
 import type { Withdrawal } from "../lib/payments/withdrawals";
+import { messageForApiError } from "../lib/api-error-messages";
 
 const migrationFile = "20261122000000_add_payment_reconciliation.sql";
 const manualMethods = ["Numerário", "Transferência bancária", "Depósito", "Multicaixa Express", "Outro"];
-
-const errorMessages: Record<string, string> = {
-  ledger_not_migrated: `Aplique a migração ${migrationFile} no Supabase.`,
-  duplicate_reference: "Já existe um levantamento activo com esta referência WiPay.",
-  invalid_payment: "Verifique os dados do pagamento (valor, email, telefone e data não futura).",
-  invalid_withdrawal: "Verifique o valor, a referência WiPay e a data (não pode ser futura).",
-  invalid_variant: "Escolha uma variante válida do produto.",
-  product_not_found: "O produto escolhido já não existe.",
-  payment_not_found_or_not_accepted: "Só pagamentos concluídos podem ser alterados.",
-  withdrawal_not_found_or_voided: "Este levantamento já foi anulado ou não existe.",
-  period_closed: "Este mês está fechado. Reabra-o em Fecho e relatórios para alterar.",
-  invalid_expense: "Verifique a data (não futura), a categoria, o fornecedor, a descrição e o valor.",
-  expense_not_found_or_voided: "Esta despesa já foi anulada ou não existe.",
-  period_not_ended: "Só é possível fechar meses que já terminaram.",
-  period_already_closed: "Este mês já está fechado.",
-  period_has_unreconciled: "Ainda há movimentos por conciliar neste mês.",
-  period_not_closed: "Este mês não está fechado.",
-  period_has_pending_fixed: "Ainda há despesas fixas por lançar neste mês.",
-  period_not_started: "Só é possível lançar fixas de meses já iniciados.",
-  invalid_end_month: "O último mês não pode ser anterior ao mês de início.",
-  invalid_recurring: "Verifique a categoria, o fornecedor, a descrição, o valor, o dia (1 a 31) e o mês de início.",
-  invalid_launch: "Verifique os valores a lançar.",
-  recurring_not_found: "Esta despesa fixa já não existe.",
-};
 
 export async function send(url: string, method: "POST" | "PATCH", body: unknown) {
   try {
@@ -48,7 +25,7 @@ export async function send(url: string, method: "POST" | "PATCH", body: unknown)
       typeof result.error === "string"
       ? result.error
       : "";
-    return { error: errorMessages[code] ?? "Não foi possível guardar. Tente novamente." };
+    return { error: messageForApiError(code, "Não foi possível guardar. Tente novamente.") };
   } catch {
     return { error: "Sem ligação ao servidor. Tente novamente." };
   }
