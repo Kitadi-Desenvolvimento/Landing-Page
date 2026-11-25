@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   objectivePeriodEnd,
+  objectivePeriodRank,
   objectivePeriodStart,
   type ObjectivePeriodType,
 } from "./objective-periods";
@@ -12,6 +13,7 @@ import { personLabel } from "./person-label";
 import { isStaffSchemaMissing, listVisibleStaff } from "./staff-profiles";
 import { createSupabaseAdminClient } from "./supabase/admin";
 import { listOpenBlocks } from "./work-blocks";
+import { formatProgressPercent, measureObjectiveProgress } from "./objective-progress";
 
 export type CommandPeriod = "day" | "week" | "month" | "year";
 
@@ -540,7 +542,6 @@ export async function buildCommandDashboard(input: {
       }
     }
     const readings: { id: string; line: string }[] = [];
-    const ratios: number[] = [];
     for (const row of [objective, ...keyResults]) {
       const latest = latestCheckin.get(row.id);
       if (!latest) continue;
@@ -552,18 +553,19 @@ export async function buildCommandDashboard(input: {
       const when = outside ? ` O registo é de ${formatDay(latest.date)}.` : "";
       const label = row.id === objective.id ? "O progresso registado é" : `${row.title} está em`;
       readings.push({ id: row.id, line: `${label} ${goalText ? `${shown} de ${goalText}` : shown}.${when}` });
-      if (actual !== null && goal !== null && goal > 0) ratios.push(actual / goal);
     }
-    if (progress === null && ratios.length > 0) {
-      const parentLatest = latestCheckin.get(objective.id);
-      const parentActual = parentLatest ? numericTarget(parentLatest.value) : null;
-      const parentTarget = numericTarget(objective.target_value);
-      progress = parentActual !== null && parentTarget !== null && parentTarget > 0
-        ? Math.round((parentActual / parentTarget) * 100)
-        : Math.round((ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length) * 100);
+    const measure = measureObjectiveProgress(objective, keyResults, (id) => latestCheckin.get(id)?.value);
+    if (measure.inherited && measure.percent !== null) {
+      progress = Math.round(measure.percent);
+      if (!comparedWithSales && objective.period_type && objective.period_start) {
+        const end = objectivePeriodEnd(objective.period_type, objective.period_start);
+        if (end) isBehind = measure.percent < elapsedFraction(objective.period_type, objective.period_start, end) * 100;
+      }
+    } else if (progress === null && measure.percent !== null) {
+      progress = Math.round(measure.percent);
     }
     let coveredId = "";
-    if (!comparedWithSales && readings.length > 0) {
+    if (!comparedWithSales && !measure.inherited && readings.length > 0) {
       const source = metric && latestCheckin.has(metric.id) ? metric : latestCheckin.has(objective.id) ? objective : keyResults.find((item) => latestCheckin.has(item.id)) ?? null;
       const latest = source ? latestCheckin.get(source.id) : null;
       const actual = latest ? numericTarget(latest.value) : null;
@@ -583,14 +585,19 @@ export async function buildCommandDashboard(input: {
         }
       }
     }
-    const extraReadings = readings.filter((item) => item.id !== coveredId);
+    if (measure.inherited && measure.percent !== null) {
+      const count = measure.keyResultCount === 1 ? "1 KR" : `${measure.keyResultCount} KRs`;
+      const average = `O progresso desta meta é a média dos ${count}: ${formatProgressPercent(measure.percent)}%.`;
+      paceDetail = paceDetail ? `${average} ${paceDetail}` : average;
+    }
+    const extraReadings = readings.filter((item) => item.id !== coveredId && !(measure.inherited && item.id === objective.id));
     if (extraReadings.length > 0) {
       const recorded = extraReadings.slice(0, 4).map((item) => item.line).join(" ");
       const more = extraReadings.length > 4 ? ` E mais ${extraReadings.length - 4} ${extraReadings.length - 4 === 1 ? "resultado" : "resultados"}.` : "";
       paceDetail = paceDetail ? `${paceDetail} ${recorded}${more}` : `${recorded}${more}`;
     }
     const dueSoon = objective.due_date !== null && objective.due_date >= bounds.fromDate && objective.due_date < bounds.toDate;
-    const silent = readings.length === 0 && progress === null;
+    const silent = measure.inherited ? measure.keyResultsWithValue === 0 : readings.length === 0 && progress === null;
     if (isBehind) {
       const extra = silent ? " Ainda ninguém registou progresso nesta meta." : dueSoon ? " O prazo chega neste período." : "";
       behind.push({ id: objective.id, title: objective.title, detail: `Está atrasada. ${paceDetail}${extra}` });
@@ -733,7 +740,11 @@ export async function buildCommandDashboard(input: {
   const behindIds = new Set(behind.map((item) => item.id));
   const attentionById = new Map(attention.map((item) => [item.id, item.detail]));
   const rankObjective = (id: string) => blockedObjectiveIds.has(id) ? 0 : behindIds.has(id) ? 1 : attentionById.has(id) ? 2 : 3;
-  const rankedObjectives = [...visibleParents].sort((left, right) => rankObjective(left.id) - rankObjective(right.id) || left.title.localeCompare(right.title, "pt"));
+  const rankedObjectives = [...visibleParents].sort((left, right) =>
+    objectivePeriodRank(left.period_type) - objectivePeriodRank(right.period_type)
+    || rankObjective(left.id) - rankObjective(right.id)
+    || left.title.localeCompare(right.title, "pt"),
+  );
   const mixLabel = (id: string) => {
     if (blockedObjectiveIds.has(id)) return "Bloqueadas";
     if (behindIds.has(id)) return "Atrasadas";
@@ -890,6 +901,7 @@ export async function buildCommandDashboard(input: {
         detail: parts.join(" ") || "Esta meta não tem um número comparável neste período.",
         progress: card?.progress ?? null,
         status: mixLabel(objective.id),
+        period: objective.period_type,
       };
     }),
     objectiveTotal: rankedObjectives.length,

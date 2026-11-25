@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { messageForApiError } from "../lib/api-error-messages";
+import { objectivePeriodGroupLabel, objectivePeriodPresence } from "../lib/objective-periods";
 import { personInitials, personLabel } from "../lib/person-label";
 import type { DashboardSection } from "./dashboard-data";
 
@@ -41,7 +42,7 @@ type CommandData = {
   objectiveMix: { label: string; count: number }[];
   progressBands: { label: string; count: number }[];
   commercialStats: { open: number; converted: number; lost: number; overdue: number; proposals: number };
-  objectives: { id: string; title: string; detail: string; progress: number | null; status: string }[];
+  objectives: { id: string; title: string; detail: string; progress: number | null; status: string; period: "annual" | "monthly" | "weekly" | "daily" | null }[];
   objectiveTotal: number;
   funnel: { stage: string; label: string; count: number; amount: string; amountValue: number }[];
   payments: {
@@ -576,19 +577,23 @@ export default function CommandDashboard({
             <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
               <PanelTitle action="Abrir objectivos" title="Metas" onAction={() => onNavigate("objectives")} />
               <ul className="mt-4 space-y-4">
-                {data.objectives.map((objective) => {
+                {data.objectives.map((objective, index) => {
                   const mark = objectiveMark(objective.status);
+                  const presence = objectivePeriodPresence(objective.period);
+                  const previous = data.objectives[index - 1];
+                  const showGroup = !previous || previous.period !== objective.period;
                   return (
                   <li key={objective.id}>
-                    <button className={`flex w-full gap-3 rounded-xl border px-3 py-3 text-left ${mark.box}`} onClick={() => setReading({ title: objective.title, summary: objective.progress === null ? "Esta meta ainda não tem percentagem do alvo." : `${objective.progress}% do alvo.`, meaning: objective.detail, items: [], remainder: "" })} type="button">
+                    {showGroup ? <p className={`mb-2 uppercase ${presence.group}`}>{objectivePeriodGroupLabel(objective.period)}</p> : null}
+                    <button className={`flex w-full gap-3 rounded-xl border px-3 text-left ${presence.pad} ${presence.borderWidth} ${presence.borderColor} ${mark.box}`} onClick={() => setReading({ title: objective.title, summary: objective.progress === null ? "Esta meta ainda não tem percentagem do alvo." : `${objective.progress}% do alvo.`, meaning: objective.detail, items: [], remainder: "" })} type="button">
                       <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ${mark.badge}`}><DashIcon name={mark.icon} /></span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-3">
-                          <p className="truncate text-[13px] font-medium text-[#2c2424]">{objective.title}</p>
+                          <p className={`truncate ${presence.title}`}>{objective.title}</p>
                           <p className="shrink-0 text-[12px] tabular-nums text-[#8a807c]">{objective.progress === null ? "sem percentagem do alvo" : `${objective.progress}% do alvo`}</p>
                         </div>
                         <p className="mt-0.5 text-[12px] leading-5 text-[#5c534f]">{objective.detail}</p>
-                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f3eeea]">
+                        <div className={`mt-2 overflow-hidden rounded-full bg-[#f3eeea] ${presence.bar}`}>
                           <div className={`h-full rounded-full ${mark.bar}`} style={{ width: `${Math.min(100, Math.max(0, objective.progress ?? 0))}%` }} />
                         </div>
                       </div>
@@ -598,7 +603,7 @@ export default function CommandDashboard({
                 })}
                 {data.objectives.length === 0 ? <li className="text-[13px] text-[#8a807c]">Não há metas neste período para esta escolha.</li> : null}
               </ul>
-              {data.objectiveTotal > data.objectives.length ? <p className="mt-3 text-[12px] text-[#8a807c]">Estão aqui as {data.objectives.length} que pedem mais atenção, de {data.objectiveTotal}. As outras estão em Objectivos.</p> : null}
+              {data.objectiveTotal > data.objectives.length ? <p className="mt-3 text-[12px] text-[#8a807c]">Estão aqui as primeiras {data.objectives.length}, das anuais para as diárias, de {data.objectiveTotal}. As outras estão em Objectivos.</p> : null}
             </section>
             <ActionList actions={objectiveActions} count={data.actionCounts.objectives} empty="Nenhuma meta pede uma decisão agora." onNavigate={onNavigate} onOpen={(action) => setReading(actionReading(action, "Esta linha é uma meta que pede uma decisão: bloqueio, atraso ou falta de progresso."))} title="O que fazer agora" />
           </div>

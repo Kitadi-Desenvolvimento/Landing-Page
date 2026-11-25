@@ -1,3 +1,6 @@
 {
+  "/api/backoffice/objectives/[id]/route": "app/api/backoffice/objectives/[id]/route.js",
+  "/api/backoffice/command/route": "app/api/backoffice/command/route.js",
+  "/api/backoffice/objectives/route": "app/api/backoffice/objectives/route.js",
   "/backoffice/page": "app/backoffice/page.js"
 }

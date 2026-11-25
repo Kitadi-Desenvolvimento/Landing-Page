@@ -8,7 +8,10 @@ import {
 } from "../lib/objectives";
 import {
   canAlignObjective,
+  compareObjectivesByPeriod,
   objectivePeriodEnd,
+  objectivePeriodGroupLabel,
+  objectivePeriodPresence,
   objectivePeriodStart,
   objectivePeriodTypes,
   type ObjectivePeriodType,
@@ -18,6 +21,7 @@ import type { ObjectiveProduct, ObjectiveCollaborator as SimpleCollaborator } fr
 import { messageForApiError, messageFromApiBody } from "../lib/api-error-messages";
 import { DateField } from "./date-field";
 import { personLabel } from "../lib/person-label";
+import { inheritedProgressLabel, measureObjectiveProgress, type ObjectiveProgressMeasure } from "../lib/objective-progress";
 import type { OkrTemplate } from "../lib/okr-templates";
 import { useErrorToast } from "./error-toast";
 import BlockDialog from "./block-dialog";
@@ -295,7 +299,7 @@ export default function Objectives() {
       situationFilter,
       shapeFilter,
     }),
-  );
+  ).sort(compareObjectivesByPeriod);
   const selectedObjective = selectedObjectiveId
     ? objectives.find((objective) => objective.id === selectedObjectiveId) ?? null
     : null;
@@ -329,7 +333,7 @@ export default function Objectives() {
     const todayCheckIn = history.find((item) => item.checkin_date === today);
     const keyResults = isKeyResult
       ? []
-      : objectives.filter((item) => item.parent_objective_id === objective.id);
+      : objectives.filter((item) => item.parent_objective_id === objective.id).sort(compareObjectivesByPeriod);
     const canManage = role === "admin" ||
       (role === "manager" && objective.scope_type !== "company" &&
         objective.area_id !== null && manageableAreaIds.includes(objective.area_id)) ||
@@ -350,6 +354,13 @@ export default function Objectives() {
         history={history}
         isKeyResult={isKeyResult}
         parentAllowsChanges={parentAllowsChanges}
+        rollup={keyResults.some((item) => item.active && !item.archived)
+          ? measureObjectiveProgress(
+            objective,
+            keyResults.filter((item) => item.active && !item.archived),
+            (id) => checkins.find((item) => item.objective_id === id)?.value,
+          )
+          : null}
         keyResultCards={keyResults.map((keyResult) =>
           renderObjectiveCard(
             keyResult,
@@ -510,69 +521,86 @@ export default function Objectives() {
           <div className="hidden grid-cols-[minmax(150px,1.2fr)_minmax(110px,0.7fr)_minmax(160px,1fr)_minmax(100px,0.7fr)] gap-4 border-b border-[#f1edeb] bg-[#faf8f6] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.08em] text-[#918783] sm:grid">
             <span>Objectivo</span><span>Área</span><span>Progresso</span><span>Prazo</span>
           </div>
-          <div className="divide-y divide-[#f1edeb]">
-            {visibleObjectives.map((objective) => {
-              const latest = checkins.find((item) => item.objective_id === objective.id);
-              const keyResultCount = objectives.filter((item) => item.parent_objective_id === objective.id).length;
-              const complete = isObjectiveComplete(objective, latest?.value);
-              const dueWarning = objective.archived || complete
-                ? null
-                : objectiveDueWarning(objective.due_date, today);
+          <div>
+            {(["annual", "monthly", "weekly", "daily", null] as const).map((period) => {
+              const rows = visibleObjectives.filter((objective) => objective.period_type === period);
+              if (rows.length === 0) return null;
+              const presence = objectivePeriodPresence(period);
               return (
-                <button
-                  className={`grid w-full gap-3 px-4 py-4 text-left transition hover:bg-[#fcfbfa] sm:grid-cols-[minmax(150px,1.2fr)_minmax(110px,0.7fr)_minmax(160px,1fr)_minmax(100px,0.7fr)] sm:items-center sm:gap-4 sm:px-5 ${
-                    dueWarning?.level === "overdue"
-                      ? "border-l-2 border-l-[#c4544f]"
-                      : dueWarning?.level === "soon"
-                        ? "border-l-2 border-l-[#c89a42]"
-                        : `border-l-2 ${periodAccentClass(objective.period_type)}`
-                  }`}
-                  key={objective.id}
-                  onClick={() => setSelectedObjectiveId(objective.id)}
-                  type="button"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-bold text-[#352d2e]">{objective.title}</span>
-                    <span className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <ObjectivePeriodBadge period={objective.period_type} />
-                      <ObjectiveScopeBadge scope={objective.scope_type} />
-                      <span className="text-[9px] text-[#8d837f]">
-                        {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
-                        {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="text-[10px] text-[#766d69]">
-                    <span className="mr-1 text-[9px] font-semibold text-[#a19894] sm:hidden">Área:</span>
-                    {objective.scope_type === "company"
-                      ? "Empresa"
-                      : objective.scope_type === "collaborator"
-                        ? personLabel(collaborators.find((member) => member.id === objective.assigned_to)?.displayName, collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador")
-                        : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento"}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="mb-1 block text-[9px] text-[#766d69]">
-                      {latest
-                        ? `${displayValue(latest.value, objective.value_type, objective.unit)}${objective.target_value !== null ? ` / ${displayValue(objective.target_value, objective.value_type, objective.unit)}` : ""}`
-                        : "Sem check-in"}
-                    </span>
-                    <ObjectiveProgress
-                      alwaysShow
-                      currentValue={latest?.value}
-                      targetValue={objective.target_value}
-                      unit={objective.unit}
-                      valueType={objective.value_type}
-                    />
-                  </span>
-                  <span className={`text-[10px] ${
-                    dueWarning?.level === "overdue" ? "font-semibold text-[#b64c47]" :
-                      dueWarning?.level === "soon" ? "font-semibold text-[#a2772d]" : "text-[#766d69]"
-                  }`}>
-                    <span className="mr-1 text-[9px] font-semibold text-[#a19894] sm:hidden">Prazo:</span>
-                    {objective.due_date ? formatDate(objective.due_date) : "Sem prazo"}
-                    {dueWarning ? <span className="mt-1 block text-[9px]">{dueWarning.label}</span> : null}
-                  </span>
-                </button>
+                <div key={period ?? "none"}>
+                  <p className={`bg-[#faf8f6] px-5 py-2 uppercase ${presence.group}`}>{objectivePeriodGroupLabel(period)} · {rows.length}</p>
+                  <div className="divide-y divide-[#f1edeb]">
+                    {rows.map((objective) => {
+                      const latest = checkins.find((item) => item.objective_id === objective.id);
+                      const keyResults = objectives.filter((item) => item.parent_objective_id === objective.id && item.active && !item.archived);
+                      const keyResultCount = objectives.filter((item) => item.parent_objective_id === objective.id).length;
+                      const rollup = keyResults.length > 0 ? measureObjectiveProgress(objective, keyResults, (id) => checkins.find((item) => item.objective_id === id)?.value) : null;
+                      const complete = rollup?.inherited
+                        ? rollup.percent !== null && rollup.percent >= 100
+                        : isObjectiveComplete(objective, latest?.value);
+                      const dueWarning = objective.archived || complete
+                        ? null
+                        : objectiveDueWarning(objective.due_date, today);
+                      const borderColor = dueWarning?.level === "overdue"
+                        ? "border-l-[#c4544f]"
+                        : dueWarning?.level === "soon"
+                          ? "border-l-[#c89a42]"
+                          : presence.borderColor;
+                      return (
+                        <button
+                          className={`grid w-full gap-3 px-4 text-left transition hover:bg-[#fcfbfa] sm:grid-cols-[minmax(150px,1.2fr)_minmax(110px,0.7fr)_minmax(160px,1fr)_minmax(100px,0.7fr)] sm:items-center sm:gap-4 sm:px-5 ${presence.pad} ${presence.borderWidth} ${borderColor} ${dueWarning ? "" : presence.wash}`}
+                          key={objective.id}
+                          onClick={() => setSelectedObjectiveId(objective.id)}
+                          type="button"
+                        >
+                          <span className="min-w-0">
+                            <span className={`block truncate ${presence.title}`}>{objective.title}</span>
+                            <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <ObjectivePeriodBadge period={objective.period_type} />
+                              <ObjectiveScopeBadge scope={objective.scope_type} />
+                              <span className="text-[9px] text-[#8d837f]">
+                                {objective.archived ? "Arquivado" : objective.active ? "Activo" : "Inactivo"}
+                                {keyResultCount > 0 ? ` · ${keyResultCount} KR${keyResultCount === 1 ? "" : "s"}` : ""}
+                              </span>
+                            </span>
+                          </span>
+                          <span className="text-[10px] text-[#766d69]">
+                            <span className="mr-1 text-[9px] font-semibold text-[#a19894] sm:hidden">Área:</span>
+                            {objective.scope_type === "company"
+                              ? "Empresa"
+                              : objective.scope_type === "collaborator"
+                                ? personLabel(collaborators.find((member) => member.id === objective.assigned_to)?.displayName, collaborators.find((member) => member.id === objective.assigned_to)?.email ?? "Colaborador")
+                                : areas.find((area) => area.id === objective.area_id)?.name ?? "Departamento"}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="mb-1 block text-[9px] text-[#766d69]">
+                              {rollup?.inherited
+                                ? inheritedProgressLabel(rollup)
+                                : latest
+                                  ? `${displayValue(latest.value, objective.value_type, objective.unit)}${objective.target_value !== null ? ` / ${displayValue(objective.target_value, objective.value_type, objective.unit)}` : ""}`
+                                  : "Sem check-in"}
+                            </span>
+                            <ObjectiveProgress
+                              alwaysShow
+                              currentValue={rollup?.inherited ? rollup.percent ?? undefined : latest?.value}
+                              targetValue={rollup?.inherited ? 100 : objective.target_value}
+                              unit={rollup?.inherited ? "" : objective.unit}
+                              valueType={rollup?.inherited ? "percentage" : objective.value_type}
+                            />
+                          </span>
+                          <span className={`text-[10px] ${
+                            dueWarning?.level === "overdue" ? "font-semibold text-[#b64c47]" :
+                              dueWarning?.level === "soon" ? "font-semibold text-[#a2772d]" : "text-[#766d69]"
+                          }`}>
+                            <span className="mr-1 text-[9px] font-semibold text-[#a19894] sm:hidden">Prazo:</span>
+                            {objective.due_date ? formatDate(objective.due_date) : "Sem prazo"}
+                            {dueWarning ? <span className="mt-1 block text-[9px]">{dueWarning.label}</span> : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -724,6 +752,7 @@ export function OverviewObjectives({
       data.manageableAreaIds,
     ),
   ) ?? [];
+  const highlightedObjectives = [...activeObjectives].sort(compareObjectivesByPeriod);
   const checkinsToday = data?.checkins.filter(
     (checkin) => checkin.checkin_date === luandaToday() &&
       activeObjectives.some((objective) => objective.id === checkin.objective_id),
@@ -762,31 +791,38 @@ export function OverviewObjectives({
             </span>
           </div>
           <div className="mt-2 divide-y divide-[#f1edeb]">
-            {activeObjectives.slice(0, 4).map((objective) => {
+            {highlightedObjectives.slice(0, 4).map((objective) => {
               const latest = data.checkins.find((checkin) => checkin.objective_id === objective.id);
-              const isComplete = isObjectiveComplete(objective, latest?.value);
+              const keyResults = data.objectives.filter((item) => item.parent_objective_id === objective.id && item.active && !item.archived);
+              const rollup = keyResults.length > 0 ? measureObjectiveProgress(objective, keyResults, (id) => data.checkins.find((checkin) => checkin.objective_id === id)?.value) : null;
+              const isComplete = rollup?.inherited
+                ? rollup.percent !== null && rollup.percent >= 100
+                : isObjectiveComplete(objective, latest?.value);
               const dueWarning = isComplete ? null : objectiveDueWarning(objective.due_date, luandaToday());
+              const presence = objectivePeriodPresence(objective.period_type);
               return (
-                <div className={`py-3 ${
+                <div className={`${presence.pad} ${
                   dueWarning?.level === "overdue"
                     ? "rounded-xl px-2 ring-1 ring-inset ring-[#c4544f]"
                     : dueWarning?.level === "soon"
                       ? "rounded-xl px-2 ring-1 ring-inset ring-[#c89a42]"
-                      : ""
+                      : presence.wash
                 }`} key={objective.id}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[11px] font-semibold text-[#393132]">{objective.title}</p>
+                      <p className={presence.title}>{objective.title}</p>
                       <div className="mt-1 flex flex-wrap gap-1">
                         <ObjectivePeriodBadge period={objective.period_type} />
                         <ObjectiveScopeBadge scope={objective.scope_type} />
                       </div>
                     </div>
                     <p className="shrink-0 text-right text-[10px] text-[#766d69]">
-                      {latest
-                        ? displayValue(latest.value, objective.value_type, objective.unit)
-                        : "Sem check-in"}
-                      {objective.target_value !== null
+                      {rollup?.inherited
+                        ? inheritedProgressLabel(rollup)
+                        : latest
+                          ? displayValue(latest.value, objective.value_type, objective.unit)
+                          : "Sem check-in"}
+                      {!rollup?.inherited && objective.target_value !== null
                         ? ` / ${displayValue(objective.target_value, objective.value_type, objective.unit)}`
                         : ""}
                     </p>
@@ -801,10 +837,10 @@ export function OverviewObjectives({
                     </p>
                   ) : null}
                   <ObjectiveProgress
-                    currentValue={latest?.value}
-                    targetValue={objective.target_value}
-                    unit={objective.unit}
-                    valueType={objective.value_type}
+                    currentValue={rollup?.inherited ? rollup.percent ?? undefined : latest?.value}
+                    targetValue={rollup?.inherited ? 100 : objective.target_value}
+                    unit={rollup?.inherited ? "" : objective.unit}
+                    valueType={rollup?.inherited ? "percentage" : objective.value_type}
                   />
                 </div>
               );
@@ -838,6 +874,7 @@ function ObjectiveCard({
   onArchive,
   onEditCheckIn,
   onCheckIn,
+  rollup = null,
 }: {
   objective: Objective;
   history: ObjectiveCheckIn[];
@@ -857,6 +894,7 @@ function ObjectiveCard({
   onArchive: (archived: boolean) => void;
   onEditCheckIn: (checkin: ObjectiveCheckIn) => void;
   onCheckIn: (value: unknown, note: string) => Promise<void>;
+  rollup?: ObjectiveProgressMeasure | null;
 }) {
   const [valueInput, setValueInput] = useState(
     objective.value_type === "custom" ? "" : "",
@@ -864,7 +902,9 @@ function ObjectiveCard({
   const [note, setNote] = useState("");
   const [validationError, setValidationError] = useState("");
   const latestCheckIn = history[0];
-  const complete = isObjectiveComplete(objective, latestCheckIn?.value);
+  const complete = rollup?.inherited
+    ? rollup.percent !== null && rollup.percent >= 100
+    : isObjectiveComplete(objective, latestCheckIn?.value);
   const dueWarning = objective.archived || complete
     ? null
     : objectiveDueWarning(objective.due_date, luandaToday());
@@ -895,7 +935,7 @@ function ObjectiveCard({
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] font-bold text-[#352d2e]">{objective.title}</h3>
+            <h3 className={`font-bold text-[#352d2e] ${objectivePeriodPresence(objective.period_type).detailTitle}`}>{objective.title}</h3>
             {isKeyResult ? (
               <span className="rounded-full bg-[#f7f3ed] px-2.5 py-1 text-[9px] font-semibold text-[#796b59]">KR</span>
             ) : null}
@@ -968,19 +1008,21 @@ function ObjectiveCard({
           </p>
         </div>
         <div>
-          <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#a19894]">Último check-in</p>
+          <p className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#a19894]">{rollup?.inherited ? "Progresso dos KRs" : "Último check-in"}</p>
           <p className="mt-1 text-[11px] font-semibold text-[#4c4242]">
-            {history[0]
-              ? `${displayValue(history[0].value, objective.value_type, objective.unit)} · ${formatDate(history[0].checkin_date)}`
-              : "Sem registos"}
+            {rollup?.inherited
+              ? inheritedProgressLabel(rollup)
+              : history[0]
+                ? `${displayValue(history[0].value, objective.value_type, objective.unit)} · ${formatDate(history[0].checkin_date)}`
+                : "Sem registos"}
           </p>
         </div>
       </div>
       <ObjectiveProgress
-        currentValue={history[0]?.value}
-        targetValue={objective.target_value}
-        unit={objective.unit}
-        valueType={objective.value_type}
+        currentValue={rollup?.inherited ? rollup.percent ?? undefined : history[0]?.value}
+        targetValue={rollup?.inherited ? 100 : objective.target_value}
+        unit={rollup?.inherited ? "" : objective.unit}
+        valueType={rollup?.inherited ? "percentage" : objective.value_type}
       />
 
       {!isKeyResult ? (
@@ -1263,7 +1305,7 @@ function ObjectiveEditor({
       periodStart && candidate.period_start && candidateEnd &&
       periodStart >= candidate.period_start && periodStart < candidateEnd,
     );
-  });
+  }).sort(compareObjectivesByPeriod);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1942,6 +1984,10 @@ function objectiveMatchesFilters(objective: Objective, filters: ObjectiveFilterS
     )) return false;
   }
   const keyResults = filters.objectives.filter((item) => item.parent_objective_id === objective.id);
+  const activeKeyResults = keyResults.filter((item) => item.active && !item.archived);
+  const rollup = activeKeyResults.length > 0
+    ? measureObjectiveProgress(objective, activeKeyResults, (id) => filters.checkins.find((item) => item.objective_id === id)?.value)
+    : null;
   if (filters.shapeFilter === "with_krs" && keyResults.length === 0) return false;
   if (filters.shapeFilter === "without_krs" && keyResults.length > 0) return false;
   const needle = filters.query.trim().toLocaleLowerCase("pt");
@@ -1952,10 +1998,13 @@ function objectiveMatchesFilters(objective: Objective, filters: ObjectiveFilterS
     if (!haystack.includes(needle)) return false;
   }
   const latest = filters.checkins.find((item) => item.objective_id === objective.id);
-  const complete = isObjectiveComplete(objective, latest?.value);
+  const complete = rollup?.inherited
+    ? rollup.percent !== null && rollup.percent >= 100
+    : isObjectiveComplete(objective, latest?.value);
+  const hasProgress = rollup?.inherited ? rollup.keyResultsWithValue > 0 : Boolean(latest);
   const dueWarning = objective.archived || complete ? null : objectiveDueWarning(objective.due_date, filters.today);
-  if (filters.situationFilter === "no_checkin" && latest) return false;
-  if (filters.situationFilter === "in_progress" && (!latest || complete)) return false;
+  if (filters.situationFilter === "no_checkin" && hasProgress) return false;
+  if (filters.situationFilter === "in_progress" && (!hasProgress || complete)) return false;
   if (filters.situationFilter === "complete" && !complete) return false;
   if (filters.situationFilter === "soon" && dueWarning?.level !== "soon") return false;
   if (filters.situationFilter === "overdue" && dueWarning?.level !== "overdue") return false;
@@ -2125,7 +2174,7 @@ function ObjectiveFilters({
 function ObjectivePeriodBadge({ period }: { period: ObjectivePeriodType | null }) {
   if (!period) return null;
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${periodBadgeClass(period)}`}>
+    <span className={`rounded-full ${objectivePeriodPresence(period).badge}`}>
       {periodTypeLabel(period)}
     </span>
   );
@@ -2140,30 +2189,11 @@ function ObjectiveScopeBadge({ scope }: { scope: Objective["scope_type"] }) {
   );
 }
 
-function periodBadgeClass(period: ObjectivePeriodType) {
-  switch (period) {
-    case "daily": return "bg-[#e7f3f8] text-[#2d627c]";
-    case "weekly": return "bg-[#f0e9f1] text-[#6e4b71]";
-    case "monthly": return "bg-[#f8f1e4] text-[#8a6232]";
-    case "annual": return "bg-[#f6ecee] text-[#8d3d4a]";
-  }
-}
-
 function scopeBadgeClass(scope: Objective["scope_type"]) {
   switch (scope) {
     case "company": return "bg-[#f4f1ef] text-[#6a615e]";
     case "department": return "bg-[#f7f3ed] text-[#7a6858]";
     case "collaborator": return "bg-[#eef4ef] text-[#4d6b57]";
-  }
-}
-
-function periodAccentClass(period: ObjectivePeriodType | null) {
-  switch (period) {
-    case "daily": return "border-l-[#3d7ea6]";
-    case "weekly": return "border-l-[#7a4e86]";
-    case "monthly": return "border-l-[#c4923a]";
-    case "annual": return "border-l-[#8d3d4a]";
-    default: return "border-l-transparent";
   }
 }
 
