@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import BackofficeQueryProvider from "./backoffice/query-provider";
 import SiteChrome from "./site-chrome";
 import "./globals.css";
 
@@ -65,8 +66,10 @@ export default function RootLayout({
   return (
     <html lang="pt" className={centuryGothic.className}>
       <body>
-        {children}
-        <SiteChrome />
+        <BackofficeQueryProvider>
+          {children}
+          <SiteChrome />
+        </BackofficeQueryProvider>
       </body>
     </html>
   );

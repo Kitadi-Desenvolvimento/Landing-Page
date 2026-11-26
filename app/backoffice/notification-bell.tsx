@@ -1,7 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { messageForApiError } from "../lib/api-error-messages";
+import { BackofficeRequestError, backofficeKeys, queryStaleTime } from "../lib/backoffice-query";
 import type { DashboardSection } from "./dashboard-data";
 
 type StaffNotification = {
@@ -19,38 +21,31 @@ const kindLabel = {
   payment: "Pagamento",
 } as const;
 
+async function loadNotifications(signal: AbortSignal) {
+  const response = await fetch("/api/backoffice/notifications", { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || typeof result !== "object" || result === null || !("notifications" in result) || !Array.isArray(result.notifications)) {
+    const code = typeof result === "object" && result !== null && "error" in result ? result.error : null;
+    throw new BackofficeRequestError(messageForApiError(code, "Não foi possível carregar as notificações."), response.status);
+  }
+  return result.notifications as StaffNotification[];
+}
+
 export default function NotificationBell({
   onOpen,
 }: {
   onOpen: (section: DashboardSection) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<StaffNotification[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const panel = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch("/api/backoffice/notifications", { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const result: unknown = await response.json();
-        if (!response.ok || typeof result !== "object" || result === null || !("notifications" in result) || !Array.isArray(result.notifications)) {
-          const code = typeof result === "object" && result !== null && "error" in result ? result.error : null;
-          throw new Error(messageForApiError(code, "Não foi possível carregar as notificações."));
-        }
-        setItems(result.notifications as StaffNotification[]);
-        setError("");
-      })
-      .catch((cause: unknown) => {
-        if (cause instanceof Error && cause.name === "AbortError") return;
-        setError(cause instanceof Error ? cause.message : "Não foi possível carregar as notificações.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [open]);
+  const notificationsQuery = useQuery({
+    queryKey: backofficeKeys.notifications,
+    queryFn: ({ signal }) => loadNotifications(signal),
+    staleTime: queryStaleTime.notifications,
+  });
+  const items = notificationsQuery.data ?? [];
+  const error = notificationsQuery.error instanceof Error ? notificationsQuery.error.message : "";
+  const loading = notificationsQuery.isLoading;
 
   useEffect(() => {
     if (!open) return;
@@ -69,7 +64,10 @@ export default function NotificationBell({
         aria-expanded={open}
         aria-label={count > 0 ? `Notificações, ${count}` : "Notificações"}
         className="relative flex size-10 items-center justify-center rounded-xl border border-[#eee8e5] text-[#510f1d]"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          setOpen((current) => !current);
+          void notificationsQuery.refetch();
+        }}
         type="button"
       >
         <svg aria-hidden="true" className="size-[18px]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" viewBox="0 0 24 24">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { clearBackofficeCache } from "../../lib/backoffice-query";
 import { createSupabaseBrowserClient } from "../../lib/supabase/browser";
 
 export default function BackofficeLoginForm() {
@@ -50,9 +51,11 @@ export default function BackofficeLoginForm() {
           setErrorMessage("Esta conta não tem acesso. Não foi possível terminar a sessão; tente novamente.");
           return;
         }
+        clearBackofficeCache();
         setErrorMessage("Esta conta não tem permissão para aceder ao back office.");
         return;
       }
+      clearBackofficeCache();
       router.replace(nextPath);
     } catch {
       setErrorMessage("Não foi possível iniciar sessão. Verifique os dados e tente novamente.");

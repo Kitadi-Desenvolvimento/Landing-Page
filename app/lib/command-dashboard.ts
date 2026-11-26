@@ -8,7 +8,9 @@ import {
 } from "./objective-periods";
 import { loadAvailableProducts } from "./objective-products";
 import { getFinanceData } from "./finance";
-import { loadCommercialSteps, notifyDueCommercialSteps, stageStepLimits } from "./commercial-steps";
+import { loadCheckinSnapshots } from "./checkin-snapshots";
+import { loadCommercialSteps, stageStepLimits } from "./commercial-steps";
+import { remember } from "./read-cache";
 import { personLabel } from "./person-label";
 import { isStaffSchemaMissing, listVisibleStaff } from "./staff-profiles";
 import { createSupabaseAdminClient } from "./supabase/admin";
@@ -47,6 +49,13 @@ type OrderRow = {
   reconciled_at: string | null;
 };
 
+type StageClosure = {
+  opportunity_id: string;
+  from_stage: string | null;
+  to_stage: string | null;
+  created_at: string;
+};
+
 type OpportunityRow = {
   id: string;
   title: string;
@@ -72,6 +81,18 @@ function luandaToday(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(now);
 }
 
+function luandaDay(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(date);
+}
+
+function followUpThroughDay(value: string | null, day: string) {
+  if (!value) return false;
+  const followDay = luandaDay(value);
+  return followDay !== null && followDay <= day;
+}
+
 function windowFor(period: CommandPeriod, now = new Date()) {
   const type: ObjectivePeriodType = period === "day" ? "daily" : period === "week" ? "weekly" : period === "month" ? "monthly" : "annual";
   const today = luandaToday(now);
@@ -92,6 +113,56 @@ function inRange(value: string | null, from: string, to: string) {
   return value >= from && value < to;
 }
 
+function addDays(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function midnightAfter(date: string) {
+  return new Date(`${addDays(date, 1)}T00:00:00+01:00`).toISOString();
+}
+
+function previousBounds(period: CommandPeriod, now = new Date()) {
+  const today = luandaToday(now);
+  if (period === "day") {
+    const day = addDays(today, -1);
+    return {
+      fromDate: day,
+      toDate: today,
+      from: new Date(`${day}T00:00:00+01:00`).toISOString(),
+      to: midnightAfter(day),
+      cutoffDate: day,
+      label: "ontem",
+    };
+  }
+  if (period === "week") {
+    const current = windowFor("week", now);
+    if (!current) return null;
+    const prevStart = addDays(current.fromDate, -7);
+    const prevEnd = objectivePeriodEnd("weekly", prevStart);
+    if (!prevEnd) return null;
+    const offset = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${current.fromDate}T00:00:00Z`)) / 86_400_000);
+    const cutoffDate = addDays(prevStart, offset);
+    return { fromDate: prevStart, toDate: prevEnd, from: new Date(`${prevStart}T00:00:00+01:00`).toISOString(), to: midnightAfter(cutoffDate), cutoffDate, label: "a semana anterior" };
+  }
+  if (period === "month") {
+    const [year, month, day] = today.split("-").map(Number);
+    const prev = new Date(Date.UTC(year, month - 2, 1));
+    const prevStart = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    const prevEnd = objectivePeriodEnd("monthly", prevStart);
+    if (!prevEnd) return null;
+    const lastDay = Number(addDays(prevEnd, -1).slice(8, 10));
+    const cutoffDate = `${prevStart.slice(0, 8)}${String(Math.min(day, lastDay)).padStart(2, "0")}`;
+    return { fromDate: prevStart, toDate: prevEnd, from: new Date(`${prevStart}T00:00:00+01:00`).toISOString(), to: midnightAfter(cutoffDate), cutoffDate, label: "o mês anterior" };
+  }
+  const year = Number(today.slice(0, 4)) - 1;
+  const prevStart = `${year}-01-01`;
+  const monthDay = today.slice(5) === "02-29" ? "02-28" : today.slice(5);
+  const cutoffDate = `${year}-${monthDay}`;
+  return { fromDate: prevStart, toDate: `${year + 1}-01-01`, from: new Date(`${prevStart}T00:00:00+01:00`).toISOString(), to: midnightAfter(cutoffDate), cutoffDate, label: "o ano anterior" };
+}
+
 function rangesOverlap(start: string, end: string, fromDate: string, toDate: string) {
   return start < toDate && fromDate < end;
 }
@@ -105,6 +176,27 @@ function numericTarget(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
   return null;
+}
+
+function progressCompared(current: number, previous: number, label: string) {
+  const diff = current - previous;
+  const against = label === "ontem"
+    ? "ontem"
+    : label === "a semana anterior"
+      ? "a semana anterior"
+      : label === "o mês anterior"
+        ? "o mês anterior"
+        : "o ano anterior";
+  if (diff === 0) {
+    return label === "a semana anterior"
+      ? "O progresso está igual à semana anterior."
+      : label === "o mês anterior"
+        ? "O progresso está igual ao mês anterior."
+        : label === "o ano anterior"
+          ? "O progresso está igual ao ano anterior."
+          : "O progresso está igual a ontem.";
+  }
+  return `O progresso tem ${diff > 0 ? "mais" : "menos"} ${Math.abs(diff)} pontos do que ${against}.`;
 }
 
 function formatDay(date: string) {
@@ -229,6 +321,32 @@ async function rowsOrEmpty<T>(
   return data ?? [];
 }
 
+type ActivityRows = {
+  history: unknown[];
+  checkins: unknown[];
+  edits: unknown[];
+  commercial: unknown[];
+  registered: unknown[];
+  reconciled: unknown[];
+  blocksOpened: unknown[];
+  blocksLifted: unknown[];
+};
+
+async function fetchCommandActivityRows(bounds: ActivityWindow): Promise<ActivityRows> {
+  const admin = createSupabaseAdminClient();
+  const [history, checkins, edits, commercial, registered, reconciled, blocksOpened, blocksLifted] = await Promise.all([
+    rowsOrEmpty(admin.from("objective_activity_history").select("id,objective_id,objective_title,event_type,actor_id,actor_email,created_at").gte("created_at", bounds.from).lt("created_at", bounds.to).order("created_at", { ascending: false }).limit(400)),
+    rowsOrEmpty(admin.from("objective_checkins").select("id,objective_id,value,checked_in_by,checked_in_by_email,created_at").gte("created_at", bounds.from).lt("created_at", bounds.to).order("created_at", { ascending: false }).limit(400)),
+    rowsOrEmpty(admin.from("objective_checkin_edits").select("id,checkin_id,previous_value,edited_by,edited_by_email,edited_at").gte("edited_at", bounds.from).lt("edited_at", bounds.to).order("edited_at", { ascending: false }).limit(200)),
+    rowsOrEmpty(admin.from("crm_opportunity_history").select("id,opportunity_id,event_type,to_stage,details,changed_by,changed_by_email,created_at").gte("created_at", bounds.from).lt("created_at", bounds.to).order("created_at", { ascending: false }).limit(400)),
+    rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,created_by,created_at").gte("created_at", bounds.from).lt("created_at", bounds.to).not("created_by", "is", null).order("created_at", { ascending: false }).limit(200)),
+    rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,reconciled_by,reconciled_at").gte("reconciled_at", bounds.from).lt("reconciled_at", bounds.to).not("reconciled_by", "is", null).order("reconciled_at", { ascending: false }).limit(200)),
+    rowsOrEmpty(admin.from("work_blocks").select("id,subject_type,subject_id,created_by,created_at").gte("created_at", bounds.from).lt("created_at", bounds.to).order("created_at", { ascending: false }).limit(100)),
+    rowsOrEmpty(admin.from("work_blocks").select("id,subject_type,subject_id,lifted_by,lifted_at").gte("lifted_at", bounds.from).lt("lifted_at", bounds.to).order("lifted_at", { ascending: false }).limit(100)),
+  ]);
+  return { history, checkins, edits, commercial, registered, reconciled, blocksOpened, blocksLifted };
+}
+
 async function loadCommandActivity(input: {
   bounds: ActivityWindow;
   person: string;
@@ -236,8 +354,10 @@ async function loadCommandActivity(input: {
   people: { id: string; email: string; displayName: string }[];
   objectives: ObjectiveRow[];
   opportunities: OpportunityRow[];
+  rows: ActivityRows;
 }) {
   const admin = createSupabaseAdminClient();
+  const { history, checkins, edits, commercial, registered, reconciled, blocksOpened, blocksLifted } = input.rows;
   const objectiveTitle = new Map(input.objectives.map((objective) => [objective.id, objective.title]));
   const objectiveProduct = new Map(input.objectives.map((objective) => [objective.id, objective.product_id]));
   const objectiveMeasure = new Map(input.objectives.map((objective) => [objective.id, { value_type: objective.value_type, unit: objective.unit }]));
@@ -246,17 +366,6 @@ async function loadCommandActivity(input: {
   const opportunityContact = new Map(input.opportunities.map((opportunity) => [opportunity.id, contactName(opportunity.contact)]));
   const names = new Map(input.people.map((person) => [person.id, personLabel(person.displayName, person.email)]));
   const nameFor = (id: string, email: string) => names.get(id) ?? personLabel("", email);
-
-  const [history, checkins, edits, commercial, registered, reconciled, blocksOpened, blocksLifted] = await Promise.all([
-    rowsOrEmpty(admin.from("objective_activity_history").select("id,objective_id,objective_title,event_type,actor_id,actor_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
-    rowsOrEmpty(admin.from("objective_checkins").select("id,objective_id,value,checked_in_by,checked_in_by_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
-    rowsOrEmpty(admin.from("objective_checkin_edits").select("id,checkin_id,previous_value,edited_by,edited_by_email,edited_at").gte("edited_at", input.bounds.from).lt("edited_at", input.bounds.to).order("edited_at", { ascending: false }).limit(200)),
-    rowsOrEmpty(admin.from("crm_opportunity_history").select("id,opportunity_id,event_type,to_stage,details,changed_by,changed_by_email,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(400)),
-    rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,created_by,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).not("created_by", "is", null).order("created_at", { ascending: false }).limit(200)),
-    rowsOrEmpty(admin.from("payment_orders").select("reference,amount_kz,product_title,course_slug,reconciled_by,reconciled_at").gte("reconciled_at", input.bounds.from).lt("reconciled_at", input.bounds.to).not("reconciled_by", "is", null).order("reconciled_at", { ascending: false }).limit(200)),
-    rowsOrEmpty(admin.from("work_blocks").select("id,subject_type,subject_id,created_by,created_at").gte("created_at", input.bounds.from).lt("created_at", input.bounds.to).order("created_at", { ascending: false }).limit(100)),
-    rowsOrEmpty(admin.from("work_blocks").select("id,subject_type,subject_id,lifted_by,lifted_at").gte("lifted_at", input.bounds.from).lt("lifted_at", input.bounds.to).order("lifted_at", { ascending: false }).limit(100)),
-  ]);
 
   const commercialRows = commercial as { id: string; opportunity_id: string; event_type: string; to_stage: string | null; details: string; changed_by: string | null; changed_by_email: string; created_at: string }[];
   const missingOpportunities = [...new Set([
@@ -421,6 +530,114 @@ async function loadCommandActivity(input: {
   };
 }
 
+type CommandWindow = NonNullable<ReturnType<typeof windowFor>>;
+
+async function pageRows<T>(
+  load: (from: number) => PromiseLike<{ data: T[] | null; error: { code?: string } | null }>,
+) {
+  const rows: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await load(from);
+    if (error) throw error;
+    rows.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return rows;
+}
+
+function parentsOverlapping(objectives: ObjectiveRow[], fromDate: string, toDate: string) {
+  return objectives.filter((objective) =>
+    objective.parent_objective_id === null &&
+    objective.active &&
+    (!objective.period_type || !objective.period_start || rangesOverlap(
+      objective.period_start,
+      objectivePeriodEnd(objective.period_type, objective.period_start) ?? objective.period_start,
+      fromDate,
+      toDate,
+    )),
+  );
+}
+
+async function loadCommandSources(userId: string, period: CommandPeriod, bounds: CommandWindow) {
+  const prior = previousBounds(period);
+  if (!prior) throw new Error("invalid_period");
+  const admin = createSupabaseAdminClient();
+  const objectiveSelect = "id,title,scope_type,area_id,assigned_to,period_type,period_start,due_date,product_id,parent_objective_id,value_type,target_value,unit,active,archived";
+  const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,created_by,reconciled_at";
+  const opportunitySelect = "id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)";
+  const [objectives, memberships, products, people, blocks, steps, activity] = await Promise.all([
+    pageRows<ObjectiveRow>((from) => admin.from("objectives").select(objectiveSelect).eq("archived", false).order("title").range(from, from + 999)),
+    pageRows<{ area_id: string; user_id: string }>((from) => admin.from("objective_area_members").select("area_id,user_id").range(from, from + 999)),
+    loadAvailableProducts(),
+    listVisibleStaff("admin", userId, null),
+    listOpenBlocks(),
+    loadCommercialSteps().catch((error) => {
+      console.error("[backoffice] commercial step notices failed", error instanceof Error ? error.message : "unknown");
+      return [] as Awaited<ReturnType<typeof loadCommercialSteps>>;
+    }),
+    fetchCommandActivityRows(bounds),
+  ]);
+  const openParents = [
+    ...parentsOverlapping(objectives, bounds.fromDate, bounds.toDate),
+    ...parentsOverlapping(objectives, prior.fromDate, prior.toDate),
+  ];
+  let salesFromDate = prior.fromDate < bounds.fromDate ? prior.fromDate : bounds.fromDate;
+  for (const objective of openParents) {
+    if (objective.product_id && objective.period_start && objective.period_start < salesFromDate) salesFromDate = objective.period_start;
+  }
+  const salesFrom = new Date(`${salesFromDate}T00:00:00+01:00`).toISOString();
+  const relevantIds = new Set(openParents.map((objective) => objective.id));
+  for (const objective of objectives) {
+    if (objective.active && objective.parent_objective_id && relevantIds.has(objective.parent_objective_id)) {
+      relevantIds.add(objective.id);
+    }
+  }
+  const [paidOrders, paidWithoutDate, unpaidDatedOrders, pendingOrders, unreconciledOrders, reconciledSincePrior, openOpportunities, createdInSpan, followInSpan, stageChanges, snapshots, finance] = await Promise.all([
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("paid_at", salesFrom).lt("paid_at", bounds.to).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").is("paid_at", null).gte("created_at", salesFrom).lt("created_at", bounds.to).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).neq("status", "accepted").gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "pending").range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").is("reconciled_at", null).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("reconciled_at", prior.from).lt("reconciled_at", bounds.to).range(from, from + 999)),
+    pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).in("stage", ["new_contact", "in_conversation", "proposal_sent"]).range(from, from + 999)),
+    pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
+    pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).gte("follow_up_at", prior.from).lt("follow_up_at", bounds.to).range(from, from + 999)),
+    pageRows<StageClosure>((from) => admin.from("crm_opportunity_history").select("opportunity_id,from_stage,to_stage,created_at").eq("event_type", "stage_changed").in("to_stage", ["converted", "lost"]).gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
+    loadCheckinSnapshots(admin, [...relevantIds], prior.cutoffDate),
+    period === "month" ? getFinanceData(3).catch(() => null) : Promise.resolve(null),
+  ]);
+  const orders = new Map<string, OrderRow>();
+  for (const order of [...paidOrders, ...paidWithoutDate, ...unpaidDatedOrders, ...pendingOrders, ...unreconciledOrders, ...reconciledSincePrior]) orders.set(order.reference, order);
+  const opportunities = new Map<string, OpportunityRow>();
+  for (const opportunity of [...openOpportunities, ...createdInSpan, ...followInSpan]) opportunities.set(opportunity.id, opportunity);
+  const missingOpportunityIds = [...new Set([
+    ...stageChanges.map((change) => change.opportunity_id),
+    ...blocks.filter((block) => block.subjectType === "opportunity").map((block) => block.subjectId),
+  ])].filter((id) => !opportunities.has(id));
+  for (let index = 0; index < missingOpportunityIds.length; index += 150) {
+    const slice = missingOpportunityIds.slice(index, index + 150);
+    const extra = await pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).in("id", slice).range(from, from + 999));
+    for (const opportunity of extra) opportunities.set(opportunity.id, opportunity);
+  }
+  const checkinHistory = new Map<string, { date: string; value: unknown }[]>();
+  for (const [id, point] of snapshots.asOf) checkinHistory.set(id, [point]);
+  return {
+    objectives,
+    orders: [...orders.values()],
+    opportunities: [...opportunities.values()],
+    memberships,
+    products,
+    people,
+    blocks,
+    latestCheckin: snapshots.latest,
+    checkinHistory,
+    steps,
+    finance,
+    activity,
+    closures: stageChanges.filter((change) => change.to_stage === "converted" || change.to_stage === "lost"),
+  };
+}
+
 export async function buildCommandDashboard(input: {
   userId: string;
   period: CommandPeriod;
@@ -432,26 +649,21 @@ export async function buildCommandDashboard(input: {
 }) {
   const bounds = windowFor(input.period);
   if (!bounds) throw new Error("invalid_period");
-  const admin = createSupabaseAdminClient();
-  const [objectivesResult, ordersResult, opportunitiesResult, membershipsResult, products, people, blocks] = await Promise.all([
-    admin.from("objectives").select("id,title,scope_type,area_id,assigned_to,period_type,period_start,due_date,product_id,parent_objective_id,value_type,target_value,unit,active,archived").eq("archived", false).limit(2000),
-    admin.from("payment_orders").select("reference,amount_kz,course_slug,product_title,status,created_at,paid_at,created_by,reconciled_at").order("created_at", { ascending: false }).limit(2000),
-    admin.from("crm_opportunities").select("id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)").order("created_at", { ascending: false }).limit(2000),
-    admin.from("objective_area_members").select("area_id,user_id"),
-    loadAvailableProducts(),
-    listVisibleStaff("admin", input.userId, null),
-    listOpenBlocks(),
-  ]);
-  if (objectivesResult.error) throw objectivesResult.error;
-  if (ordersResult.error) throw ordersResult.error;
-  if (opportunitiesResult.error) throw opportunitiesResult.error;
-  if (membershipsResult.error) throw membershipsResult.error;
-
-  const objectives = (objectivesResult.data ?? []) as ObjectiveRow[];
-  const orders = (ordersResult.data ?? []) as OrderRow[];
-  const opportunities = (opportunitiesResult.data ?? []) as OpportunityRow[];
+  const sources = await remember(
+    `command:${input.period}:${input.userId}`,
+    12_000,
+    () => loadCommandSources(input.userId, input.period, bounds),
+  );
+  const objectives = sources.objectives;
+  const orders = sources.orders;
+  const opportunities = sources.opportunities;
+  const products = sources.products;
+  const people = sources.people;
+  const blocks = sources.blocks;
+  const latestCheckin = sources.latestCheckin;
+  const checkinHistory = sources.checkinHistory;
   const areasByUser = new Map<string, string[]>();
-  for (const membership of membershipsResult.data ?? []) {
+  for (const membership of sources.memberships) {
     areasByUser.set(membership.user_id, [...(areasByUser.get(membership.user_id) ?? []), membership.area_id]);
   }
   const person = input.personId;
@@ -463,27 +675,6 @@ export async function buildCommandDashboard(input: {
       (areasByUser.get(person) ?? []).includes(objective.area_id);
   };
   const productOk = (slug: string | null) => input.product === "all" || slug === input.product;
-  const objectiveIds = objectives.map((objective) => objective.id);
-  const latestCheckin = new Map<string, { date: string; value: unknown }>();
-  for (let index = 0; index < objectiveIds.length; index += 150) {
-    const slice = objectiveIds.slice(index, index + 150);
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await admin
-        .from("objective_checkins")
-        .select("objective_id,checkin_date,value,created_at")
-        .in("objective_id", slice)
-        .order("checkin_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .range(from, from + 999);
-      if (error) throw error;
-      for (const checkin of data ?? []) {
-        if (!latestCheckin.has(checkin.objective_id)) {
-          latestCheckin.set(checkin.objective_id, { date: String(checkin.checkin_date).slice(0, 10), value: checkin.value });
-        }
-      }
-      if (!data || data.length < 1000) break;
-    }
-  }
 
   const parents = objectives.filter((objective) =>
     objective.parent_objective_id === null &&
@@ -631,24 +822,34 @@ export async function buildCommandDashboard(input: {
     return true;
   });
   const accepted = filteredOrders.filter((order) => order.status === "accepted");
-  const pending = filteredOrders.filter((order) => order.status === "pending");
-  const unreconciled = accepted.filter((order) => !order.reconciled_at);
+  const orderVisible = (order: OrderRow) =>
+    (person === "all" || order.created_by === person) &&
+    productOk(order.course_slug) &&
+    (input.paymentStatus === "all" ||
+      (input.paymentStatus === "accepted" && order.status === "accepted") ||
+      (input.paymentStatus === "pending" && order.status === "pending") ||
+      (input.paymentStatus === "unreconciled" && order.status === "accepted" && !order.reconciled_at));
+  const pending = orders.filter((order) => order.status === "pending" && orderVisible(order));
+  const unreconciled = orders.filter((order) => order.status === "accepted" && !order.reconciled_at && orderVisible(order));
   const acceptedKz = accepted.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
   const pendingKz = pending.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
 
-  const nowIso = new Date().toISOString();
-  const filteredOpportunities = opportunities.filter((opportunity) => {
-    if (person !== "all" && opportunity.created_by !== person) return false;
-    if (!productOk(opportunity.product_slug)) return false;
-    if (input.stage !== "all" && opportunity.stage !== input.stage) return false;
-    const open = opportunity.stage !== "converted" && opportunity.stage !== "lost";
-    const overdue = Boolean(open && opportunity.follow_up_at && opportunity.follow_up_at <= nowIso);
-    const touched = inRange(opportunity.created_at, bounds.from, bounds.to) || inRange(opportunity.follow_up_at, bounds.from, bounds.to);
-    return touched || overdue;
-  });
-  const openOpportunities = filteredOpportunities.filter((opportunity) => opportunity.stage !== "converted" && opportunity.stage !== "lost");
+  const today = luandaToday();
+  const closures = sources.closures;
+  const closedBetween = (id: string, from: string, to: string) => closures.some((change) => change.opportunity_id === id && change.created_at >= from && change.created_at < to);
+  const opportunityVisible = (opportunity: OpportunityRow) =>
+    (person === "all" || opportunity.created_by === person) &&
+    productOk(opportunity.product_slug) &&
+    (input.stage === "all" || opportunity.stage === input.stage);
+  const openOpportunities = opportunities.filter((opportunity) => opportunity.stage !== "converted" && opportunity.stage !== "lost" && opportunityVisible(opportunity));
+  const closedInWindow = opportunities.filter((opportunity) =>
+    (opportunity.stage === "converted" || opportunity.stage === "lost") &&
+    opportunityVisible(opportunity) &&
+    (closedBetween(opportunity.id, bounds.from, bounds.to) || inRange(opportunity.created_at, bounds.from, bounds.to)),
+  );
+  const filteredOpportunities = [...openOpportunities, ...closedInWindow];
   const pipelineKz = openOpportunities.reduce((sum, opportunity) => sum + Number(opportunity.amount_kz ?? 0), 0);
-  const overdueFollowUps = openOpportunities.filter((opportunity) => opportunity.follow_up_at && opportunity.follow_up_at <= nowIso);
+  const overdueFollowUps = openOpportunities.filter((opportunity) => followUpThroughDay(opportunity.follow_up_at, today));
 
   const visibleParents = input.objectiveSituation === "attention"
     ? parents.filter((objective) => behind.some((item) => item.id === objective.id) || attention.some((item) => item.id === objective.id))
@@ -669,12 +870,7 @@ export async function buildCommandDashboard(input: {
 
   let resultKz: number | null = null;
   if (input.period === "month") {
-    try {
-      const finance = await getFinanceData(2);
-      resultKz = finance.periods.find((period) => period.month === bounds.fromDate.slice(0, 7))?.resultKz ?? null;
-    } catch {
-      resultKz = null;
-    }
+    resultKz = sources.finance?.periods.find((period) => period.month === bounds.fromDate.slice(0, 7))?.resultKz ?? null;
   }
 
   const personIsBlocker = (block: { people: { id: string }[]; subjectType: string; subjectId: string }) => {
@@ -687,33 +883,31 @@ export async function buildCommandDashboard(input: {
     const opportunity = opportunities.find((item) => item.id === block.subjectId);
     return opportunity?.created_by === person;
   };
-  const visibleBlocks = blocks.filter((block) => personIsBlocker(block) && (
-    block.subjectType === "objective"
-      ? parents.some((objective) => objective.id === block.subjectId) || person !== "all"
-      : filteredOpportunities.some((opportunity) => opportunity.id === block.subjectId) || person !== "all"
-  ));
+  const visibleBlocks = blocks.filter((block) => {
+    if (!personIsBlocker(block)) return false;
+    if (input.product === "all") return true;
+    if (block.subjectType === "objective") {
+      return objectives.find((item) => item.id === block.subjectId)?.product_id === input.product;
+    }
+    return opportunities.find((item) => item.id === block.subjectId)?.product_slug === input.product;
+  });
 
-  let commercialSteps: Awaited<ReturnType<typeof loadCommercialSteps>> = [];
-  let noticesReady = true;
-  try {
-    commercialSteps = await loadCommercialSteps();
-    const delivery = await notifyDueCommercialSteps(commercialSteps);
-    noticesReady = !delivery.unavailable;
-  } catch (error) {
-    console.error("[backoffice] commercial step notices failed", error instanceof Error ? error.message : "unknown");
-  }
+  const commercialSteps = sources.steps;
+  const noticesReady = true;
   const staffNames = new Map(people.map((item) => [item.id, personLabel(item.displayName, item.email)]));
   const dueSteps = commercialSteps.filter((step) =>
-    step.next &&
     productOk(step.productSlug) &&
-    (person === "all" || step.createdBy === person),
+    (person === "all" || step.createdBy === person) &&
+    (step.stageDue || followUpThroughDay(step.followUpAt, today)),
   );
   const notices = dueSteps.slice(0, 20).map((step) => {
     const personName = step.createdBy ? staffNames.get(step.createdBy) ?? "Equipa" : "";
     const contact = step.contactName || "este contacto";
     const stageLabel = stageStepLimits[step.stage].label;
     const dayLabel = `há ${step.days} ${step.days === 1 ? "dia" : "dias"}`;
-    const next = step.next ?? "";
+    const followDay = step.followUpAt ? luandaDay(step.followUpAt) : null;
+    const late = followDay !== null && followDay < today;
+    const next = step.next ?? "Fazer o seguimento marcado.";
     const action = next.startsWith("Contactar e passar")
       ? "ligar e passar para Em conversa"
       : next.startsWith("Enviar a proposta")
@@ -721,9 +915,14 @@ export async function buildCommandDashboard(input: {
         : next.startsWith("Confirmar")
           ? "confirmar a decisão ou o pagamento"
           : "fazer o contacto que ficou marcado";
+    const reason = step.stageDue
+      ? `Está ${dayLabel} em ${stageLabel}.`
+      : late
+        ? `O seguimento é de ${formatDay(followDay ?? today)}.`
+        : "O seguimento é para hoje.";
     const line = personName
-      ? `Contactar ${contact} sobre ${step.title}. Está ${dayLabel} em ${stageLabel}. ${personName} deve ${action}.`
-      : `Contactar ${contact} sobre ${step.title}. Está ${dayLabel} em ${stageLabel} e ainda ninguém da equipa assumiu este contacto. O passo é ${action}.`;
+      ? `Contactar ${contact} sobre ${step.title}. ${reason} ${personName} deve ${action}.`
+      : `Contactar ${contact} sobre ${step.title}. ${reason} Ainda ninguém da equipa assumiu este contacto. O passo é ${action}.`;
     return {
       id: step.id,
       personName: personName || "Sem responsável",
@@ -775,7 +974,7 @@ export async function buildCommandDashboard(input: {
     refunded: "Devolvido",
   };
   const paymentBreakdown = Object.entries(paymentLabels).map(([status, label]) => {
-    const rows = filteredOrders.filter((order) => order.status === status);
+    const rows = status === "pending" ? pending : filteredOrders.filter((order) => order.status === status);
     const amountValue = rows.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
     return {
       status,
@@ -833,31 +1032,233 @@ export async function buildCommandDashboard(input: {
     people,
     objectives,
     opportunities,
+    rows: sources.activity,
   });
+
+  const priorWindow = previousBounds(input.period);
+  const priorAsOf = priorWindow ? new Date(priorWindow.to) : new Date();
+  const valueAsOf = (id: string) => (checkinHistory.get(id) ?? []).find((row) => priorWindow ? row.date <= priorWindow.cutoffDate : false)?.value;
+  const priorParents = priorWindow ? objectives.filter((objective) =>
+    objective.parent_objective_id === null &&
+    objective.active &&
+    belongsToPerson(objective) &&
+    productOk(objective.product_id) &&
+    (!objective.period_type || !objective.period_start || rangesOverlap(
+      objective.period_start,
+      objectivePeriodEnd(objective.period_type, objective.period_start) ?? objective.period_start,
+      priorWindow.fromDate,
+      priorWindow.toDate,
+    )),
+  ) : [];
+  const priorReading = new Map<string, { progress: number | null; behind: boolean; silent: boolean; dueSoon: boolean }>();
+  for (const objective of priorParents) {
+    const keyResults = objectives.filter((item) => item.parent_objective_id === objective.id && item.active);
+    const metric = keyResults.find((item) => (item.value_type === "currency" || item.value_type === "number") && numericTarget(item.target_value) !== null);
+    const target = metric ? numericTarget(metric.target_value) : null;
+    let progress: number | null = null;
+    let isBehind = false;
+    let comparedWithSales = false;
+    if (metric && target !== null && objective.product_id && objective.period_type && objective.period_start) {
+      const end = objectivePeriodEnd(objective.period_type, objective.period_start);
+      if (end) {
+        const periodEnd = new Date(`${end}T00:00:00+01:00`).getTime();
+        const until = new Date(Math.min(priorAsOf.getTime(), periodEnd)).toISOString();
+        const sales = orders.filter((order) =>
+          order.status === "accepted" &&
+          order.course_slug === objective.product_id &&
+          inRange(order.paid_at ?? order.created_at, new Date(`${objective.period_start}T00:00:00+01:00`).toISOString(), until),
+        );
+        const actual = metric.value_type === "currency" ? sales.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0) : sales.length;
+        const expected = target * elapsedFraction(objective.period_type, objective.period_start, end, priorAsOf);
+        progress = target > 0 ? Math.round((actual / target) * 100) : null;
+        isBehind = actual < expected;
+        comparedWithSales = true;
+      }
+    }
+    const measure = measureObjectiveProgress(objective, keyResults, valueAsOf);
+    if (measure.inherited && measure.percent !== null) {
+      progress = Math.round(measure.percent);
+      if (!comparedWithSales && objective.period_type && objective.period_start) {
+        const end = objectivePeriodEnd(objective.period_type, objective.period_start);
+        if (end) isBehind = measure.percent < elapsedFraction(objective.period_type, objective.period_start, end, priorAsOf) * 100;
+      }
+    } else if (progress === null && measure.percent !== null) {
+      progress = Math.round(measure.percent);
+      if (!comparedWithSales) {
+        const source = metric && valueAsOf(metric.id) !== undefined ? metric : valueAsOf(objective.id) !== undefined ? objective : keyResults.find((item) => valueAsOf(item.id) !== undefined) ?? null;
+        const actual = source ? numericTarget(valueAsOf(source.id)) : null;
+        const goal = source ? numericTarget(source.target_value) : null;
+        if (source?.period_type && source.period_start && actual !== null && goal !== null) {
+          const end = objectivePeriodEnd(source.period_type, source.period_start);
+          if (end) isBehind = actual < goal * elapsedFraction(source.period_type, source.period_start, end, priorAsOf);
+        }
+      }
+    }
+    const dueSoon = priorWindow !== null && objective.due_date !== null && objective.due_date >= priorWindow.fromDate && objective.due_date < priorWindow.toDate;
+    const silent = measure.inherited ? measure.keyResultsWithValue === 0 : valueAsOf(objective.id) === undefined && keyResults.every((item) => valueAsOf(item.id) === undefined);
+    priorReading.set(objective.id, { progress, behind: isBehind, silent, dueSoon });
+  }
+  const priorBlockedIds = new Set(blocks.filter((block) => block.subjectType === "objective" && block.createdAt && priorWindow && block.createdAt <= priorWindow.to).map((block) => block.subjectId));
+  const priorRanked = input.objectiveSituation === "attention"
+    ? priorParents.filter((objective) => {
+      const reading = priorReading.get(objective.id);
+      return Boolean(reading && (reading.behind || reading.silent || reading.dueSoon || priorBlockedIds.has(objective.id)));
+    })
+    : priorParents;
+  const priorMixLabel = (id: string) => {
+    if (priorBlockedIds.has(id)) return "Bloqueadas";
+    const reading = priorReading.get(id);
+    if (reading?.behind) return "Atrasadas";
+    if (reading?.silent) return "Sem progresso";
+    if (reading?.dueSoon) return "Prazo neste período";
+    return "Vão a tempo";
+  };
+  const priorOrders = priorWindow ? orders.filter((order) => {
+    const moment = order.status === "accepted" ? order.paid_at ?? order.created_at : order.created_at;
+    if (!inRange(moment, priorWindow.from, priorWindow.to)) return false;
+    if (person !== "all" && order.created_by !== person) return false;
+    if (!productOk(order.course_slug)) return false;
+    if (input.paymentStatus === "accepted" && order.status !== "accepted") return false;
+    if (input.paymentStatus === "pending" && order.status !== "pending") return false;
+    if (input.paymentStatus === "unreconciled" && !(order.status === "accepted" && !order.reconciled_at)) return false;
+    return true;
+  }) : [];
+  const priorAccepted = priorOrders.filter((order) => order.status === "accepted");
+  const paidMoment = (order: OrderRow) => order.paid_at ?? order.created_at;
+  const priorPending = priorWindow ? orders.filter((order) => {
+    if (!orderVisible(order)) return false;
+    if (order.status === "pending" && order.created_at < priorWindow.to) return true;
+    return order.status === "accepted" && order.created_at < priorWindow.to && paidMoment(order) >= priorWindow.to;
+  }) : [];
+  const priorUnreconciled = priorWindow ? orders.filter((order) => {
+    if (order.status !== "accepted" || !orderVisible(order) || paidMoment(order) >= priorWindow.to) return false;
+    return !order.reconciled_at || order.reconciled_at >= priorWindow.to;
+  }) : [];
+  const priorStillOpen = priorWindow ? opportunities.filter((opportunity) => {
+    if (opportunity.created_at >= priorWindow.to) return false;
+    if (opportunity.stage === "converted" || opportunity.stage === "lost") return false;
+    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (!productOk(opportunity.product_slug)) return false;
+    if (input.stage !== "all" && opportunity.stage !== input.stage) return false;
+    return true;
+  }) : [];
+  const priorClosedSince = priorWindow ? opportunities.filter((opportunity) => {
+    if (opportunity.created_at >= priorWindow.to || input.stage !== "all") return false;
+    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (!productOk(opportunity.product_slug)) return false;
+    return closures.some((change) => change.opportunity_id === opportunity.id && change.created_at >= priorWindow.to);
+  }) : [];
+  const priorClosedInWindow = priorWindow ? opportunities.filter((opportunity) => {
+    if (opportunity.stage !== "converted" && opportunity.stage !== "lost") return false;
+    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (!productOk(opportunity.product_slug)) return false;
+    if (input.stage !== "all" && opportunity.stage !== input.stage) return false;
+    return closedBetween(opportunity.id, priorWindow.from, priorWindow.to) ||
+      (inRange(opportunity.created_at, priorWindow.from, priorWindow.to) && !closures.some((change) => change.opportunity_id === opportunity.id && change.created_at >= priorWindow.to));
+  }) : [];
+  const priorOpen = [...priorStillOpen, ...priorClosedSince];
+  const priorOpportunities = [...priorStillOpen, ...priorClosedInWindow];
+  const priorNoticeCount = priorWindow ? commercialSteps.filter((step) => {
+    if (!productOk(step.productSlug) || (person !== "all" && step.createdBy !== person)) return false;
+    const limitMs = stageStepLimits[step.stage].days * 86_400_000;
+    const stageDue = Date.parse(step.enteredAt) + limitMs <= Date.parse(priorWindow.to);
+    return stageDue || followUpThroughDay(step.followUpAt, priorWindow.cutoffDate);
+  }).length : 0;
+  let priorResultKz: number | null = null;
+  if (input.period === "month" && priorWindow) {
+    priorResultKz = sources.finance?.periods.find((period) => period.month === priorWindow.fromDate.slice(0, 7))?.resultKz ?? null;
+  }
+  const priorRevenueOrders = priorWindow ? orders.filter((order) =>
+    order.status === "accepted" &&
+    inRange(order.paid_at ?? order.created_at, priorWindow.from, priorWindow.to) &&
+    (person === "all" || order.created_by === person) &&
+    productOk(order.course_slug),
+  ) : [];
+  const prior = {
+    label: priorWindow?.label ?? "o período anterior",
+    revenueKz: priorRevenueOrders.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0),
+    revenueCount: priorRevenueOrders.length,
+    acceptedKz: priorAccepted.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0),
+    acceptedCount: priorAccepted.length,
+    pendingKz: priorPending.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0),
+    pendingCount: priorPending.length,
+    unreconciledKz: priorUnreconciled.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0),
+    unreconciledCount: priorUnreconciled.length,
+    pipelineKz: priorOpen.reduce((sum, opportunity) => sum + Number(opportunity.amount_kz ?? 0), 0),
+    open: priorOpen.length,
+    converted: priorOpportunities.filter((opportunity) => opportunity.stage === "converted").length,
+    lost: priorOpportunities.filter((opportunity) => opportunity.stage === "lost").length,
+    overdue: priorOpen.filter((opportunity) => priorWindow && followUpThroughDay(opportunity.follow_up_at, priorWindow.cutoffDate)).length,
+    proposals: priorStillOpen.filter((opportunity) => opportunity.stage === "proposal_sent" && opportunity.payment_status !== "accepted").length + priorClosedSince.filter((opportunity) => {
+      const left = closures.filter((change) => change.opportunity_id === opportunity.id && priorWindow && change.created_at >= priorWindow.to).sort((leftChange, rightChange) => leftChange.created_at.localeCompare(rightChange.created_at))[0];
+      return left?.from_stage === "proposal_sent";
+    }).length,
+    resultKz: priorResultKz,
+    objectiveTotal: priorRanked.length,
+    behind: priorRanked.filter((objective) => priorReading.get(objective.id)?.behind).length,
+    silent: priorRanked.filter((objective) => priorReading.get(objective.id)?.silent).length,
+    blocked: priorRanked.filter((objective) => priorBlockedIds.has(objective.id)).length,
+    attention: priorRanked.filter((objective) => {
+      const reading = priorReading.get(objective.id);
+      return Boolean(reading && (reading.behind || reading.silent || reading.dueSoon));
+    }).length,
+    noticeCount: priorNoticeCount,
+    funnel: ["new_contact", "in_conversation", "proposal_sent", "converted", "lost"].map((stage) => {
+      const rows = stage === "converted" || stage === "lost"
+        ? priorClosedInWindow.filter((opportunity) => opportunity.stage === stage)
+        : [
+          ...priorStillOpen.filter((opportunity) => opportunity.stage === stage),
+          ...priorClosedSince.filter((opportunity) => {
+            const left = closures.filter((change) => change.opportunity_id === opportunity.id && priorWindow && change.created_at >= priorWindow.to).sort((leftChange, rightChange) => leftChange.created_at.localeCompare(rightChange.created_at))[0];
+            return left?.from_stage === stage;
+          }),
+        ];
+      return { stage, count: rows.length, amountValue: rows.reduce((sum, opportunity) => sum + Number(opportunity.amount_kz ?? 0), 0) };
+    }),
+    breakdown: Object.keys(paymentLabels).map((status) => {
+      const rows = status === "pending" ? priorPending : priorOrders.filter((order) => order.status === status);
+      return { status, count: rows.length, amountValue: rows.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0) };
+    }),
+    mix: ["Vão a tempo", "Atrasadas", "Sem progresso", "Prazo neste período", "Bloqueadas"].map((label) => ({
+      label,
+      count: priorRanked.filter((objective) => priorMixLabel(objective.id) === label).length,
+    })),
+    bands: [
+      { label: "Metas ainda sem número para comparar com o alvo", test: (value: number | null) => value === null },
+      { label: "Metas abaixo de metade do alvo", test: (value: number | null) => value !== null && value < 50 },
+      { label: "Metas entre metade e o alvo", test: (value: number | null) => value !== null && value >= 50 && value < 100 },
+      { label: "Metas que já chegaram ao alvo", test: (value: number | null) => value !== null && value >= 100 },
+    ].map((band) => ({
+      label: band.label,
+      count: priorRanked.filter((objective) => band.test(priorReading.get(objective.id)?.progress ?? null)).length,
+    })),
+  };
 
   const attentionCount = new Set([...behind.map((item) => item.id), ...attention.map((item) => item.id)]).size;
   const paceSentence = behind.length > 0
     ? `${behind.length} ${behind.length === 1 ? "meta está atrasada face ao que já devia ter feito até hoje" : "metas estão atrasadas face ao que já deviam ter feito até hoje"}`
     : "As metas com número vão a tempo";
 
-  return {
+  const dashboard = {
     period: input.period,
     fromDate: bounds.fromDate,
     toDate: bounds.toDate,
     metrics: {
       revenue: formatKz(revenueKz),
+      revenueAmount: revenueKz,
       revenueNote: `${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento já entrou" : "pagamentos já entraram"}`,
       pipeline: formatKz(pipelineKz),
+      pipelineAmount: pipelineKz,
       pipelineNote: overdueFollowUps.length === 0
         ? "Este valor ainda não entrou"
-        : `${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto com a hora já passada" : "contactos com a hora já passada"}. Este valor ainda não entrou`,
+        : `${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto para hoje" : "contactos para hoje"}. Este valor ainda não entrou`,
       attention: String(attentionCount),
       attentionNote: attentionCount === 1 ? "meta que pede uma decisão" : "metas que pedem uma decisão",
     },
     revenueSeries,
     sentences: [
       `Já entraram ${formatKz(revenueKz)}, em ${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento" : "pagamentos"}.`,
-      `Ainda estão por fechar ${formatKz(pipelineKz)}. ${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto já devia ter sido feito" : "contactos já deviam ter sido feitos"}.`,
+      `Ainda estão por fechar ${formatKz(pipelineKz)}. ${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto é para hoje" : "contactos são para hoje"}.`,
       `${attentionCount} ${attentionCount === 1 ? "meta pede uma decisão" : "metas pedem uma decisão"}. ${paceSentence}.`,
     ],
     actions,
@@ -895,6 +1296,8 @@ export async function buildCommandDashboard(input: {
       if (card?.pace) parts.push(card.pace);
       if (card?.silent) parts.push("Ainda ninguém registou progresso nesta meta.");
       else if (card?.dueSoon) parts.push("O prazo chega neste período.");
+      const previousProgress = priorReading.get(objective.id)?.progress ?? null;
+      if (card?.progress != null && previousProgress != null) parts.push(progressCompared(card.progress, previousProgress, prior.label));
       return {
         id: objective.id,
         title: objective.title,
@@ -902,6 +1305,7 @@ export async function buildCommandDashboard(input: {
         progress: card?.progress ?? null,
         status: mixLabel(objective.id),
         period: objective.period_type,
+        previousProgress: priorReading.get(objective.id)?.progress ?? null,
       };
     }),
     objectiveTotal: rankedObjectives.length,
@@ -915,10 +1319,14 @@ export async function buildCommandDashboard(input: {
       pendingCount: pending.length,
       unreconciledCount: unreconciled.length,
       unreconciledKz: formatKz(unreconciledKz),
+      unreconciledAmount: unreconciledKz,
       breakdown: paymentBreakdown,
       resultKz: resultKz === null ? null : formatKz(resultKz),
+      resultAmount: resultKz,
     },
     people: people.map((personItem) => ({ id: personItem.id, email: personItem.email, displayName: personItem.displayName })),
     products: products.map((product) => ({ slug: product.slug, title: product.title })),
+    prior,
   };
+  return { dashboard, noticeSteps: commercialSteps };
 }

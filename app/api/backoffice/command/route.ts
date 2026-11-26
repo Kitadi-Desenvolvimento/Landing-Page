@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { scheduleDueCommercialNotices } from "../../../lib/commercial-steps";
 import { buildCommandDashboard, type CommandPeriod } from "../../../lib/command-dashboard";
 import { requireAdmin } from "../../../lib/supabase/require-admin";
 
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const person = request.nextUrl.searchParams.get("person") ?? "all";
   const personId = person === "mine" ? authorization.user.id : person;
   try {
-    const dashboard = await buildCommandDashboard({
+    const { dashboard, noticeSteps } = await buildCommandDashboard({
       userId: authorization.user.id,
       period: period as CommandPeriod,
       personId,
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest) {
       paymentStatus: request.nextUrl.searchParams.get("paymentStatus") ?? "all",
       objectiveSituation: request.nextUrl.searchParams.get("objectiveSituation") ?? "all",
     });
+    scheduleDueCommercialNotices(noticeSteps);
     return NextResponse.json(dashboard, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[backoffice] command dashboard failed", error instanceof Error ? error.message : "unknown");

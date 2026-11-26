@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { clearBackofficeCache } from "../lib/backoffice-query";
 import { createSupabaseBrowserClient } from "../lib/supabase/browser";
 
 export default function SignOutButton() {
@@ -14,6 +15,7 @@ export default function SignOutButton() {
       setErrorMessage("Não foi possível terminar a sessão. Tente novamente.");
       return;
     }
+    clearBackofficeCache();
     router.replace("/backoffice/login");
     router.refresh();
   }

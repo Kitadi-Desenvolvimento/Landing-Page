@@ -1,7 +1,9 @@
 "use client";
 
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { messageForApiError } from "../lib/api-error-messages";
+import { BackofficeRequestError, backofficeKeys, queryStaleTime } from "../lib/backoffice-query";
 import { objectivePeriodGroupLabel, objectivePeriodPresence } from "../lib/objective-periods";
 import { personInitials, personLabel } from "../lib/person-label";
 import type { DashboardSection } from "./dashboard-data";
@@ -23,8 +25,10 @@ type CommandData = {
   toDate: string;
   metrics: {
     revenue: string;
+    revenueAmount: number;
     revenueNote: string;
     pipeline: string;
+    pipelineAmount: number;
     pipelineNote: string;
     attention: string;
     attentionNote: string;
@@ -42,7 +46,7 @@ type CommandData = {
   objectiveMix: { label: string; count: number }[];
   progressBands: { label: string; count: number }[];
   commercialStats: { open: number; converted: number; lost: number; overdue: number; proposals: number };
-  objectives: { id: string; title: string; detail: string; progress: number | null; status: string; period: "annual" | "monthly" | "weekly" | "daily" | null }[];
+  objectives: { id: string; title: string; detail: string; progress: number | null; status: string; period: "annual" | "monthly" | "weekly" | "daily" | null; previousProgress: number | null }[];
   objectiveTotal: number;
   funnel: { stage: string; label: string; count: number; amount: string; amountValue: number }[];
   payments: {
@@ -54,11 +58,41 @@ type CommandData = {
     pendingCount: number;
     unreconciledCount: number;
     unreconciledKz: string;
+    unreconciledAmount: number;
     breakdown: { status: string; label: string; count: number; amount: string; amountValue: number }[];
     resultKz: string | null;
+    resultAmount: number | null;
   };
   people: { id: string; email: string; displayName: string }[];
   products: { slug: string; title: string }[];
+  prior: {
+    label: string;
+    revenueKz: number;
+    revenueCount: number;
+    acceptedKz: number;
+    acceptedCount: number;
+    pendingKz: number;
+    pendingCount: number;
+    unreconciledKz: number;
+    unreconciledCount: number;
+    pipelineKz: number;
+    open: number;
+    converted: number;
+    lost: number;
+    overdue: number;
+    proposals: number;
+    resultKz: number | null;
+    objectiveTotal: number;
+    behind: number;
+    silent: number;
+    blocked: number;
+    attention: number;
+    noticeCount: number;
+    funnel: { stage: string; count: number; amountValue: number }[];
+    breakdown: { status: string; count: number; amountValue: number }[];
+    mix: { label: string; count: number }[];
+    bands: { label: string; count: number }[];
+  };
 };
 
 const periods = [
@@ -94,6 +128,27 @@ function rangeLabel(fromDate: string, toDate: string) {
   end.setUTCDate(end.getUTCDate() - 1);
   const format = new Intl.DateTimeFormat("pt-PT", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   return `${format.format(new Date(`${fromDate}T00:00:00Z`))} – ${format.format(end)}`;
+}
+
+function comparedWith(current: number, previous: number, label: string, money = false) {
+  const shown = (value: number) => money ? formatKz(value) : String(Math.round(value));
+  const diff = current - previous;
+  const before = label === "ontem"
+    ? "Ontem eram"
+    : label === "a semana anterior"
+      ? "Na semana anterior eram"
+      : label === "o mês anterior"
+        ? "No mês anterior eram"
+        : "No ano anterior eram";
+  const same = label === "a semana anterior"
+    ? "Igual à semana anterior."
+    : label === "o mês anterior"
+      ? "Igual ao mês anterior."
+      : label === "o ano anterior"
+        ? "Igual ao ano anterior."
+        : "Igual a ontem.";
+  if (diff === 0) return `${same} ${before} ${shown(previous)}.`;
+  return `${diff > 0 ? "Mais" : "Menos"} ${shown(Math.abs(diff))} do que ${label}. ${before} ${shown(previous)}.`;
 }
 
 function formatKz(value: number) {
@@ -210,7 +265,7 @@ function allGoalsReading(data: CommandData): Reading {
   return {
     title: "Metas neste período",
     summary: `${data.objectiveStats.total} ${data.objectiveStats.total === 1 ? "meta cabe" : "metas cabem"} neste período e nesta escolha.`,
-    meaning: "Uma meta conta se está activa e o período dela cruza o período escolhido. Os cartões ao lado podem repetir a mesma meta. No gráfico, cada meta entra numa só fatia.",
+    meaning: `Uma meta conta se está activa e o período dela cruza o período escolhido. Os cartões ao lado podem repetir a mesma meta. No gráfico, cada meta entra numa só fatia. ${comparedWith(data.objectiveStats.total, data.prior.objectiveTotal, data.prior.label)}`,
     items: data.objectives.map((objective) => ({ id: objective.id, title: objective.title, detail: objective.detail })),
     remainder: data.objectiveTotal > data.objectives.length ? `Estão aqui as ${data.objectives.length} que pedem mais atenção, de ${data.objectiveTotal}.` : "",
   };
@@ -219,9 +274,10 @@ function allGoalsReading(data: CommandData): Reading {
 function goalsByStatus(data: CommandData, status: string): Reading {
   const items = data.objectives.filter((objective) => objective.status === status);
   const total = data.objectiveMix.find((part) => part.label === status)?.count ?? items.length;
-  return {
+    const previous = data.prior.mix.find((part) => part.label === status)?.count ?? 0;
+    return {
     title: status,
-    summary: `${total} ${total === 1 ? "meta está" : "metas estão"} nesta situação.`,
+    summary: `${total} ${total === 1 ? "meta está" : "metas estão"} nesta situação. ${comparedWith(total, previous, data.prior.label)}`,
     meaning: mixMeaning[status] ?? "Cada meta entra numa só fatia.",
     items: items.map((objective) => ({ id: objective.id, title: objective.title, detail: objective.detail })),
     remainder: total > items.length ? `Estão aqui ${items.length} de ${total}. As outras não entraram na lista das que pedem mais atenção.` : "",
@@ -237,9 +293,10 @@ function bandMatches(label: string, progress: number | null) {
 
 function goalsByBand(data: CommandData, band: { label: string; count: number }): Reading {
   const items = data.objectives.filter((objective) => bandMatches(band.label, objective.progress));
+  const previous = data.prior.bands.find((item) => item.label === band.label)?.count ?? 0;
   return {
     title: band.label,
-    summary: `${band.count} ${band.count === 1 ? "meta entra" : "metas entram"} nesta faixa.`,
+    summary: `${band.count} ${band.count === 1 ? "meta entra" : "metas entram"} nesta faixa. ${comparedWith(band.count, previous, data.prior.label)}`,
     meaning: "A percentagem é o que já foi feito a dividir pelo alvo. Sem número quer dizer que a meta não tem um alvo em quantidade ou em kwanzas ligado a um produto.",
     items: items.map((objective) => ({
       id: objective.id,
@@ -254,7 +311,7 @@ function pipelineReading(data: CommandData): Reading {
   const open = data.funnel.filter((step) => step.stage !== "converted" && step.stage !== "lost");
   return {
     title: "Ainda por fechar",
-    summary: `${data.metrics.pipeline}. ${data.metrics.pipelineNote}.`,
+    summary: `${data.metrics.pipeline}. ${data.metrics.pipelineNote}. ${comparedWith(data.metrics.pipelineAmount, data.prior.pipelineKz, data.prior.label, true)}`,
     meaning: "Este valor soma as oportunidades que ainda não compraram nem foram dadas como perdidas. Ainda não é dinheiro que entrou.",
     items: open.map((step) => ({ id: step.stage, title: step.label, detail: `${step.count} ${step.count === 1 ? "contacto" : "contactos"} · ${step.amount}` })),
     remainder: "Os nomes destes contactos estão no comercial.",
@@ -264,7 +321,7 @@ function pipelineReading(data: CommandData): Reading {
 function openContactsReading(data: CommandData): Reading {
   return {
     title: "Contactos em aberto",
-    summary: `${data.commercialStats.open} contactos continuam em aberto. ${data.commercialStats.converted} já compraram e ${data.commercialStats.lost} não avançaram.`,
+    summary: `${data.commercialStats.open} contactos continuam em aberto. ${data.commercialStats.converted} já compraram e ${data.commercialStats.lost} não avançaram. ${comparedWith(data.commercialStats.open, data.prior.open, data.prior.label)}`,
     meaning: "Em aberto são os contactos que ainda não compraram nem foram dados como perdidos.",
     items: data.funnel.filter((step) => step.stage !== "converted" && step.stage !== "lost").map((step) => ({ id: step.stage, title: step.label, detail: `${step.count} ${step.count === 1 ? "contacto" : "contactos"} · ${step.amount}` })),
     remainder: "Os nomes destes contactos estão no comercial.",
@@ -275,17 +332,18 @@ function proposalReading(data: CommandData, actions: CommandData["actions"]): Re
   const items = actions.filter((action) => action.id.startsWith("proposal-"));
   return {
     title: "Propostas por pagar",
-    summary: `${data.commercialStats.proposals} ${data.commercialStats.proposals === 1 ? "proposta foi enviada" : "propostas foram enviadas"} e o dinheiro ainda não entrou.`,
+    summary: `${data.commercialStats.proposals} ${data.commercialStats.proposals === 1 ? "proposta foi enviada" : "propostas foram enviadas"} e o dinheiro ainda não entrou. ${comparedWith(data.commercialStats.proposals, data.prior.proposals, data.prior.label)}`,
     meaning: "A etapa é Proposta enviada e não há um pagamento confirmado.",
     items: items.map((action) => ({ id: action.id, title: action.title, detail: action.detail })),
     remainder: data.commercialStats.proposals > items.length ? `Estão aqui ${items.length} de ${data.commercialStats.proposals}.` : "",
   };
 }
 
-function stageReading(step: CommandData["funnel"][number]): Reading {
+function stageReading(step: CommandData["funnel"][number], data: CommandData): Reading {
+  const previous = data.prior.funnel.find((item) => item.stage === step.stage);
   return {
     title: step.label,
-    summary: `${step.count} ${step.count === 1 ? "contacto" : "contactos"} · ${step.amount}.`,
+    summary: `${step.count} ${step.count === 1 ? "contacto" : "contactos"} · ${step.amount}. ${comparedWith(step.count, previous?.count ?? 0, data.prior.label)} ${comparedWith(step.amountValue, previous?.amountValue ?? 0, data.prior.label, true)}`,
     meaning: stageMeaning[step.stage] ?? "Esta é uma etapa do comercial.",
     items: [],
     remainder: "Os nomes destes contactos estão no comercial.",
@@ -296,7 +354,7 @@ function noticeReading(notice: CommandData["notices"][number]): Reading {
   return {
     title: notice.contactName || notice.title,
     summary: notice.line,
-    meaning: `${notice.stageLabel} é a etapa actual. O aviso aparece porque o tempo desta etapa já passou, ou porque a hora marcada já chegou. ${notice.personName === "Sem responsável" ? "Ainda ninguém da equipa assumiu este contacto." : `${notice.personName} é quem criou o contacto.`}`,
+    meaning: `${notice.stageLabel} é a etapa actual. O aviso aparece porque o tempo desta etapa já passou, ou porque o seguimento é para hoje. ${notice.personName === "Sem responsável" ? "Ainda ninguém da equipa assumiu este contacto." : `${notice.personName} é quem criou o contacto.`}`,
     items: [],
     remainder: "",
   };
@@ -307,7 +365,7 @@ function paymentStatusReading(data: CommandData, status: string): Reading {
   const count = item?.count ?? 0;
   return {
     title: item?.label ?? "Pagamentos",
-    summary: item ? `${item.amount} · ${count} ${count === 1 ? "pagamento" : "pagamentos"}.` : "Não há pagamentos nesta situação.",
+    summary: item ? `${item.amount} · ${count} ${count === 1 ? "pagamento" : "pagamentos"}. ${comparedWith(item.amountValue, data.prior.breakdown.find((row) => row.status === status)?.amountValue ?? 0, data.prior.label, true)}` : "Não há pagamentos nesta situação.",
     meaning: paymentMeaning[status] ?? "Esta é uma situação de pagamento.",
     items: [],
     remainder: "O detalhe de cada pagamento está em Pagamentos.",
@@ -317,7 +375,7 @@ function paymentStatusReading(data: CommandData, status: string): Reading {
 function unreconciledReading(data: CommandData, actions: CommandData["actions"]): Reading {
   return {
     title: "Falta conferir",
-    summary: `${data.payments.unreconciledKz} já entraram e ainda não foram conferidos, em ${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento" : "pagamentos"}.`,
+    summary: `${data.payments.unreconciledKz} já entraram e ainda não foram conferidos, em ${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento" : "pagamentos"}. ${comparedWith(data.payments.unreconciledAmount, data.prior.unreconciledKz, data.prior.label, true)}`,
     meaning: "O dinheiro foi confirmado e ainda ninguém marcou o pagamento como conferido.",
     items: actions.map((action) => ({ id: action.id, title: action.title, detail: action.detail })),
     remainder: data.payments.unreconciledCount > actions.length ? `Estão aqui ${actions.length} de ${data.payments.unreconciledCount}.` : "",
@@ -327,7 +385,7 @@ function unreconciledReading(data: CommandData, actions: CommandData["actions"])
 function resultReading(data: CommandData): Reading {
   return {
     title: "Resultado do mês",
-    summary: data.payments.resultKz ?? "—",
+    summary: data.payments.resultAmount !== null && data.prior.resultKz !== null ? `${data.payments.resultKz}. ${comparedWith(data.payments.resultAmount, data.prior.resultKz, data.prior.label, true)}` : data.payments.resultKz ?? "—",
     meaning: data.payments.resultKz ? "É o dinheiro que entrou menos as despesas desse mês." : "Este número só aparece quando o período escolhido é o mês.",
     items: [],
     remainder: "",
@@ -349,7 +407,7 @@ function attentionReading(data: CommandData): Reading {
   const total = Number(data.metrics.attention);
   return {
     title: "Metas que pedem decisão",
-    summary: `${data.metrics.attention} ${data.metrics.attentionNote}.`,
+    summary: `${data.metrics.attention} ${data.metrics.attentionNote}. ${comparedWith(Number(data.metrics.attention), data.prior.attention, data.prior.label)}`,
     meaning: "Entram as metas atrasadas e as que estão sem progresso ou com prazo a chegar. Uma meta bloqueada também pede decisão.",
     items: items.map((objective) => ({ id: objective.id, title: objective.title, detail: objective.detail })),
     remainder: total > items.length ? `Estão aqui ${items.length} de ${total}. As outras não entraram na lista das que pedem mais atenção.` : "",
@@ -359,8 +417,8 @@ function attentionReading(data: CommandData): Reading {
 function waitingContactsReading(data: CommandData): Reading {
   return {
     title: "Contactos à espera",
-    summary: `${data.noticeCount} ${data.noticeCount === 1 ? "contacto está" : "contactos estão"} à espera de um passo da equipa.`,
-    meaning: "O tempo da etapa já passou, ou a hora marcada já chegou.",
+    summary: `${data.noticeCount} ${data.noticeCount === 1 ? "contacto está" : "contactos estão"} à espera de um passo da equipa. ${comparedWith(data.noticeCount, data.prior.noticeCount, data.prior.label)}`,
+    meaning: "O tempo da etapa já passou, ou o seguimento é para hoje, até à meia-noite.",
     items: data.notices.map((notice) => ({ id: notice.id, title: notice.contactName || notice.title, detail: notice.line })),
     remainder: data.noticeCount > data.notices.length ? `Estão aqui ${data.notices.length} de ${data.noticeCount}.` : "",
   };
@@ -434,34 +492,16 @@ export default function CommandDashboard({
   const [objectiveSituation, setObjectiveSituation] = useState("all");
   const [tab, setTab] = useState<DashboardTab>("objectives");
   const [openActors, setOpenActors] = useState<string[]>([]);
-  const [data, setData] = useState<CommandData | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
   const [reading, setReading] = useState<Reading | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams({ period, person, product, stage, paymentStatus, objectiveSituation });
-    const controller = new AbortController();
-    setLoading(true);
-    void fetch(`/api/backoffice/command?${params.toString()}`, { cache: "no-store", signal: controller.signal })
-      .then(async (response) => {
-        const result: unknown = await response.json();
-        if (!response.ok || typeof result !== "object" || result === null || !("metrics" in result) || !("activity" in result) || !("performance" in result)) {
-          const code = typeof result === "object" && result !== null && "error" in result ? result.error : null;
-          throw new Error(messageForApiError(code, "Não foi possível carregar o dashboard."));
-        }
-        setData(result as CommandData);
-        setError("");
-      })
-      .catch((cause: unknown) => {
-        if (cause instanceof Error && cause.name === "AbortError") return;
-        setError(cause instanceof Error ? cause.message : "Não foi possível carregar o dashboard.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [objectiveSituation, paymentStatus, period, person, product, stage]);
+  const commandQuery = useQuery({
+    queryKey: backofficeKeys.command({ period, person, product, stage, paymentStatus, objectiveSituation }),
+    queryFn: ({ signal }) => loadCommandDashboard({ period, person, product, stage, paymentStatus, objectiveSituation }, signal),
+    staleTime: queryStaleTime.dashboard,
+    placeholderData: keepPreviousData,
+  });
+  const data = commandQuery.data ?? null;
+  const error = commandQuery.error instanceof Error ? commandQuery.error.message : "";
+  const loading = commandQuery.isFetching;
 
   const control = "h-9 rounded-lg border border-[#e7e1dc] bg-white px-3 text-[12px] text-[#302829]";
   const revenueMax = Math.max(1, ...(data?.revenueSeries.map((point) => point.amount) ?? [1]));
@@ -555,22 +595,22 @@ export default function CommandDashboard({
             </select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi icon="target" label="Metas" note="Quantas metas cabem neste período" onOpen={() => setReading(allGoalsReading(data))} value={String(data.objectiveStats.total)} />
-            <Kpi hot={data.objectiveStats.behind > 0} icon="down" label="Atrasadas" note="Fizeram menos do que já deviam até hoje" onOpen={() => setReading(goalsByStatus(data, "Atrasadas"))} tone="risk" value={String(data.objectiveStats.behind)} />
-            <Kpi hot={data.objectiveStats.silent > 0} icon="clock" label="Sem progresso" note="Ninguém registou um número neste período" onOpen={() => setReading(goalsByStatus(data, "Sem progresso"))} tone="watch" value={String(data.objectiveStats.silent)} />
-            <Kpi hot={data.objectiveStats.blocked > 0} icon="lock" label="Bloqueadas" note="Alguém está a impedir o avanço" onOpen={() => setReading(goalsByStatus(data, "Bloqueadas"))} tone="risk" value={String(data.objectiveStats.blocked)} />
+            <Kpi compare={comparedWith(data.objectiveStats.total, data.prior.objectiveTotal, data.prior.label)} icon="target" label="Metas" note="Quantas metas cabem neste período" onOpen={() => setReading(allGoalsReading(data))} value={String(data.objectiveStats.total)} />
+            <Kpi compare={comparedWith(data.objectiveStats.behind, data.prior.behind, data.prior.label)} hot={data.objectiveStats.behind > 0} icon="down" label="Atrasadas" note="Fizeram menos do que já deviam até hoje" onOpen={() => setReading(goalsByStatus(data, "Atrasadas"))} tone="risk" value={String(data.objectiveStats.behind)} />
+            <Kpi compare={comparedWith(data.objectiveStats.silent, data.prior.silent, data.prior.label)} hot={data.objectiveStats.silent > 0} icon="clock" label="Sem progresso" note="Ninguém registou um número neste período" onOpen={() => setReading(goalsByStatus(data, "Sem progresso"))} tone="watch" value={String(data.objectiveStats.silent)} />
+            <Kpi compare={comparedWith(data.objectiveStats.blocked, data.prior.blocked, data.prior.label)} hot={data.objectiveStats.blocked > 0} icon="lock" label="Bloqueadas" note="Alguém está a impedir o avanço" onOpen={() => setReading(goalsByStatus(data, "Bloqueadas"))} tone="risk" value={String(data.objectiveStats.blocked)} />
           </div>
           <p className="text-[12px] text-[#8a807c]">Uma meta pode aparecer em mais do que um cartão. No gráfico ao lado, cada meta entra numa só fatia.</p>
           <div className="grid gap-4 xl:grid-cols-2">
             <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
               <h3 className="text-[15px] font-semibold text-[#2c2424]">Como estão as metas</h3>
-              <p className="mt-1 text-[13px] text-[#8a807c]">{mixInsight(data.objectiveMix)}</p>
+              <p className="mt-1 text-[13px] text-[#8a807c]">{mixInsight(data.objectiveMix)} {comparedWith(data.objectiveStats.total, data.prior.objectiveTotal, data.prior.label)}</p>
               <Donut centerLabel="metas" onOpen={(label) => setReading(goalsByStatus(data, label))} parts={data.objectiveMix.map((part) => ({ ...part, color: mixColor[part.label] ?? "#c4a36a" }))} />
             </section>
             <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
               <h3 className="text-[15px] font-semibold text-[#2c2424]">Quantas metas em cada faixa</h3>
               <p className="mt-1 text-[13px] text-[#8a807c]">{bandInsight(data.progressBands)}</p>
-              <BarList color="bg-[#c4a36a]" onOpen={(label) => { const band = data.progressBands.find((item) => item.label === label); if (band) setReading(goalsByBand(data, band)); }} rows={data.progressBands.map((band) => ({ label: band.label, value: band.count, display: `${band.count} ${band.count === 1 ? "meta" : "metas"}` }))} />
+              <BarList color="bg-[#c4a36a]" onOpen={(label) => { const band = data.progressBands.find((item) => item.label === label); if (band) setReading(goalsByBand(data, band)); }} rows={data.progressBands.map((band) => ({ label: band.label, value: band.count, display: `${band.count} ${band.count === 1 ? "meta" : "metas"}`, hint: comparedWith(band.count, data.prior.bands.find((item) => item.label === band.label)?.count ?? 0, data.prior.label) }))} />
             </section>
           </div>
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,0.8fr)]">
@@ -625,16 +665,16 @@ export default function CommandDashboard({
             </select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi icon="wallet" label="Ainda por fechar" note={data.metrics.pipelineNote} onOpen={() => setReading(pipelineReading(data))} value={data.metrics.pipeline} />
-            <Kpi icon="users" label="Contactos em aberto" note={`${data.commercialStats.converted} já compraram · ${data.commercialStats.lost} não avançaram`} onOpen={() => setReading(openContactsReading(data))} value={String(data.commercialStats.open)} />
-            <Kpi hot={data.commercialStats.overdue > 0} icon="phone" label="Contactos por fazer" note="A hora marcada já passou" onOpen={() => setReading({ title: "Contactos por fazer", summary: `${data.commercialStats.overdue} ${data.commercialStats.overdue === 1 ? "contacto tinha" : "contactos tinham"} uma hora marcada que já passou.`, meaning: "A hora do próximo contacto já chegou e a oportunidade continua aberta. O nome de cada pessoa está no comercial.", items: [], remainder: "" })} tone="watch" value={String(data.commercialStats.overdue)} />
-            <Kpi hot={data.commercialStats.proposals > 0} icon="file" label="Propostas por pagar" note="A proposta foi enviada e o dinheiro ainda não entrou" onOpen={() => setReading(proposalReading(data, commercialActions))} tone="risk" value={String(data.commercialStats.proposals)} />
+            <Kpi compare={comparedWith(data.metrics.pipelineAmount, data.prior.pipelineKz, data.prior.label, true)} icon="wallet" label="Ainda por fechar" note={data.metrics.pipelineNote} onOpen={() => setReading(pipelineReading(data))} value={data.metrics.pipeline} />
+            <Kpi compare={comparedWith(data.commercialStats.open, data.prior.open, data.prior.label)} icon="users" label="Contactos em aberto" note={`${data.commercialStats.converted} já compraram · ${data.commercialStats.lost} não avançaram`} onOpen={() => setReading(openContactsReading(data))} value={String(data.commercialStats.open)} />
+            <Kpi compare={comparedWith(data.commercialStats.overdue, data.prior.overdue, data.prior.label)} hot={data.commercialStats.overdue > 0} icon="phone" label="Contactos por fazer" note="Para contactar hoje, até à meia-noite" onOpen={() => setReading({ title: "Contactos por fazer", summary: `${data.commercialStats.overdue} ${data.commercialStats.overdue === 1 ? "contacto é para hoje" : "contactos são para hoje"}.`, meaning: `Entram os seguimentos marcados para hoje e os de dias anteriores que continuam em aberto. O dia acaba à meia-noite. O nome de cada pessoa está no comercial. ${comparedWith(data.commercialStats.overdue, data.prior.overdue, data.prior.label)}`, items: [], remainder: "" })} tone="watch" value={String(data.commercialStats.overdue)} />
+            <Kpi compare={comparedWith(data.commercialStats.proposals, data.prior.proposals, data.prior.label)} hot={data.commercialStats.proposals > 0} icon="file" label="Propostas por pagar" note="A proposta foi enviada e o dinheiro ainda não entrou" onOpen={() => setReading(proposalReading(data, commercialActions))} tone="risk" value={String(data.commercialStats.proposals)} />
           </div>
           <div className="grid gap-4 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)]">
             <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
               <PanelTitle action="Abrir comercial" title="Contactos por etapa" onAction={() => onNavigate("commercial")} />
               <p className="mt-1 text-[13px] text-[#8a807c]">{funnelInsight(data.funnel)}</p>
-              <FunnelChart onOpen={(step) => setReading(stageReading(step))} steps={data.funnel} />
+              <FunnelChart onOpen={(step) => setReading(stageReading(step, data))} steps={data.funnel.map((step) => ({ ...step, compare: comparedWith(step.count, data.prior.funnel.find((item) => item.stage === step.stage)?.count ?? 0, data.prior.label) }))} />
             </section>
             <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
               <h3 className="text-[15px] font-semibold text-[#2c2424]">Quem contactar</h3>
@@ -672,10 +712,10 @@ export default function CommandDashboard({
             </select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi icon="check" label="Já entrou" note={`${data.payments.acceptedCount} ${data.payments.acceptedCount === 1 ? "pagamento confirmado" : "pagamentos confirmados"}`} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
-            <Kpi hot={data.payments.pendingCount > 0} icon="wait" label="Ainda não pagou" note={`${data.payments.pendingCount} ${data.payments.pendingCount === 1 ? "pagamento à espera" : "pagamentos à espera"}`} onOpen={() => setReading(paymentStatusReading(data, "pending"))} tone="watch" value={data.payments.pendingKz} />
-            <Kpi hot={data.payments.unreconciledCount > 0} icon="flag" label="Falta conferir" note={`${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento entrou e ainda não foi conferido" : "pagamentos entraram e ainda não foram conferidos"}`} onOpen={() => setReading(unreconciledReading(data, paymentActions))} tone="risk" value={data.payments.unreconciledKz} />
-            <Kpi icon="layers" label="Resultado do mês" note={data.payments.resultKz ? "Dinheiro que entrou menos as despesas" : "Este número só aparece quando o período escolhido é o mês"} onOpen={() => setReading(resultReading(data))} value={data.payments.resultKz ?? "—"} />
+            <Kpi compare={comparedWith(data.metrics.revenueAmount, data.prior.revenueKz, data.prior.label, true)} icon="check" label="Já entrou" note={`${data.payments.acceptedCount} ${data.payments.acceptedCount === 1 ? "pagamento confirmado" : "pagamentos confirmados"}`} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
+            <Kpi compare={comparedWith(data.payments.pendingAmount, data.prior.pendingKz, data.prior.label, true)} hot={data.payments.pendingCount > 0} icon="wait" label="Ainda não pagou" note={`${data.payments.pendingCount} ${data.payments.pendingCount === 1 ? "pagamento à espera" : "pagamentos à espera"}`} onOpen={() => setReading(paymentStatusReading(data, "pending"))} tone="watch" value={data.payments.pendingKz} />
+            <Kpi compare={comparedWith(data.payments.unreconciledAmount, data.prior.unreconciledKz, data.prior.label, true)} hot={data.payments.unreconciledCount > 0} icon="flag" label="Falta conferir" note={`${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento entrou e ainda não foi conferido" : "pagamentos entraram e ainda não foram conferidos"}`} onOpen={() => setReading(unreconciledReading(data, paymentActions))} tone="risk" value={data.payments.unreconciledKz} />
+            <Kpi compare={data.payments.resultAmount !== null && data.prior.resultKz !== null ? comparedWith(data.payments.resultAmount, data.prior.resultKz, data.prior.label, true) : undefined} icon="layers" label="Resultado do mês" note={data.payments.resultKz ? "Dinheiro que entrou menos as despesas" : "Este número só aparece quando o período escolhido é o mês"} onOpen={() => setReading(resultReading(data))} value={data.payments.resultKz ?? "—"} />
           </div>
           <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
             <PanelTitle action="Abrir pagamentos" title="Dinheiro que entrou ao longo do período" onAction={() => onNavigate("payments")} />
@@ -692,9 +732,9 @@ export default function CommandDashboard({
                 );
               })}
             </div>
-            <p className="mt-3 text-[13px] text-[#8a807c]">{revenueInsight(data.revenueSeries)}</p>
+            <p className="mt-3 text-[13px] text-[#8a807c]">{revenueInsight(data.revenueSeries)} {comparedWith(data.metrics.revenueAmount, data.prior.revenueKz, data.prior.label, true)}</p>
             <h4 className="mt-6 text-[13px] font-semibold text-[#2c2424]">Quanto dinheiro em cada situação</h4>
-            <BarList color="bg-[#510f1d]" onOpen={(label) => { const item = data.payments.breakdown.find((row) => row.label === label); if (item) setReading(paymentStatusReading(data, item.status)); }} rows={data.payments.breakdown.map((item) => ({ label: item.label, value: item.amountValue, display: `${item.amount} · ${item.count} ${item.count === 1 ? "pagamento" : "pagamentos"}`, bar: item.status === "accepted" ? "bg-[#66836c]" : item.status === "pending" ? "bg-[#c4a36a]" : item.status === "rejected" || item.status === "refunded" ? "bg-[#8d3d4a]" : "bg-[#cfc6c2]" }))} />
+            <BarList color="bg-[#510f1d]" onOpen={(label) => { const item = data.payments.breakdown.find((row) => row.label === label); if (item) setReading(paymentStatusReading(data, item.status)); }} rows={data.payments.breakdown.map((item) => ({ label: item.label, value: item.amountValue, display: `${item.amount} · ${item.count} ${item.count === 1 ? "pagamento" : "pagamentos"}`, hint: comparedWith(item.amountValue, data.prior.breakdown.find((row) => row.status === item.status)?.amountValue ?? 0, data.prior.label, true), bar: item.status === "accepted" ? "bg-[#66836c]" : item.status === "pending" ? "bg-[#c4a36a]" : item.status === "rejected" || item.status === "refunded" ? "bg-[#8d3d4a]" : "bg-[#cfc6c2]" }))} />
           </section>
           <ActionList actions={paymentActions} count={data.actionCounts.payments} empty="Não há pagamentos por conferir nesta escolha." onNavigate={onNavigate} onOpen={(action) => setReading(actionReading(action, "Este pagamento já entrou e ainda não foi conferido."))} title="Pagamentos por conferir" />
           <SubjectBars caption="Cada número é um registo de pagamento lançado ou conferido. Não é o valor em kwanzas." color="bg-[#8d3d4a]" empty="Ninguém lançou ou conferiu pagamentos neste período." field="payments" onOpen={(row) => setReading(personReading(row, data.activity, "payments"))} rows={data.performance} title="Registos em pagamentos" />
@@ -707,10 +747,10 @@ export default function CommandDashboard({
       {data && tab === "other" ? (
         <div className="space-y-4" role="tabpanel">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi icon="check" label="Já entrou" note={data.metrics.revenueNote} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
-            <Kpi icon="wallet" label="Ainda por fechar" note={data.metrics.pipelineNote} onOpen={() => setReading(pipelineReading(data))} value={data.metrics.pipeline} />
-            <Kpi hot={Number(data.metrics.attention) > 0} icon="target" label="Metas que pedem decisão" note={data.metrics.attentionNote} onOpen={() => setReading(attentionReading(data))} tone="watch" value={data.metrics.attention} />
-            <Kpi hot={data.noticeCount > 0} icon="phone" label="Contactos à espera" note="Já deviam ter tido um passo da equipa" onOpen={() => setReading(waitingContactsReading(data))} tone="risk" value={String(data.noticeCount)} />
+            <Kpi compare={comparedWith(data.metrics.revenueAmount, data.prior.revenueKz, data.prior.label, true)} icon="check" label="Já entrou" note={data.metrics.revenueNote} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
+            <Kpi compare={comparedWith(data.metrics.pipelineAmount, data.prior.pipelineKz, data.prior.label, true)} icon="wallet" label="Ainda por fechar" note={data.metrics.pipelineNote} onOpen={() => setReading(pipelineReading(data))} value={data.metrics.pipeline} />
+            <Kpi compare={comparedWith(Number(data.metrics.attention), data.prior.attention, data.prior.label)} hot={Number(data.metrics.attention) > 0} icon="target" label="Metas que pedem decisão" note={data.metrics.attentionNote} onOpen={() => setReading(attentionReading(data))} tone="watch" value={data.metrics.attention} />
+            <Kpi compare={comparedWith(data.noticeCount, data.prior.noticeCount, data.prior.label)} hot={data.noticeCount > 0} icon="phone" label="Contactos à espera" note="Para contactar hoje ou com o prazo da etapa a terminar" onOpen={() => setReading(waitingContactsReading(data))} tone="risk" value={String(data.noticeCount)} />
           </div>
           <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">
             <h3 className="text-[15px] font-semibold text-[#2c2424]">Onde a equipa lançou registos</h3>
@@ -787,7 +827,7 @@ function Donut({ parts, centerLabel, onOpen }: { parts: { label: string; count: 
   );
 }
 
-function BarList({ rows, color, onOpen }: { rows: { label: string; value: number; display: string; bar?: string }[]; color: string; onOpen: (label: string) => void }) {
+function BarList({ rows, color, onOpen }: { rows: { label: string; value: number; display: string; bar?: string; hint?: string }[]; color: string; onOpen: (label: string) => void }) {
   const max = Math.max(1, ...rows.map((row) => row.value));
   const empty = rows.every((row) => row.value === 0);
   return (
@@ -795,7 +835,7 @@ function BarList({ rows, color, onOpen }: { rows: { label: string; value: number
       {rows.map((row) => (
         <li key={row.label}>
           <button className="mb-1 flex w-full items-baseline justify-between gap-3 text-left text-[13px]" onClick={() => onOpen(row.label)} type="button">
-            <span className="text-[#5c534f]">{row.label}</span>
+            <span className="text-[#5c534f]">{row.label}{row.hint ? <span className="mt-0.5 block text-[11px] font-medium text-[#5c534f]">{row.hint}</span> : null}</span>
             <span className="font-semibold tabular-nums text-[#2c2424]">{row.display}</span>
           </button>
           <div className="h-2 overflow-hidden rounded-full bg-[#f3eeea]">
@@ -816,7 +856,7 @@ const funnelTone: Record<string, string> = {
   lost: "bg-[#d5ccc8]",
 };
 
-function FunnelChart({ steps, onOpen }: { steps: { stage: string; label: string; count: number; amount: string; amountValue: number }[]; onOpen: (step: { stage: string; label: string; count: number; amount: string; amountValue: number }) => void }) {
+function FunnelChart({ steps, onOpen }: { steps: { stage: string; label: string; count: number; amount: string; amountValue: number; compare?: string }[]; onOpen: (step: { stage: string; label: string; count: number; amount: string; amountValue: number }) => void }) {
   const max = Math.max(1, ...steps.map((step) => step.count));
   return (
     <ol className="mt-5 space-y-2">
@@ -828,6 +868,7 @@ function FunnelChart({ steps, onOpen }: { steps: { stage: string; label: string;
           <div className="min-w-0">
             <p className="truncate text-[13px] font-medium text-[#2c2424]">{step.label}</p>
             <p className="text-[12px] text-[#8a807c]">{step.count} {step.count === 1 ? "contacto" : "contactos"} · {step.amount}</p>
+            {step.compare ? <p className="text-[11px] font-medium text-[#5c534f]">{step.compare}</p> : null}
           </div>
           </button>
         </li>
@@ -876,7 +917,7 @@ function DashIcon({ name, size = 18 }: { name: MarkName; size?: number }) {
   return <svg {...props}><path d="M12 3l8 4v5c0 5-3.4 8.4-8 9-4.6-.6-8-4-8-9V7l8-4z" /></svg>;
 }
 
-function Kpi({ icon, label, value, note, hot = false, tone = "calm", onOpen }: { icon: MarkName; label: string; value: string; note: string; hot?: boolean; tone?: "calm" | "watch" | "risk"; onOpen: () => void }) {
+function Kpi({ icon, label, value, note, compare, hot = false, tone = "calm", onOpen }: { icon: MarkName; label: string; value: string; note: string; compare?: string; hot?: boolean; tone?: "calm" | "watch" | "risk"; onOpen: () => void }) {
   const marked = hot && tone !== "calm";
   const box = marked && tone === "risk" ? "border-[#ead5d8] bg-[#fdf8f8]" : marked ? "border-[#ecd9ae] bg-[#fffaf6]" : "border-[#ece7e3] bg-white";
   const badge = marked && tone === "risk" ? "bg-[#f6ecee] text-[#8d3d4a]" : marked ? "bg-[#f8f1e4] text-[#8a6232]" : "bg-[#f6f3f0] text-[#746b67]";
@@ -887,6 +928,7 @@ function Kpi({ icon, label, value, note, hot = false, tone = "calm", onOpen }: {
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#a89890]">{label}</p>
           <p className="mt-2 text-[30px] font-semibold tracking-[-0.04em] text-[#2c2424]">{value}</p>
           <p className="mt-1 text-[13px] leading-5 text-[#8a807c]">{note}</p>
+          {compare ? <p className="mt-1 text-[12px] font-medium leading-5 text-[#5c534f]">{compare}</p> : null}
         </div>
         <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${badge}`}><DashIcon name={icon} /></span>
       </div>
@@ -1054,6 +1096,20 @@ function ActivityBoard({
       )}
     </section>
   );
+}
+
+async function loadCommandDashboard(
+  params: { period: string; person: string; product: string; stage: string; paymentStatus: string; objectiveSituation: string },
+  signal: AbortSignal,
+) {
+  const search = new URLSearchParams(params);
+  const response = await fetch(`/api/backoffice/command?${search.toString()}`, { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || typeof result !== "object" || result === null || !("metrics" in result) || !("activity" in result) || !("performance" in result)) {
+    const code = typeof result === "object" && result !== null && "error" in result ? result.error : null;
+    throw new BackofficeRequestError(messageForApiError(code, "Não foi possível carregar o dashboard."), response.status);
+  }
+  return result as CommandData;
 }
 
 function ExplainModal({ reading, onClose }: { reading: Reading; onClose: () => void }) {

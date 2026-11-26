@@ -1,11 +1,38 @@
 "use client";
 
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { messageFromApiBody } from "../lib/api-error-messages";
+import { BackofficeRequestError, backofficeKeys, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import { personLabel } from "../lib/person-label";
 
 type StaffPerson = { id: string; email: string; displayName: string };
 type WorkBlock = { id: string; reason: string; people: StaffPerson[] };
+
+async function loadBlock(subjectType: string, subjectId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/backoffice/blocks?subjectType=${subjectType}&subjectId=${encodeURIComponent(subjectId)}`, { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || typeof result !== "object" || result === null) {
+    throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível carregar o bloqueio."), response.status);
+  }
+  const record = result as { people?: StaffPerson[]; block?: WorkBlock | null };
+  return {
+    people: Array.isArray(record.people) ? record.people : [],
+    selected: record.block?.people.map((person) => person.id) ?? [],
+    reason: record.block?.reason ?? "",
+  };
+}
+
+async function saveBlockRequest(subjectType: string, subjectId: string, reason: string, userIds: string[]) {
+  const response = await fetch("/api/backoffice/blocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subjectType, subjectId, reason, userIds }),
+  });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível guardar o bloqueio."), response.status);
+  return typeof result === "object" && result !== null && "emailFailed" in result && result.emailFailed === true;
+}
 
 export default function BlockDialog({
   subjectType,
@@ -18,62 +45,43 @@ export default function BlockDialog({
   title: string;
   onClose: () => void;
 }) {
-  const [people, setPeople] = useState<StaffPerson[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [reason, setReason] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    void fetch(`/api/backoffice/blocks?subjectType=${subjectType}&subjectId=${encodeURIComponent(subjectId)}`, { cache: "no-store" })
-      .then(async (response) => {
-        const result: unknown = await response.json();
-        if (!response.ok) throw new Error(messageFromApiBody(result, "Não foi possível carregar o bloqueio."));
-        if (typeof result !== "object" || result === null) throw new Error("Não foi possível carregar o bloqueio.");
-        const record = result as { people?: StaffPerson[]; block?: WorkBlock | null };
-        if (!active) return;
-        setPeople(Array.isArray(record.people) ? record.people : []);
-        setSelected(record.block?.people.map((person) => person.id) ?? []);
-        setReason(record.block?.reason ?? "");
-      })
-      .catch((cause: unknown) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Não foi possível carregar o bloqueio.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [subjectId, subjectType]);
-
-  async function save(userIds: string[]) {
-    setSaving(true);
-    setError("");
-    setNotice("");
-    try {
-      const response = await fetch("/api/backoffice/blocks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subjectType, subjectId, reason, userIds }),
-      });
-      const result: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(messageFromApiBody(result, "Não foi possível guardar o bloqueio."));
-      const emailFailed = typeof result === "object" && result !== null && "emailFailed" in result && result.emailFailed === true;
+  const blockQuery = useQuery({
+    queryKey: backofficeKeys.blocks(subjectType, subjectId),
+    queryFn: ({ signal }) => loadBlock(subjectType, subjectId, signal),
+    staleTime: queryStaleTime.notifications,
+  });
+  const people = blockQuery.data?.people ?? [];
+  const loading = blockQuery.isLoading;
+  const saveBlock = useMutation({
+    mutationFn: (userIds: string[]) => saveBlockRequest(subjectType, subjectId, reason, userIds),
+    onSuccess: async (emailFailed, userIds) => {
+      await invalidateBackoffice("blocks", "command", "notifications", "objectives");
       setNotice(userIds.length === 0
         ? "Bloqueio retirado."
         : emailFailed
           ? "Bloqueio guardado. O email não foi enviado."
           : "Bloqueio guardado. As pessoas marcadas receberam o email.");
       if (userIds.length === 0) onClose();
-    } catch (cause) {
+    },
+    onError: (cause: unknown) => {
       setError(cause instanceof Error ? cause.message : "Não foi possível guardar o bloqueio.");
-    } finally {
-      setSaving(false);
-    }
+    },
+  });
+
+  useEffect(() => {
+    if (!blockQuery.data) return;
+    setSelected(blockQuery.data.selected);
+    setReason(blockQuery.data.reason);
+  }, [blockQuery.data]);
+
+  function save(userIds: string[]) {
+    setError("");
+    setNotice("");
+    saveBlock.mutate(userIds);
   }
 
   return (
@@ -108,11 +116,11 @@ export default function BlockDialog({
                 {people.length === 0 ? <p className="text-[12px] text-[#817773]">Não há pessoas disponíveis.</p> : null}
               </div>
             </fieldset>
-            {error ? <p className="text-[11px] text-red-700" role="alert">{error}</p> : null}
+            {error || (blockQuery.error instanceof Error ? blockQuery.error.message : "") ? <p className="text-[11px] text-red-700" role="alert">{error || (blockQuery.error instanceof Error ? blockQuery.error.message : "")}</p> : null}
             {notice ? <p className="text-[11px] text-[#52765e]">{notice}</p> : null}
             <div className="flex justify-end gap-2">
-              <button className="min-h-10 rounded-full px-4 text-[11px] font-semibold text-[#625858]" disabled={saving} onClick={() => void save([])} type="button">Retirar bloqueio</button>
-              <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} type="submit">{saving ? "A guardar…" : "Guardar bloqueio"}</button>
+              <button className="min-h-10 rounded-full px-4 text-[11px] font-semibold text-[#625858]" disabled={saveBlock.isPending} onClick={() => void save([])} type="button">Retirar bloqueio</button>
+              <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saveBlock.isPending} type="submit">{saveBlock.isPending ? "A guardar…" : "Guardar bloqueio"}</button>
             </div>
           </form>
         )}

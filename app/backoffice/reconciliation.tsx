@@ -9,6 +9,7 @@ import type { CashSummary, KitadiOrder } from "../lib/payments/orders";
 import type { Withdrawal } from "../lib/payments/withdrawals";
 import { DateField } from "./date-field";
 import { messageForApiError } from "../lib/api-error-messages";
+import { invalidateBackoffice } from "../lib/backoffice-query";
 
 const migrationFile = "20261122000000_add_payment_reconciliation.sql";
 const manualMethods = ["Numerário", "Transferência bancária", "Depósito", "Multicaixa Express", "Outro"];
@@ -20,7 +21,12 @@ export async function send(url: string, method: "POST" | "PATCH", body: unknown)
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (response.ok) return { error: null };
+    if (response.ok) {
+      if (/\/(finance|payments|expenses|withdrawals)(\/|$)/.test(url)) {
+        void invalidateBackoffice("command", "attendees");
+      }
+      return { error: null };
+    }
     const result: unknown = await response.json().catch(() => null);
     const code = typeof result === "object" && result !== null && "error" in result &&
       typeof result.error === "string"

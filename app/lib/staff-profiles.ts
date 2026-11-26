@@ -1,5 +1,6 @@
 import "server-only";
 
+import { remember } from "./read-cache";
 import { createSupabaseAdminClient } from "./supabase/admin";
 import type { BackofficeRole } from "./supabase/require-admin";
 
@@ -58,7 +59,16 @@ async function memberIdsInAreas(userId: string, areaIds: string[]) {
   return [...new Set([userId, ...(data ?? []).map((row) => row.user_id as string)])];
 }
 
-export async function listVisibleStaff(
+export function listVisibleStaff(
+  role: BackofficeRole,
+  userId: string,
+  managerAreaIds: string[] | null,
+): Promise<StaffPerson[]> {
+  const areas = [...(managerAreaIds ?? [])].sort().join(",");
+  return remember(`staff:${role}:${userId}:${areas}`, 30_000, () => listVisibleStaffNow(role, userId, managerAreaIds));
+}
+
+async function listVisibleStaffNow(
   role: BackofficeRole,
   userId: string,
   managerAreaIds: string[] | null,
@@ -86,11 +96,12 @@ export async function listVisibleStaff(
       areaIds = [...new Set((data ?? []).map((row) => row.area_id as string))];
     }
     const ids = await memberIdsInAreas(userId, areaIds);
-    for (const id of ids) {
+    const lookups = await Promise.all(ids.map(async (id) => {
       const { data, error } = await admin.auth.admin.getUserById(id);
       if (error) throw error;
-      if (data.user?.email) users.push({ id, email: data.user.email });
-    }
+      return data.user?.email ? { id, email: data.user.email } : null;
+    }));
+    users.push(...lookups.filter((user): user is { id: string; email: string } => user !== null));
   }
   const names = await loadDisplayNames(users.map((user) => user.id));
   return users

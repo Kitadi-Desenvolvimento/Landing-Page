@@ -1,5 +1,6 @@
 import "server-only";
 
+import { remember } from "./read-cache";
 import { createSupabaseAdminClient } from "./supabase/admin";
 
 export type ObjectiveProduct = {
@@ -14,7 +15,11 @@ export type ObjectiveCollaborator = {
   displayName?: string;
 };
 
-export async function loadAvailableProducts(): Promise<ObjectiveProduct[]> {
+export function loadAvailableProducts(): Promise<ObjectiveProduct[]> {
+  return remember("products:published", 60_000, loadAvailableProductsNow);
+}
+
+async function loadAvailableProductsNow(): Promise<ObjectiveProduct[]> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("products")

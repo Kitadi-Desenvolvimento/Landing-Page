@@ -4,6 +4,7 @@ import {
   canManageObjective,
   loadObjectiveAccess,
 } from "../../../../../../lib/objective-access";
+import { touchBackofficeData } from "../../../../../../lib/read-cache";
 import { createSupabaseAdminClient } from "../../../../../../lib/supabase/admin";
 import { requireBackofficeUser } from "../../../../../../lib/supabase/require-admin";
 
@@ -112,5 +113,6 @@ export async function PATCH(
     return NextResponse.json({ error: "checkin_update_failed" }, { status: 503 });
   }
   if (!data) return NextResponse.json({ error: "checkin_not_found" }, { status: 404 });
+  touchBackofficeData();
   return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

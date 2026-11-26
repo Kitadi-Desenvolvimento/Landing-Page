@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { loadLatestCheckins } from "../../../lib/checkin-snapshots";
 import { parseObjective } from "../../../lib/objectives";
+import { touchBackofficeData } from "../../../lib/read-cache";
 import {
   canReadObjective,
   loadObjectiveAccess,
@@ -98,59 +100,30 @@ export async function GET() {
     console.error("[backoffice] objective products/collaborators load failed", error instanceof Error ? error.message : "unknown");
   }
 
-  const allCheckins = [];
-  const objectiveIds = visibleObjectives.map((objective) => objective.id);
-  if (objectiveIds.length > 0) {
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await admin
-        .from("objective_checkins")
-        .select("id,objective_id,checkin_date,value,note,checked_in_by,checked_in_by_email,created_at,updated_at,updated_by,updated_by_email")
-        .in("objective_id", objectiveIds)
-        .order("checkin_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .range(from, from + 999);
-      if (error) {
-        console.error("[backoffice] objective check-in history load failed", error.code ?? "unknown");
-        return NextResponse.json(
-          { error: isSchemaError(error.code) ? "checkins_schema_missing" : "checkins_unavailable" },
-          { status: isSchemaError(error.code) ? 503 : 500 },
-        );
-      }
-      allCheckins.push(...(data ?? []));
-      if (!data || data.length < 1000) break;
+  let checkins: Awaited<ReturnType<typeof loadLatestCheckins>> = [];
+  try {
+    if (access.role === "collaborator") {
+      checkins = await loadLatestCheckins(admin, visibleObjectives.map((objective) => objective.id), { userId: access.userId });
+    } else if (access.role === "manager") {
+      const companyIds = visibleObjectives.filter((objective) => objective.scope_type === "company").map((objective) => objective.id);
+      const otherIds = visibleObjectives.filter((objective) => objective.scope_type !== "company").map((objective) => objective.id);
+      const [company, other] = await Promise.all([
+        loadLatestCheckins(admin, companyIds, { userIds: access.memberIds ?? [] }),
+        loadLatestCheckins(admin, otherIds),
+      ]);
+      checkins = [...company, ...other];
+    } else {
+      checkins = await loadLatestCheckins(admin, visibleObjectives.map((objective) => objective.id));
     }
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unknown";
+    console.error("[backoffice] objective check-in history load failed", code);
+    return NextResponse.json(
+      { error: isSchemaError(code) ? "checkins_schema_missing" : "checkins_unavailable" },
+      { status: isSchemaError(code) ? 503 : 500 },
+    );
   }
-
-  const objectiveById = new Map(visibleObjectives.map((objective) => [objective.id, objective]));
-  const checkins = allCheckins.filter((checkin) => {
-    const objective = objectiveById.get(checkin.objective_id);
-    if (!objective) return false;
-    if (access.role === "collaborator") return checkin.checked_in_by === access.userId;
-    if (access.role === "manager" && objective.scope_type === "company") {
-      return access.memberIds?.includes(checkin.checked_in_by ?? "") ?? false;
-    }
-    return true;
-  });
-  const checkinIds = checkins.map((checkin) => checkin.id);
-  let edits: unknown[] = [];
-  if (checkinIds.length > 0) {
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await admin
-        .from("objective_checkin_edits")
-        .select("id,checkin_id,previous_value,previous_note,edited_by,edited_by_email,edited_at")
-        .in("checkin_id", checkinIds)
-        .order("edited_at", { ascending: false })
-        .range(from, from + 999);
-      if (error) {
-        console.error("[backoffice] objective check-in edit history load failed", error.code ?? "unknown");
-        return NextResponse.json({
-          error: isSchemaError(error.code) ? "checkin_edits_schema_missing" : "checkin_edits_unavailable",
-        }, { status: 503 });
-      }
-      edits.push(...(data ?? []));
-      if (!data || data.length < 1000) break;
-    }
-  }
+  const edits: unknown[] = [];
 
   const nameIds = [
     ...access.collaborators.map((person) => person.id),
@@ -170,7 +143,13 @@ export async function GET() {
   return NextResponse.json(
     {
       objectives: visibleObjectives,
-      checkins,
+      checkins: checkins.map((checkin) => ({
+        ...checkin,
+        checkin_date: String(checkin.checkin_date).slice(0, 10),
+        note: checkin.note ?? "",
+        checked_in_by_email: checkin.checked_in_by_email ?? "",
+        updated_by_email: checkin.updated_by_email ?? "",
+      })),
       edits,
       areas: visibleAreas,
       products,
@@ -243,5 +222,6 @@ export async function POST(request: NextRequest) {
     console.error("[backoffice] objective create failed", error.code);
     return NextResponse.json({ error: "objective_create_failed" }, { status: 503 });
   }
+  touchBackofficeData();
   return NextResponse.json(data, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

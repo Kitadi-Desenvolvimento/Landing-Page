@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { touchBackofficeData } from "../read-cache";
 import { createSupabaseAdminClient } from "../supabase/admin";
 
 export type PaymentStatus =
@@ -254,6 +255,7 @@ export async function saveOrder(order: KitadiOrder) {
     .single();
 
   if (error) throwDatabaseError("saving order", error);
+  touchBackofficeData();
   return fromDatabase(data);
 }
 
@@ -280,6 +282,7 @@ export async function updateOrder(
     .maybeSingle();
 
   if (error) throwDatabaseError("updating order", error);
+  touchBackofficeData();
   return data ? fromDatabase(data) : null;
 }
 
@@ -526,6 +529,7 @@ export async function setOrderReconciled(
     .maybeSingle();
 
   if (error) throwDatabaseError("reconciling order", error);
+  touchBackofficeData();
   return data ? fromDatabase(data) : null;
 }
 
@@ -547,6 +551,7 @@ export async function refundManualOrder(reference: string, reason: string, userI
     .maybeSingle();
 
   if (error) throwDatabaseError("refunding manual order", error);
+  touchBackofficeData();
   return data ? fromDatabase(data) : null;
 }
 

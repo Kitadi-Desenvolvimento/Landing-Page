@@ -24,6 +24,8 @@
     "@cantoo/pdf-lib": "^2.11.1",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
+    "@tanstack/react-query": "^5.108.4",
+    "@tanstack/react-query-devtools": "^5.108.4",
     "next": "^15.3.3",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",

@@ -3,6 +3,7 @@ import {
   canManageObjective,
   loadObjectiveAccess,
 } from "../../../../../lib/objective-access";
+import { touchBackofficeData } from "../../../../../lib/read-cache";
 import { createSupabaseAdminClient } from "../../../../../lib/supabase/admin";
 import { requireBackofficeUser } from "../../../../../lib/supabase/require-admin";
 
@@ -91,5 +92,6 @@ export async function PATCH(
     console.error("[backoffice] objective archive update failed", error.code);
     return NextResponse.json({ error: "objective_archive_failed" }, { status: 503 });
   }
+  touchBackofficeData();
   return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }

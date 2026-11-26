@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BackofficeRequestError, backofficeKeys, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import { maxProductPriceKz } from "../course-data";
 import InviteAdminForm from "./invite-admin-form";
 import SignOutButton from "./sign-out-button";
@@ -439,7 +441,54 @@ function isCommercialOpportunity(value: unknown): value is CommercialOpportunity
     (isObjectRecord(value.payment) || value.payment === null);
 }
 
+async function loadCommercialList(signal?: AbortSignal) {
+  const response = await fetch("/api/backoffice/commercial", { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok) {
+    throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível carregar o funil comercial."), response.status);
+  }
+  if (
+    !isObjectRecord(result) ||
+    !Array.isArray(result.opportunities) ||
+    !result.opportunities.every(isCommercialOpportunity) ||
+    !Array.isArray(result.contacts) ||
+    !result.contacts.every(isCommercialContact)
+  ) {
+    throw new BackofficeRequestError("O serviço comercial devolveu dados inválidos.", response.status);
+  }
+  return { opportunities: result.opportunities, contacts: result.contacts };
+}
+
+function isCommercialHistory(item: unknown): item is CommercialHistory {
+  return isObjectRecord(item) &&
+    typeof item.id === "string" &&
+    typeof item.opportunity_id === "string" &&
+    typeof item.event_type === "string" &&
+    typeof item.details === "string" &&
+    typeof item.created_at === "string" &&
+    typeof item.changed_by_email === "string";
+}
+
+async function loadCommercialDetail(id: string, signal?: AbortSignal) {
+  const response = await fetch(`/api/backoffice/commercial/${id}`, { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (
+    !response.ok ||
+    !isObjectRecord(result) ||
+    !Array.isArray(result.history) ||
+    !Array.isArray(result.opportunities) ||
+    !result.opportunities.every(isCommercialOpportunity)
+  ) {
+    throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível carregar o histórico desta oportunidade."), response.status);
+  }
+  return {
+    opportunities: result.opportunities,
+    history: result.history.filter(isCommercialHistory),
+  };
+}
+
 function Commercial({ products }: { products: DashboardProduct[] }) {
+  const queryClient = useQueryClient();
   const [opportunities, setOpportunities] = useState<CommercialOpportunity[]>([]);
   const [contacts, setContacts] = useState<CommercialContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -447,7 +496,12 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [reloadCounter, setReloadCounter] = useState(0);
+  const commercialQuery = useQuery({
+    queryKey: backofficeKeys.commercial,
+    queryFn: ({ signal }) => loadCommercialList(signal),
+    staleTime: queryStaleTime.operational,
+    refetchInterval: 30_000,
+  });
   const [draggedCard, setDraggedCard] = useState<{
     contactId: string;
     stage: CommercialOpportunity["stage"];
@@ -465,44 +519,24 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     toStage: CommercialOpportunity["stage"];
   } | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    async function loadCommercial() {
-      try {
-        const response = await fetch("/api/backoffice/commercial", { cache: "no-store" });
-        const result: unknown = await response.json();
-        if (!response.ok) {
-          throw new Error(messageFromApiBody(result, "Não foi possível carregar o funil comercial."));
-        }
-        if (
-          !isObjectRecord(result) ||
-          !Array.isArray(result.opportunities) ||
-          !result.opportunities.every(isCommercialOpportunity) ||
-          !Array.isArray(result.contacts) ||
-          !result.contacts.every(isCommercialContact)
-        ) {
-          throw new Error("O serviço comercial devolveu dados inválidos.");
-        }
-        if (!active) return;
-        setOpportunities(result.opportunities);
-        setContacts(result.contacts);
-        setError("");
-      } catch (loadError) {
-        if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Não foi possível carregar o funil comercial.");
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
+  function reloadCommercial() {
+    void queryClient.invalidateQueries({ queryKey: backofficeKeys.commercial });
+    void invalidateBackoffice("command", "notifications");
+  }
 
-    void loadCommercial();
-    const intervalId = window.setInterval(() => void loadCommercial(), 30_000);
-    return () => {
-      active = false;
-      window.clearInterval(intervalId);
-    };
-  }, [reloadCounter]);
+  useEffect(() => {
+    if (!commercialQuery.data) return;
+    setOpportunities(commercialQuery.data.opportunities);
+    setContacts(commercialQuery.data.contacts);
+    setError("");
+    setLoading(false);
+  }, [commercialQuery.data]);
+
+  useEffect(() => {
+    if (!commercialQuery.error) return;
+    setError(commercialQuery.error instanceof Error ? commercialQuery.error.message : "Não foi possível carregar o funil comercial.");
+    setLoading(false);
+  }, [commercialQuery.error]);
 
   const isOpen = (item: CommercialOpportunity) => item.stage !== "converted" && item.stage !== "lost";
   const openCount = opportunities.filter(isOpen).length;
@@ -542,7 +576,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
     setOpportunities((current) =>
       current.map((item) => item.id === updated.id ? updated : item),
     );
-    setReloadCounter((current) => current + 1);
+    reloadCommercial();
   }
 
   async function moveCardToStage(
@@ -580,7 +614,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
       if (!response.ok) {
         throw new Error(messageFromApiBody(result, "Não foi possível mover o cartão."));
       }
-      setReloadCounter((current) => current + 1);
+      reloadCommercial();
     } catch (moveError) {
       setError(moveError instanceof Error ? moveError.message : "Não foi possível mover o cartão.");
     }
@@ -703,7 +737,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
       {error ? (
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e9d8b5] bg-[#fffaf0] px-4 py-3 text-[11px] leading-5 text-[#6b542d]" role="alert">
           <span>{error}</span>
-          <button className="font-bold underline" onClick={() => setReloadCounter((current) => current + 1)} type="button">Tentar novamente</button>
+          <button className="font-bold underline" onClick={() => reloadCommercial()} type="button">Tentar novamente</button>
         </div>
       ) : null}
       <div className={`grid gap-4 ${showLost ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
@@ -846,7 +880,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             setCreateOpen(false);
-            setReloadCounter((current) => current + 1);
+            reloadCommercial();
           }}
           products={products}
         />
@@ -877,7 +911,7 @@ function Commercial({ products }: { products: DashboardProduct[] }) {
           isOpen={importOpen}
           onClose={() => setImportOpen(false)}
           onSuccess={(count) => {
-            setReloadCounter((current) => current + 1);
+            reloadCommercial();
           }}
         />
       ) : null}
@@ -933,10 +967,10 @@ function followUpState(opportunity: CommercialOpportunity): "overdue" | "today" 
   }
   const due = new Date(opportunity.follow_up_at).getTime();
   if (Number.isNaN(due)) return null;
-  const now = new Date();
-  if (due < now.getTime()) return "overdue";
-  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
-  return due < tomorrow ? "today" : null;
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(due);
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(new Date());
+  if (day < today) return "overdue";
+  return day === today ? "today" : null;
 }
 
 function normalizeSearch(value: string) {
@@ -1226,6 +1260,12 @@ function CommercialDetailsModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [blockOpen, setBlockOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const detailQuery = useQuery({
+    queryKey: backofficeKeys.commercialDetail(opportunity.id),
+    queryFn: ({ signal }) => loadCommercialDetail(opportunity.id, signal),
+    staleTime: queryStaleTime.operational,
+  });
   const company = opportunity.contact.company_id
     ? contacts.find((contact) => contact.id === opportunity.contact.company_id)
     : null;
@@ -1236,43 +1276,17 @@ function CommercialDetailsModal({
   }, [opportunity.payment_status]);
 
   useEffect(() => {
-    let active = true;
-    async function loadDetails() {
-      try {
-        const response = await fetch(`/api/backoffice/commercial/${opportunity.id}`, { cache: "no-store" });
-        const result: unknown = await response.json();
-        if (!response.ok) {
-          throw new Error(messageFromApiBody(result, "Não foi possível carregar o histórico desta oportunidade."));
-        }
-        if (
-          !isObjectRecord(result) ||
-          !Array.isArray(result.history) ||
-          !Array.isArray(result.opportunities) ||
-          !result.opportunities.every(isCommercialOpportunity)
-        ) {
-          throw new Error("Não foi possível carregar o histórico desta oportunidade.");
-        }
-        if (!active) return;
-        setDetailOpportunities(result.opportunities);
-        const validHistory = result.history.filter((item): item is CommercialHistory =>
-          isObjectRecord(item) &&
-          typeof item.id === "string" &&
-          typeof item.opportunity_id === "string" &&
-          typeof item.event_type === "string" &&
-          typeof item.details === "string" &&
-          typeof item.created_at === "string" &&
-          typeof item.changed_by_email === "string",
-        );
-        setHistory(validHistory);
-      } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : "Erro ao carregar histórico.");
-      } finally {
-        if (active) setLoadingHistory(false);
-      }
-    }
-    void loadDetails();
-    return () => { active = false; };
-  }, [opportunity.id]);
+    if (!detailQuery.data) return;
+    setDetailOpportunities(detailQuery.data.opportunities);
+    setHistory(detailQuery.data.history);
+    setLoadingHistory(false);
+  }, [detailQuery.data]);
+
+  useEffect(() => {
+    if (!detailQuery.error) return;
+    setError(detailQuery.error instanceof Error ? detailQuery.error.message : "Erro ao carregar histórico.");
+    setLoadingHistory(false);
+  }, [detailQuery.error]);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1323,28 +1337,15 @@ function CommercialDetailsModal({
           : opportunity.converted_at,
       });
       if (isObjectRecord(result) && result.updated === true) {
-        const detailResponse = await fetch(`/api/backoffice/commercial/${opportunity.id}`, { cache: "no-store" });
-        const details: unknown = await detailResponse.json();
-        if (
-          !detailResponse.ok ||
-          !isObjectRecord(details) ||
-          !Array.isArray(details.history) ||
-          !Array.isArray(details.opportunities) ||
-          !details.opportunities.every(isCommercialOpportunity)
-        ) {
+        try {
+          await queryClient.fetchQuery({
+            queryKey: backofficeKeys.commercialDetail(opportunity.id),
+            queryFn: () => loadCommercialDetail(opportunity.id),
+          });
+        } catch {
           setError("As alterações foram guardadas, mas não foi possível actualizar o histórico.");
           return;
         }
-        setDetailOpportunities(details.opportunities);
-        setHistory(details.history.filter((item): item is CommercialHistory =>
-          isObjectRecord(item) &&
-          typeof item.id === "string" &&
-          typeof item.opportunity_id === "string" &&
-          typeof item.event_type === "string" &&
-          typeof item.details === "string" &&
-          typeof item.created_at === "string" &&
-          typeof item.changed_by_email === "string",
-        ));
       }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Não foi possível guardar as alterações.");
@@ -2100,28 +2101,26 @@ function parseProductRecord(value: unknown): ProductRecord | null {
   return value as ProductRecord;
 }
 
+async function loadTeamPayload(signal?: AbortSignal) {
+  const response = await fetch("/api/backoffice/team", { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || !isTeamData(result)) {
+    throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível carregar a equipa."), response.status);
+  }
+  return result;
+}
+
 function Team({ email, role }: { email: string; role: BackofficeRole }) {
-  const [data, setData] = useState<TeamData | null>(null);
-  const [error, setError] = useState("");
-
+  const teamQuery = useQuery({
+    queryKey: backofficeKeys.team,
+    queryFn: ({ signal }) => loadTeamPayload(signal),
+    staleTime: queryStaleTime.static,
+  });
+  const data = teamQuery.data ?? null;
+  const error = teamQuery.error instanceof Error ? teamQuery.error.message : "";
   const loadTeam = useCallback(async () => {
-    setError("");
-    try {
-      const response = await fetch("/api/backoffice/team", { cache: "no-store" });
-      const result: unknown = await response.json();
-      if (!response.ok) {
-        throw new Error(messageFromApiBody(result, "Não foi possível carregar a equipa."));
-      }
-      if (!isTeamData(result)) throw new Error("Não foi possível carregar a equipa.");
-      setData(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar a equipa.");
-    }
+    await invalidateBackoffice("team");
   }, []);
-
-  useEffect(() => {
-    void loadTeam();
-  }, [loadTeam]);
 
   return (
     <>

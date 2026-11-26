@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { loadCommercialSteps, notifyDueCommercialSteps } from "../../../lib/commercial-steps";
+import { loadCommercialSteps, scheduleDueCommercialNotices } from "../../../lib/commercial-steps";
+import { touchBackofficeData } from "../../../lib/read-cache";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { requireAdmin } from "../../../lib/supabase/require-admin";
 
@@ -85,7 +86,7 @@ export async function GET() {
   let steps: Awaited<ReturnType<typeof loadCommercialSteps>> = [];
   try {
     steps = await loadCommercialSteps();
-    await notifyDueCommercialSteps(steps);
+    scheduleDueCommercialNotices(steps);
   } catch (noticeError) {
     console.error("[commercial] step notices failed", noticeError instanceof Error ? noticeError.message : "unknown");
   }
@@ -208,5 +209,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  touchBackofficeData();
   return NextResponse.json({ opportunityId: data }, { status: 201 });
 }

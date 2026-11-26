@@ -6,6 +6,7 @@ import {
   validateObjectiveRelations,
   validateObjectiveScope,
 } from "../../../../lib/objective-access";
+import { touchBackofficeData } from "../../../../lib/read-cache";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { requireBackofficeUser } from "../../../../lib/supabase/require-admin";
 
@@ -100,6 +101,7 @@ export async function PATCH(
     return NextResponse.json({ error: "objective_update_failed" }, { status: 503 });
   }
   if (!data) return NextResponse.json({ error: "objective_not_found" }, { status: 404 });
+  touchBackofficeData();
   return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -213,5 +215,6 @@ export async function POST(
     console.error("[backoffice] objective daily check-in failed", error.code);
     return NextResponse.json({ error: "checkin_save_failed" }, { status: 503 });
   }
+  touchBackofficeData();
   return NextResponse.json(data, { status: 201, headers: { "Cache-Control": "no-store" } });
 }

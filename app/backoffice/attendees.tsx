@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { backofficeKeys, BackofficeRequestError, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import type { DashboardProduct } from "./dashboard-data";
 import { DateField } from "./date-field";
 import { messageFromApiBody } from "../lib/api-error-messages";
@@ -21,57 +23,56 @@ type Attendee = {
   checkedInAt: string | null;
 };
 
+async function loadAttendees(filters: { startDate: string; endDate: string; courseSlug: string }, signal: AbortSignal) {
+  const params = new URLSearchParams();
+  if (filters.startDate) params.set("startDate", filters.startDate);
+  if (filters.endDate) params.set("endDate", filters.endDate);
+  if (filters.courseSlug) params.set("courseSlug", filters.courseSlug);
+  const response = await fetch(`/api/backoffice/attendees?${params.toString()}`, { cache: "no-store", signal });
+  const body: unknown = await response.json();
+  if (!response.ok || !isAttendeeList(body)) {
+    throw new BackofficeRequestError(messageFromApiBody(
+      body,
+      response.status === 503
+        ? "Aplique as migrações de pagamentos e participantes no Supabase."
+        : "Não foi possível carregar a lista de participantes.",
+    ), response.status);
+  }
+  return body.attendees;
+}
+
+async function confirmAttendance(attendee: Attendee, checkedIn: boolean) {
+  const response = await fetch(`/api/backoffice/attendees/${encodeURIComponent(attendee.reference)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ checkedIn }),
+  });
+  const body: unknown = await response.json();
+  if (!response.ok || !isCheckInResult(body, attendee.reference, checkedIn)) {
+    throw new BackofficeRequestError(messageFromApiBody(body, "Não foi possível actualizar a presença. Tente novamente."), response.status);
+  }
+  return body;
+}
+
 export default function Attendees({ products }: { products: DashboardProduct[] }) {
-  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const queryClient = useQueryClient();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [courseSlug, setCourseSlug] = useState("");
   const [edition, setEdition] = useState("");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [savingReference, setSavingReference] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    const params = new URLSearchParams();
-    if (startDate) params.set("startDate", startDate);
-    if (endDate) params.set("endDate", endDate);
-    if (courseSlug) params.set("courseSlug", courseSlug);
-    setLoading(true);
-    setError("");
-    void fetch(`/api/backoffice/attendees?${params.toString()}`, {
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        const body: unknown = await response.json();
-        if (!response.ok) {
-          throw new Error(messageFromApiBody(
-            body,
-            response.status === 503
-              ? "Aplique as migrações de pagamentos e participantes no Supabase."
-              : "Não foi possível carregar a lista de participantes.",
-          ));
-        }
-        if (!isAttendeeList(body)) {
-          throw new Error("Não foi possível carregar a lista de participantes.");
-        }
-        if (active) setAttendees(body.attendees);
-      })
-      .catch((cause: unknown) => {
-        if (active) {
-          setError(cause instanceof Error ? cause.message : "Falha ao carregar participantes.");
-          setAttendees([]);
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [startDate, endDate, courseSlug, edition]);
+  const [actionError, setActionError] = useState("");
+  const attendeeFilters = { startDate, endDate, courseSlug };
+  const attendeesQuery = useQuery({
+    queryKey: backofficeKeys.attendees(attendeeFilters),
+    queryFn: ({ signal }) => loadAttendees(attendeeFilters, signal),
+    staleTime: queryStaleTime.operational,
+    placeholderData: keepPreviousData,
+  });
+  const attendees = attendeesQuery.data ?? [];
+  const loading = attendeesQuery.isFetching;
+  const showingPrevious = attendeesQuery.isPlaceholderData;
+  const error = actionError || (attendeesQuery.error instanceof Error ? attendeesQuery.error.message : "");
 
   const editions = [...new Set(
     attendees
@@ -96,41 +97,24 @@ export default function Attendees({ products }: { products: DashboardProduct[] }
     );
   }, [attendees, edition, search]);
 
-  async function setCheckedIn(attendee: Attendee, checkedIn: boolean) {
-    setSavingReference(attendee.reference);
-    setError("");
-    try {
-      const response = await fetch(
-        `/api/backoffice/attendees/${encodeURIComponent(attendee.reference)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ checkedIn }),
-        },
+  const checkIn = useMutation({
+    mutationFn: (input: { attendee: Attendee; checkedIn: boolean; key: ReturnType<typeof backofficeKeys.attendees> }) => confirmAttendance(input.attendee, input.checkedIn),
+    onSuccess: (body, input) => {
+      queryClient.setQueryData<Attendee[]>(input.key, (current) =>
+        (current ?? []).map((item) => item.reference === input.attendee.reference
+          ? { ...item, checkedIn: input.checkedIn, checkedInAt: body.checkedInAt }
+          : item),
       );
-      const body: unknown = await response.json();
-      if (!response.ok) {
-        throw new Error(messageFromApiBody(body, "Não foi possível actualizar a presença. Tente novamente."));
-      }
-      if (!isCheckInResult(body, attendee.reference, checkedIn)) {
-        throw new Error("Não foi possível actualizar a presença. Tente novamente.");
-      }
-      setAttendees((current) =>
-        current.map((item) =>
-          item.reference === attendee.reference
-            ? {
-                ...item,
-                checkedIn,
-                checkedInAt: body.checkedInAt,
-              }
-            : item,
-        ),
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao actualizar presença.");
-    } finally {
-      setSavingReference("");
-    }
+      void invalidateBackoffice("command");
+    },
+    onError: (cause: unknown) => {
+      setActionError(cause instanceof Error ? cause.message : "Falha ao actualizar presença.");
+    },
+  });
+
+  function setCheckedIn(attendee: Attendee, checkedIn: boolean) {
+    setActionError("");
+    checkIn.mutate({ attendee, checkedIn, key: backofficeKeys.attendees(attendeeFilters) });
   }
 
   function exportExcel() {
@@ -319,7 +303,7 @@ export default function Attendees({ products }: { products: DashboardProduct[] }
                     <label className="inline-flex cursor-pointer items-center gap-2 text-[11px] font-semibold text-[#4a4141]">
                       <input
                         checked={attendee.checkedIn}
-                        disabled={savingReference === attendee.reference}
+                        disabled={showingPrevious || (checkIn.isPending && checkIn.variables?.attendee.reference === attendee.reference)}
                         onChange={(event) => void setCheckedIn(attendee, event.target.checked)}
                         type="checkbox"
                       />

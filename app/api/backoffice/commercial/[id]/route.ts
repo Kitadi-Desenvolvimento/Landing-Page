@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidStageChangeReason } from "../../../../lib/commercial-stage";
+import { touchBackofficeData } from "../../../../lib/read-cache";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { requireAdmin } from "../../../../lib/supabase/require-admin";
 
@@ -213,5 +214,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "commercial_stage_locked" }, { status: 409 });
   }
 
+  touchBackofficeData();
   return NextResponse.json({ updated: true, updatedCount: data });
 }

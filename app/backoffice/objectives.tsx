@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { backofficeKeys, BackofficeRequestError, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import {
   objectiveValueTypes,
   type ObjectiveValueType,
@@ -107,18 +109,64 @@ const valueTypeLabels: Record<ObjectiveValueType, string> = {
   custom: "Personalizado (JSON)",
 };
 
+async function loadObjectivesPayload(signal?: AbortSignal) {
+  const response = await fetch("/api/backoffice/objectives", { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || !isObjectiveResponse(result)) {
+    const code = typeof result === "object" && result !== null && "error" in result ? result.error : null;
+    throw new BackofficeRequestError(messageForApiError(code, objectiveLoadFallback(response.status)), response.status);
+  }
+  return result;
+}
+
+async function loadObjectiveHistory(id: string, signal?: AbortSignal) {
+  const response = await fetch(`/api/backoffice/objectives/history?id=${encodeURIComponent(id)}`, { cache: "no-store", signal });
+  const result: unknown = await response.json();
+  if (!response.ok || typeof result !== "object" || result === null || !("checkins" in result) || !("edits" in result)) return null;
+  const history = result as { checkins: ObjectiveCheckIn[]; edits: ObjectiveCheckInEdit[] };
+  if (!Array.isArray(history.checkins) || !Array.isArray(history.edits)) return null;
+  return history;
+}
+
 export default function Objectives() {
   const showError = useErrorToast();
-  const [objectives, setObjectives] = useState<Objective[]>([]);
-  const [checkins, setCheckins] = useState<ObjectiveCheckIn[]>([]);
-  const [edits, setEdits] = useState<ObjectiveCheckInEdit[]>([]);
-  const [areas, setAreas] = useState<ObjectiveArea[]>([]);
-  const [collaborators, setCollaborators] = useState<ObjectiveCollaborator[]>([]);
-  const [userId, setUserId] = useState("");
-  const [manageableAreaIds, setManageableAreaIds] = useState<string[]>([]);
-  const [role, setRole] = useState<ObjectivesData["role"]>("collaborator");
-  const [products, setProducts] = useState<ObjectiveProduct[]>([]);
-  const [availableCollaborators, setAvailableCollaborators] = useState<SimpleCollaborator[]>([]);
+  const queryClient = useQueryClient();
+  const objectivesQuery = useQuery({
+    queryKey: backofficeKeys.objectives,
+    queryFn: ({ signal }) => loadObjectivesPayload(signal),
+    staleTime: queryStaleTime.operational,
+  });
+  const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
+  const historyQuery = useQuery({
+    queryKey: backofficeKeys.objectiveHistory(selectedObjectiveId ?? "none"),
+    queryFn: ({ signal }) => loadObjectiveHistory(selectedObjectiveId ?? "", signal),
+    enabled: Boolean(selectedObjectiveId),
+    staleTime: queryStaleTime.operational,
+  });
+  const payload = objectivesQuery.data;
+  const objectives = payload?.objectives ?? [];
+  const areas = payload?.areas ?? [];
+  const collaborators = payload?.collaborators ?? [];
+  const userId = payload?.userId ?? "";
+  const manageableAreaIds = payload?.manageableAreaIds ?? [];
+  const role = payload?.role ?? "collaborator";
+  const products = payload?.products ?? [];
+  const availableCollaborators = payload?.availableCollaborators ?? [];
+  const checkins = useMemo(() => {
+    const base = payload?.checkins ?? [];
+    const extra = historyQuery.data?.checkins ?? [];
+    if (extra.length === 0) return base;
+    const ids = new Set(extra.map((item) => item.objective_id));
+    return [...extra, ...base.filter((item) => !ids.has(item.objective_id))];
+  }, [historyQuery.data, payload]);
+  const edits = useMemo(() => {
+    const base = payload?.edits ?? [];
+    const extra = historyQuery.data?.edits ?? [];
+    const historyCheckins = historyQuery.data?.checkins ?? [];
+    if (extra.length === 0 && historyCheckins.length === 0) return base;
+    const ids = new Set(historyCheckins.map((item) => item.id));
+    return [...extra, ...base.filter((item) => !ids.has(item.checkin_id))];
+  }, [historyQuery.data, payload]);
   const [query, setQuery] = useState("");
   const [periodFilter, setPeriodFilter] = useState<"all" | ObjectivePeriodType>("all");
   const [scopeFilter, setScopeFilter] = useState<"all" | Objective["scope_type"]>("all");
@@ -128,9 +176,8 @@ export default function Objectives() {
   const [statusFilter, setStatusFilter] = useState<"open" | "active" | "inactive" | "archived" | "all">("open");
   const [situationFilter, setSituationFilter] = useState<"all" | "no_checkin" | "in_progress" | "complete" | "soon" | "overdue">("all");
   const [shapeFilter, setShapeFilter] = useState<"all" | "with_krs" | "without_krs">("all");
-  const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const loading = objectivesQuery.isLoading;
+  const error = objectivesQuery.error instanceof Error ? objectivesQuery.error.message : "";
   const [formObjective, setFormObjective] = useState<Objective | null | "new">(null);
   const [formParentObjectiveId, setFormParentObjectiveId] = useState<string | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
@@ -140,37 +187,12 @@ export default function Objectives() {
   const [blockObjective, setBlockObjective] = useState<Objective | null>(null);
 
   const loadData = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/backoffice/objectives", { cache: "no-store" });
-      const result: unknown = await response.json();
-      if (!response.ok || !isObjectiveResponse(result)) {
-        const code = typeof result === "object" && result !== null && "error" in result
-          ? result.error
-          : null;
-        throw new Error(messageForApiError(code, objectiveLoadFallback(response.status)));
-      }
-      setObjectives(result.objectives);
-      setCheckins(result.checkins);
-      setEdits(result.edits);
-      setAreas(result.areas);
-      setCollaborators(result.collaborators);
-      setProducts(result.products);
-      setAvailableCollaborators(result.availableCollaborators);
-      setUserId(result.userId);
-      setManageableAreaIds(result.manageableAreaIds);
-      setRole(result.role);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Não foi possível carregar os objectivos.");
-    } finally {
-      setLoading(false);
+    await queryClient.refetchQueries({ queryKey: backofficeKeys.objectives });
+    if (selectedObjectiveId) {
+      await queryClient.refetchQueries({ queryKey: backofficeKeys.objectiveHistory(selectedObjectiveId) });
     }
-  }, []);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    await invalidateBackoffice("command", "notifications");
+  }, [queryClient, selectedObjectiveId]);
 
   function closeObjectiveEditor() {
     setFormObjective(null);
@@ -714,31 +736,13 @@ export function OverviewObjectives({
 }: {
   onNavigate: () => void;
 }) {
-  const [data, setData] = useState<ObjectivesData | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/backoffice/objectives", { cache: "no-store" })
-      .then(async (response) => {
-        const result: unknown = await response.json();
-        if (!response.ok || !isObjectiveResponse(result)) {
-          const code = typeof result === "object" && result !== null && "error" in result
-            ? result.error
-            : null;
-          throw new Error(messageForApiError(code, objectiveLoadFallback(response.status)));
-        }
-        if (active) setData(result);
-      })
-      .catch((cause: unknown) => {
-        if (active) {
-          setError(cause instanceof Error ? cause.message : "Não foi possível carregar os dados dos projectos.");
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const objectivesQuery = useQuery({
+    queryKey: backofficeKeys.objectives,
+    queryFn: ({ signal }) => loadObjectivesPayload(signal),
+    staleTime: queryStaleTime.operational,
+  });
+  const data = objectivesQuery.data ?? null;
+  const error = objectivesQuery.error instanceof Error ? objectivesQuery.error.message : "";
 
   const activeObjectives = data?.objectives.filter((objective) =>
     objective.parent_objective_id === null &&

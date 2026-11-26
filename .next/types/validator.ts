@@ -308,6 +308,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../app/api/backoffice/objectives/history/route.ts
+{
+  type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/objectives/history">> = Specific
+  const handler = {} as typeof import("../../app/api/backoffice/objectives/history/route.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/api/backoffice/objectives/reports/route.ts
 {
   type __IsExpected<Specific extends RouteHandlerConfig<"/api/backoffice/objectives/reports">> = Specific

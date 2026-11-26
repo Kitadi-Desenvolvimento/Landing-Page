@@ -1,55 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { messageFromApiBody } from "../lib/api-error-messages";
+import { BackofficeRequestError, backofficeKeys, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import { personInitials, personLabel } from "../lib/person-label";
 
+async function loadProfile(signal: AbortSignal) {
+  const response = await fetch("/api/backoffice/profile", { cache: "no-store", signal });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok || typeof result !== "object" || result === null || !("displayName" in result) || typeof result.displayName !== "string") {
+    return "";
+  }
+  return result.displayName;
+}
+
+async function saveProfile(displayName: string) {
+  const response = await fetch("/api/backoffice/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName }),
+  });
+  const result: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new BackofficeRequestError(messageFromApiBody(result, "Não foi possível guardar o nome."), response.status);
+  return typeof result === "object" && result !== null && "displayName" in result && typeof result.displayName === "string"
+    ? result.displayName
+    : displayName.trim();
+}
+
 export default function NameButton({ email }: { email: string }) {
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [displayName, setDisplayName] = useState("");
   const [draft, setDraft] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/backoffice/profile", { cache: "no-store" })
-      .then(async (response) => {
-        const result: unknown = await response.json().catch(() => null);
-        if (!response.ok || typeof result !== "object" || result === null || !("displayName" in result)) return;
-        if (active && typeof result.displayName === "string") {
-          setDisplayName(result.displayName);
-          setDraft(result.displayName);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  async function save() {
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("/api/backoffice/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: draft }),
-      });
-      const result: unknown = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(messageFromApiBody(result, "Não foi possível guardar o nome."));
-      const saved = typeof result === "object" && result !== null && "displayName" in result && typeof result.displayName === "string"
-        ? result.displayName
-        : draft.trim();
-      setDisplayName(saved);
+  const profileQuery = useQuery({
+    queryKey: backofficeKeys.profile,
+    queryFn: ({ signal }) => loadProfile(signal),
+    staleTime: queryStaleTime.static,
+  });
+  const displayName = profileQuery.data ?? "";
+  const saveName = useMutation({
+    mutationFn: (nextName: string) => saveProfile(nextName),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(backofficeKeys.profile, saved);
+      void invalidateBackoffice("command", "team");
       setDraft(saved);
       setOpen(false);
-    } catch (cause) {
+    },
+    onError: (cause: unknown) => {
       setError(cause instanceof Error ? cause.message : "Não foi possível guardar o nome.");
-    } finally {
-      setSaving(false);
-    }
+    },
+  });
+
+  function save() {
+    setError("");
+    saveName.mutate(draft);
   }
 
   const label = personLabel(displayName, email);
@@ -78,7 +83,7 @@ export default function NameButton({ email }: { email: string }) {
             {error ? <p className="mt-2 text-[11px] text-red-700" role="alert">{error}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
               <button className="min-h-10 rounded-full px-4 text-[11px] font-semibold text-[#625858]" onClick={() => setOpen(false)} type="button">Cancelar</button>
-              <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saving} onClick={() => void save()} type="button">{saving ? "A guardar…" : "Guardar"}</button>
+              <button className="min-h-10 rounded-full bg-[#510f1d] px-5 text-[11px] font-semibold text-white disabled:opacity-50" disabled={saveName.isPending} onClick={() => void save()} type="button">{saveName.isPending ? "A guardar…" : "Guardar"}</button>
             </div>
           </section>
         </div>

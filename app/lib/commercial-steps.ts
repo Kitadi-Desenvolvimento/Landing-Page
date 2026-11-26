@@ -1,5 +1,6 @@
 import "server-only";
 
+import { after } from "next/server";
 import { sendCommercialStepEmail } from "./commercial-step-email";
 import { isStaffSchemaMissing, loadDisplayNames } from "./staff-profiles";
 import { createSupabaseAdminClient } from "./supabase/admin";
@@ -140,6 +141,13 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
     return (stageKey && !sentKeys.has(stageKey)) || (followKey && !sentKeys.has(followKey));
   }).slice(0, 15);
   const names = await loadDisplayNames(pendingSteps.map((step) => step.createdBy ?? ""));
+  const emails = new Map<string, string>();
+  await Promise.all(pendingSteps.map(async (step) => {
+    if (!step.createdBy || emails.has(step.createdBy)) return;
+    const user = await admin.auth.admin.getUserById(step.createdBy);
+    const email = user.data?.user?.email ?? "";
+    if (email) emails.set(step.createdBy, email);
+  }));
   let sent = 0;
 
   for (const step of pendingSteps) {
@@ -147,8 +155,7 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
     const followKey = step.followDue && step.followUpAt ? noticeKey(step, "follow") : null;
     const pending = [stageKey, followKey].filter((key): key is string => typeof key === "string" && !sentKeys.has(key));
     if (pending.length === 0 || !step.createdBy || !step.next) continue;
-    const user = await admin.auth.admin.getUserById(step.createdBy);
-    const email = user.data?.user?.email ?? "";
+    const email = emails.get(step.createdBy) ?? "";
     if (!email) continue;
     const claimed = await admin.from("commercial_step_notices").insert(pending.map((key) => ({
       notice_key: key,
@@ -178,4 +185,18 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
     sent += 1;
   }
   return { sent, unavailable: false };
+}
+
+let noticeScheduledAt = 0;
+
+export function scheduleDueCommercialNotices(steps: CommercialStep[]) {
+  if (steps.length === 0) return;
+  const now = Date.now();
+  if (now - noticeScheduledAt < 20_000) return;
+  noticeScheduledAt = now;
+  after(() => {
+    notifyDueCommercialSteps(steps).catch((error) => {
+      console.error("[backoffice] commercial step notices failed", error instanceof Error ? error.message : "unknown");
+    });
+  });
 }

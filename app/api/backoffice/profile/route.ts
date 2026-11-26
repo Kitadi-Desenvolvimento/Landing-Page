@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { touchBackofficeData } from "../../../lib/read-cache";
 import { isStaffSchemaMissing, loadDisplayNames, saveDisplayName } from "../../../lib/staff-profiles";
 import { requireBackofficeUser } from "../../../lib/supabase/require-admin";
 
@@ -39,6 +40,7 @@ export async function PATCH(request: NextRequest) {
   if (typeof displayName !== "string" || displayName.trim().length > 80) return failure("invalid_display_name", 400);
   try {
     const saved = await saveDisplayName(authorization.user.id, displayName);
+    touchBackofficeData();
     return NextResponse.json({ displayName: saved, email: authorization.user.email ?? "" }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";

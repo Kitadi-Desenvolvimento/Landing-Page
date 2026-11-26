@@ -3,6 +3,7 @@ import "server-only";
 import { sendBlockEmail } from "./block-email";
 import { canManageObjective, loadObjectiveAccess } from "./objective-access";
 import { isStaffSchemaMissing, listVisibleStaff, loadDisplayNames, type StaffPerson } from "./staff-profiles";
+import { touchBackofficeData } from "./read-cache";
 import { createSupabaseAdminClient } from "./supabase/admin";
 import type { BackofficeRole } from "./supabase/require-admin";
 
@@ -14,6 +15,7 @@ export type WorkBlockView = {
   subjectId: string;
   reason: string;
   title: string;
+  createdAt: string;
   people: StaffPerson[];
 };
 
@@ -62,7 +64,7 @@ async function assertCanBlock(
 }
 
 function toView(
-  row: { id: string; subject_type: string; subject_id: string; reason: string },
+  row: { id: string; subject_type: string; subject_id: string; reason: string; created_at?: string },
   title: string,
   people: StaffPerson[],
 ): WorkBlockView {
@@ -72,6 +74,7 @@ function toView(
     subjectId: row.subject_id,
     reason: row.reason,
     title,
+    createdAt: row.created_at ?? "",
     people,
   };
 }
@@ -86,10 +89,10 @@ async function peopleForBlocks(rows: { id: string }[]) {
   if (error) throw error;
   const userIds = [...new Set((data ?? []).map((row) => row.user_id as string))];
   const users = new Map<string, string>();
-  for (const userId of userIds) {
+  await Promise.all(userIds.map(async (userId) => {
     const lookup = await admin.auth.admin.getUserById(userId);
     if (lookup.data.user?.email) users.set(userId, lookup.data.user.email);
-  }
+  }));
   const names = await loadDisplayNames(userIds);
   const grouped = new Map<string, StaffPerson[]>();
   for (const row of data ?? []) {
@@ -104,7 +107,7 @@ export async function listOpenBlocks(subjectType?: BlockSubjectType, subjectId?:
   const admin = createSupabaseAdminClient();
   let query = admin
     .from("work_blocks")
-    .select("id,subject_type,subject_id,reason")
+    .select("id,subject_type,subject_id,reason,created_at")
     .is("lifted_at", null)
     .order("created_at", { ascending: false });
   if (subjectType) query = query.eq("subject_type", subjectType);
@@ -114,12 +117,31 @@ export async function listOpenBlocks(subjectType?: BlockSubjectType, subjectId?:
     if (isStaffSchemaMissing(error.code)) return [] as WorkBlockView[];
     throw error;
   }
-  const people = await peopleForBlocks(data ?? []);
-  const views: WorkBlockView[] = [];
-  for (const row of data ?? []) {
-    views.push(toView(row, await subjectTitle(row.subject_type === "opportunity" ? "opportunity" : "objective", row.subject_id), people.get(row.id) ?? []));
+  const rows = data ?? [];
+  const [people, titles] = await Promise.all([peopleForBlocks(rows), subjectTitles(rows)]);
+  return rows.map((row) => {
+    const subjectType = row.subject_type === "opportunity" ? "opportunity" : "objective";
+    return toView(row, titles.get(`${subjectType}:${row.subject_id}`) ?? "", people.get(row.id) ?? []);
+  });
+}
+
+async function subjectTitles(rows: { subject_type: string; subject_id: string }[]) {
+  const admin = createSupabaseAdminClient();
+  const titles = new Map<string, string>();
+  async function fill(subjectType: BlockSubjectType, ids: string[]) {
+    const table = subjectType === "objective" ? "objectives" : "crm_opportunities";
+    for (let index = 0; index < ids.length; index += 150) {
+      const slice = ids.slice(index, index + 150);
+      if (slice.length === 0) continue;
+      const { data, error } = await admin.from(table).select("id,title").in("id", slice);
+      if (error) throw error;
+      for (const row of data ?? []) titles.set(`${subjectType}:${row.id}`, typeof row.title === "string" ? row.title : "");
+    }
   }
-  return views;
+  const objectiveIds = [...new Set(rows.filter((row) => row.subject_type !== "opportunity").map((row) => row.subject_id))];
+  const opportunityIds = [...new Set(rows.filter((row) => row.subject_type === "opportunity").map((row) => row.subject_id))];
+  await Promise.all([fill("objective", objectiveIds), fill("opportunity", opportunityIds)]);
+  return titles;
 }
 
 export async function saveWorkBlock(input: {
@@ -165,6 +187,7 @@ export async function saveWorkBlock(input: {
       .update({ lifted_at: new Date().toISOString(), lifted_by: input.userId })
       .eq("id", existing.data.id);
     if (lifted.error) throw lifted.error;
+    touchBackofficeData();
     return { block: null, emailFailed: false };
   }
 
@@ -203,6 +226,7 @@ export async function saveWorkBlock(input: {
     if (insertedPeople.error) throw insertedPeople.error;
   }
 
+  touchBackofficeData();
   const title = await subjectTitle(input.subjectType, input.subjectId);
   const kind = input.subjectType === "objective" ? "objectivo" : "oportunidade";
   let emailFailed = false;
