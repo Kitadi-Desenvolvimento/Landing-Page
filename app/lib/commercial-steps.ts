@@ -93,7 +93,11 @@ export async function loadCommercialSteps(now = Date.now()) {
     const rule = stageStepLimits[stage];
     const stageDue = days >= rule.days;
     const followAt = opportunity.follow_up_at ? new Date(opportunity.follow_up_at as string).getTime() : null;
-    const followDue = followAt !== null && !Number.isNaN(followAt) && followAt <= now;
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(now);
+    const followDay = followAt !== null && !Number.isNaN(followAt)
+      ? new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(followAt)
+      : null;
+    const followDue = followDay !== null && followDay <= today;
     const next = stageDue ? rule.next : followDue ? "Fazer o seguimento marcado." : null;
     return [{
       id: opportunity.id as string,
@@ -118,14 +122,39 @@ function noticeKey(step: CommercialStep, kind: "stage" | "follow") {
     : `follow:${step.id}:${step.followUpAt}`;
 }
 
+function deliveryKeys(step: CommercialStep, userId: string) {
+  const suffix = step.createdBy ? "" : `:to:${userId}`;
+  return [
+    step.stageDue ? `${noticeKey(step, "stage")}${suffix}` : null,
+    step.followDue && step.followUpAt ? `${noticeKey(step, "follow")}${suffix}` : null,
+  ].filter((key): key is string => Boolean(key));
+}
+
+async function adminRecipients() {
+  const admin = createSupabaseAdminClient();
+  const people: { id: string; email: string }[] = [];
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    for (const user of data.users) {
+      const role = user.app_metadata?.role;
+      if (role === "admin" && user.email) people.push({ id: user.id, email: user.email });
+    }
+    if (data.users.length < 1000) break;
+  }
+  return people;
+}
+
 export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
-  const due = steps.filter((step) => step.createdBy && (step.stageDue || step.followDue));
+  const due = steps.filter((step) => step.next && (step.stageDue || step.followDue));
   if (due.length === 0) return { sent: 0, unavailable: false };
   const admin = createSupabaseAdminClient();
-  const keys = due.flatMap((step) => [
-    step.stageDue ? noticeKey(step, "stage") : null,
-    step.followDue && step.followUpAt ? noticeKey(step, "follow") : null,
-  ].filter((key): key is string => Boolean(key)));
+  const admins = due.some((step) => !step.createdBy) ? await adminRecipients() : [];
+  const deliveries = due.flatMap((step) => {
+    const recipients = step.createdBy ? [{ id: step.createdBy, email: "" }] : admins;
+    return recipients.map((recipient) => ({ step, userId: recipient.id, email: recipient.email, keys: deliveryKeys(step, recipient.id) }));
+  }).filter((delivery) => delivery.keys.length > 0);
+  const keys = [...new Set(deliveries.flatMap((delivery) => delivery.keys))];
   const sentKeys = new Set<string>();
   for (let offset = 0; offset < keys.length; offset += 100) {
     const existingResult = await admin.from("commercial_step_notices").select("notice_key").in("notice_key", keys.slice(offset, offset + 100));
@@ -135,32 +164,25 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
     }
     for (const row of existingResult.data ?? []) sentKeys.add(row.notice_key as string);
   }
-  const pendingSteps = due.filter((step) => {
-    const stageKey = step.stageDue ? noticeKey(step, "stage") : null;
-    const followKey = step.followDue && step.followUpAt ? noticeKey(step, "follow") : null;
-    return (stageKey && !sentKeys.has(stageKey)) || (followKey && !sentKeys.has(followKey));
-  }).slice(0, 15);
-  const names = await loadDisplayNames(pendingSteps.map((step) => step.createdBy ?? ""));
-  const emails = new Map<string, string>();
-  await Promise.all(pendingSteps.map(async (step) => {
-    if (!step.createdBy || emails.has(step.createdBy)) return;
-    const user = await admin.auth.admin.getUserById(step.createdBy);
+  const pendingDeliveries = deliveries.filter((delivery) => delivery.keys.some((key) => !sentKeys.has(key)));
+  const names = await loadDisplayNames(pendingDeliveries.map((delivery) => delivery.userId));
+  const emails = new Map(admins.map((person) => [person.id, person.email]));
+  await Promise.all(pendingDeliveries.map(async (delivery) => {
+    if (emails.has(delivery.userId)) return;
+    const user = await admin.auth.admin.getUserById(delivery.userId);
     const email = user.data?.user?.email ?? "";
-    if (email) emails.set(step.createdBy, email);
+    if (email) emails.set(delivery.userId, email);
   }));
   let sent = 0;
 
-  for (const step of pendingSteps) {
-    const stageKey = step.stageDue ? noticeKey(step, "stage") : null;
-    const followKey = step.followDue && step.followUpAt ? noticeKey(step, "follow") : null;
-    const pending = [stageKey, followKey].filter((key): key is string => typeof key === "string" && !sentKeys.has(key));
-    if (pending.length === 0 || !step.createdBy || !step.next) continue;
-    const email = emails.get(step.createdBy) ?? "";
-    if (!email) continue;
+  for (const delivery of pendingDeliveries) {
+    const pending = delivery.keys.filter((key) => !sentKeys.has(key));
+    const email = emails.get(delivery.userId) ?? "";
+    if (pending.length === 0 || !email || !delivery.step.next) continue;
     const claimed = await admin.from("commercial_step_notices").insert(pending.map((key) => ({
       notice_key: key,
-      opportunity_id: step.id,
-      recipient_id: step.createdBy,
+      opportunity_id: delivery.step.id,
+      recipient_id: delivery.userId,
     })));
     if (claimed.error) {
       if (claimed.error.code === "23505" || isStaffSchemaMissing(claimed.error.code)) continue;
@@ -169,20 +191,21 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
     const result = await sendCommercialStepEmail({
       noticeKey: pending[0],
       email,
-      displayName: names.get(step.createdBy) ?? "",
-      title: step.title,
-      contactName: step.contactName,
-      stageLabel: stageStepLimits[step.stage].label,
-      days: step.days,
-      stageDue: Boolean(stageKey && pending.includes(stageKey)),
-      followDue: Boolean(followKey && pending.includes(followKey)),
-      nextStep: step.next,
+      displayName: names.get(delivery.userId) ?? "",
+      title: delivery.step.title,
+      contactName: delivery.step.contactName,
+      stageLabel: stageStepLimits[delivery.step.stage].label,
+      days: delivery.step.days,
+      stageDue: pending.some((key) => key.startsWith("stage:")),
+      followDue: pending.some((key) => key.startsWith("follow:")),
+      nextStep: delivery.step.next,
     });
     if (!result.ok) {
       await admin.from("commercial_step_notices").delete().in("notice_key", pending);
       continue;
     }
     sent += 1;
+    for (const key of pending) sentKeys.add(key);
   }
   return { sent, unavailable: false };
 }

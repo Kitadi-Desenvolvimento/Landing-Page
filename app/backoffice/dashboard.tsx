@@ -95,6 +95,7 @@ export default function BackofficeDashboard({
   const [activeSection, setActiveSection] = useState<DashboardSection>(
     role === "admin" ? "overview" : "objectives",
   );
+  const [focus, setFocus] = useState<{ section: DashboardSection; id: string; nonce: number } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const page = sectionTitles[activeSection];
   const visibleWorkspaceNavigation = role === "admin"
@@ -106,8 +107,11 @@ export default function BackofficeDashboard({
       ? dashboardNavigation.filter((item) => item.id === "team")
       : [];
 
-  function navigate(section: DashboardSection) {
+  function navigate(section: DashboardSection, targetId: string | null = null) {
+    const visible = role === "admin" || section === "objectives" || (role === "manager" && section === "team");
+    if (!visible) return;
     setActiveSection(section);
+    setFocus(targetId ? { section, id: targetId, nonce: Date.now() } : null);
     setSidebarOpen(false);
   }
 
@@ -201,7 +205,7 @@ export default function BackofficeDashboard({
               <span className="size-1.5 rounded-full bg-[#66836c]" />
               Pagamentos, produtos e analytics reais
             </span>
-            <NotificationBell onOpen={navigate} />
+            <NotificationBell onOpen={(section, targetId) => navigate(section, targetId)} />
             <NameButton email={email} />
           </div>
         </header>
@@ -224,9 +228,9 @@ export default function BackofficeDashboard({
             />
           ) : null}
           {role === "admin" && activeSection === "attendees" ? <Attendees products={catalogProducts} /> : null}
-          {activeSection === "objectives" ? <Objectives /> : null}
+          {activeSection === "objectives" ? <Objectives focusId={focus?.section === "objectives" ? focus.id : null} focusNonce={focus?.section === "objectives" ? focus.nonce : 0} /> : null}
           {role === "admin" && activeSection === "commercial" ? (
-            <Commercial products={catalogProducts} />
+            <Commercial focusId={focus?.section === "commercial" ? focus.id : null} focusNonce={focus?.section === "commercial" ? focus.nonce : 0} products={catalogProducts} />
           ) : null}
           {role === "admin" && activeSection === "funnel" ? (
             <Funnel analytics={siteAnalytics} analyticsReady={analyticsReady} />
@@ -487,13 +491,16 @@ async function loadCommercialDetail(id: string, signal?: AbortSignal) {
   };
 }
 
-function Commercial({ products }: { products: DashboardProduct[] }) {
+function Commercial({ products, focusId = null, focusNonce = 0 }: { products: DashboardProduct[]; focusId?: string | null; focusNonce?: number }) {
   const queryClient = useQueryClient();
   const [opportunities, setOpportunities] = useState<CommercialOpportunity[]>([]);
   const [contacts, setContacts] = useState<CommercialContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusId) setSelectedId(focusId);
+  }, [focusId, focusNonce]);
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const commercialQuery = useQuery({

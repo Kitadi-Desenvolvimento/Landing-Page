@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { backofficeKeys, BackofficeRequestError, invalidateBackoffice, queryStaleTime } from "../lib/backoffice-query";
 import {
   objectiveValueTypes,
@@ -128,7 +128,7 @@ async function loadObjectiveHistory(id: string, signal?: AbortSignal) {
   return history;
 }
 
-export default function Objectives() {
+export default function Objectives({ focusId = null, focusNonce = 0 }: { focusId?: string | null; focusNonce?: number }) {
   const showError = useErrorToast();
   const queryClient = useQueryClient();
   const objectivesQuery = useQuery({
@@ -137,6 +137,9 @@ export default function Objectives() {
     staleTime: queryStaleTime.operational,
   });
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null);
+  useEffect(() => {
+    if (focusId) setSelectedObjectiveId(focusId);
+  }, [focusId, focusNonce]);
   const historyQuery = useQuery({
     queryKey: backofficeKeys.objectiveHistory(selectedObjectiveId ?? "none"),
     queryFn: ({ signal }) => loadObjectiveHistory(selectedObjectiveId ?? "", signal),

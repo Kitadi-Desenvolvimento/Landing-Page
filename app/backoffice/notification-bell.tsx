@@ -12,6 +12,7 @@ type StaffNotification = {
   title: string;
   detail: string;
   section: Extract<DashboardSection, "objectives" | "commercial" | "payments">;
+  targetId: string | null;
 };
 
 const kindLabel = {
@@ -34,7 +35,7 @@ async function loadNotifications(signal: AbortSignal) {
 export default function NotificationBell({
   onOpen,
 }: {
-  onOpen: (section: DashboardSection) => void;
+  onOpen: (section: DashboardSection, targetId: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
@@ -76,7 +77,7 @@ export default function NotificationBell({
         </svg>
         {count > 0 ? (
           <span className="absolute -right-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-[#510f1d] px-1 text-[9px] font-bold text-white">
-            {count > 9 ? "9+" : count}
+            {count}
           </span>
         ) : null}
       </button>
@@ -94,7 +95,7 @@ export default function NotificationBell({
                 key={item.id}
                 onClick={() => {
                   setOpen(false);
-                  onOpen(item.section);
+                  onOpen(item.section, item.targetId);
                 }}
                 type="button"
               >

@@ -45,6 +45,7 @@ type OrderRow = {
   status: string;
   created_at: string;
   paid_at: string | null;
+  refunded_at: string | null;
   created_by: string | null;
   reconciled_at: string | null;
 };
@@ -228,8 +229,20 @@ function elapsedFraction(type: ObjectivePeriodType, start: string, end: string, 
   return Math.min(1, Math.max(0, (nowMs - startMs) / (endMs - startMs)));
 }
 
+/** Dia da acção no backoffice. Uma data escolhida no passado não muda o dia da conta. */
+function recordedAt(order: OrderRow) {
+  if (order.paid_at && order.paid_at > order.created_at) return order.paid_at;
+  return order.created_at;
+}
+
+function actionAt(order: OrderRow) {
+  if (order.status === "refunded" && order.refunded_at) return order.refunded_at;
+  if (order.status === "accepted") return recordedAt(order);
+  return order.created_at;
+}
+
 function orderDay(order: OrderRow) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(new Date(order.paid_at ?? order.created_at));
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Luanda" }).format(new Date(recordedAt(order)));
 }
 
 function dayLabel(date: string) {
@@ -563,7 +576,7 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
   if (!prior) throw new Error("invalid_period");
   const admin = createSupabaseAdminClient();
   const objectiveSelect = "id,title,scope_type,area_id,assigned_to,period_type,period_start,due_date,product_id,parent_objective_id,value_type,target_value,unit,active,archived";
-  const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,created_by,reconciled_at";
+  const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,refunded_at,created_by,reconciled_at";
   const opportunitySelect = "id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)";
   const [objectives, memberships, products, people, blocks, steps, activity] = await Promise.all([
     pageRows<ObjectiveRow>((from) => admin.from("objectives").select(objectiveSelect).eq("archived", false).order("title").range(from, from + 999)),
@@ -592,10 +605,11 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
       relevantIds.add(objective.id);
     }
   }
-  const [paidOrders, paidWithoutDate, unpaidDatedOrders, pendingOrders, unreconciledOrders, reconciledSincePrior, openOpportunities, createdInSpan, followInSpan, stageChanges, snapshots, finance] = await Promise.all([
+  const [paidOrders, registeredOrders, unpaidDatedOrders, refundedOrders, pendingOrders, unreconciledOrders, reconciledSincePrior, openOpportunities, createdInSpan, followInSpan, stageChanges, snapshots, finance] = await Promise.all([
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("paid_at", salesFrom).lt("paid_at", bounds.to).range(from, from + 999)),
-    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").is("paid_at", null).gte("created_at", salesFrom).lt("created_at", bounds.to).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("created_at", salesFrom).lt("created_at", bounds.to).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).neq("status", "accepted").gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "refunded").gte("refunded_at", salesFrom).lt("refunded_at", bounds.to).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "pending").range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").is("reconciled_at", null).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("reconciled_at", prior.from).lt("reconciled_at", bounds.to).range(from, from + 999)),
@@ -607,7 +621,7 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
     period === "month" ? getFinanceData(3).catch(() => null) : Promise.resolve(null),
   ]);
   const orders = new Map<string, OrderRow>();
-  for (const order of [...paidOrders, ...paidWithoutDate, ...unpaidDatedOrders, ...pendingOrders, ...unreconciledOrders, ...reconciledSincePrior]) orders.set(order.reference, order);
+  for (const order of [...paidOrders, ...registeredOrders, ...unpaidDatedOrders, ...refundedOrders, ...pendingOrders, ...unreconciledOrders, ...reconciledSincePrior]) orders.set(order.reference, order);
   const opportunities = new Map<string, OpportunityRow>();
   for (const opportunity of [...openOpportunities, ...createdInSpan, ...followInSpan]) opportunities.set(opportunity.id, opportunity);
   const missingOpportunityIds = [...new Set([
@@ -693,7 +707,7 @@ export async function buildCommandDashboard(input: {
     const matching = orders.filter((order) =>
       order.status === "accepted" &&
       order.course_slug === product &&
-      inRange(order.paid_at ?? order.created_at, new Date(`${start}T00:00:00+01:00`).toISOString(), new Date(`${end}T00:00:00+01:00`).toISOString()),
+      inRange(recordedAt(order), new Date(`${start}T00:00:00+01:00`).toISOString(), new Date(`${end}T00:00:00+01:00`).toISOString()),
     );
     return {
       count: matching.length,
@@ -804,7 +818,7 @@ export async function buildCommandDashboard(input: {
 
   const acceptedInWindow = orders.filter((order) =>
     order.status === "accepted" &&
-    inRange(order.paid_at ?? order.created_at, bounds.from, bounds.to) &&
+    inRange(recordedAt(order), bounds.from, bounds.to) &&
     (person === "all" || order.created_by === person) &&
     productOk(order.course_slug),
   );
@@ -812,7 +826,7 @@ export async function buildCommandDashboard(input: {
   const revenueKz = acceptedInWindow.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
 
   const filteredOrders = orders.filter((order) => {
-    const moment = order.status === "accepted" ? order.paid_at ?? order.created_at : order.created_at;
+    const moment = actionAt(order);
     if (!inRange(moment, bounds.from, bounds.to)) return false;
     if (person !== "all" && order.created_by !== person) return false;
     if (!productOk(order.course_slug)) return false;
@@ -1066,7 +1080,7 @@ export async function buildCommandDashboard(input: {
         const sales = orders.filter((order) =>
           order.status === "accepted" &&
           order.course_slug === objective.product_id &&
-          inRange(order.paid_at ?? order.created_at, new Date(`${objective.period_start}T00:00:00+01:00`).toISOString(), until),
+          inRange(recordedAt(order), new Date(`${objective.period_start}T00:00:00+01:00`).toISOString(), until),
         );
         const actual = metric.value_type === "currency" ? sales.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0) : sales.length;
         const expected = target * elapsedFraction(objective.period_type, objective.period_start, end, priorAsOf);
@@ -1114,7 +1128,7 @@ export async function buildCommandDashboard(input: {
     return "Vão a tempo";
   };
   const priorOrders = priorWindow ? orders.filter((order) => {
-    const moment = order.status === "accepted" ? order.paid_at ?? order.created_at : order.created_at;
+    const moment = actionAt(order);
     if (!inRange(moment, priorWindow.from, priorWindow.to)) return false;
     if (person !== "all" && order.created_by !== person) return false;
     if (!productOk(order.course_slug)) return false;
@@ -1124,14 +1138,13 @@ export async function buildCommandDashboard(input: {
     return true;
   }) : [];
   const priorAccepted = priorOrders.filter((order) => order.status === "accepted");
-  const paidMoment = (order: OrderRow) => order.paid_at ?? order.created_at;
   const priorPending = priorWindow ? orders.filter((order) => {
     if (!orderVisible(order)) return false;
     if (order.status === "pending" && order.created_at < priorWindow.to) return true;
-    return order.status === "accepted" && order.created_at < priorWindow.to && paidMoment(order) >= priorWindow.to;
+    return order.status === "accepted" && order.created_at < priorWindow.to && recordedAt(order) >= priorWindow.to;
   }) : [];
   const priorUnreconciled = priorWindow ? orders.filter((order) => {
-    if (order.status !== "accepted" || !orderVisible(order) || paidMoment(order) >= priorWindow.to) return false;
+    if (order.status !== "accepted" || !orderVisible(order) || recordedAt(order) >= priorWindow.to) return false;
     return !order.reconciled_at || order.reconciled_at >= priorWindow.to;
   }) : [];
   const priorStillOpen = priorWindow ? opportunities.filter((opportunity) => {
@@ -1170,7 +1183,7 @@ export async function buildCommandDashboard(input: {
   }
   const priorRevenueOrders = priorWindow ? orders.filter((order) =>
     order.status === "accepted" &&
-    inRange(order.paid_at ?? order.created_at, priorWindow.from, priorWindow.to) &&
+    inRange(recordedAt(order), priorWindow.from, priorWindow.to) &&
     (person === "all" || order.created_by === person) &&
     productOk(order.course_slug),
   ) : [];

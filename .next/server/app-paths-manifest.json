@@ -1,3 +1,4 @@
 {
-  "/api/backoffice/command/route": "app/api/backoffice/command/route.js"
+  "/api/backoffice/commercial/route": "app/api/backoffice/commercial/route.js",
+  "/backoffice/page": "app/backoffice/page.js"
 }

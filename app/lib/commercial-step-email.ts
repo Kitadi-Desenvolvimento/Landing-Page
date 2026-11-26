@@ -31,7 +31,7 @@ export async function sendCommercialStepEmail(input: {
   const name = personLabel(input.displayName, input.email);
   const subject = `Próximo passo na oportunidade ${input.title}`;
   const stay = `A oportunidade «${input.title}», do contacto ${input.contactName || "sem nome"}, está em ${input.stageLabel} há ${input.days} ${input.days === 1 ? "dia" : "dias"}.`;
-  const follow = "O seguimento marcado já passou da hora.";
+  const follow = "O seguimento é para hoje.";
   const lines = [
     `Olá, ${name}.`,
     "",

@@ -23,7 +23,7 @@ export async function send(url: string, method: "POST" | "PATCH", body: unknown)
     });
     if (response.ok) {
       if (/\/(finance|payments|expenses|withdrawals)(\/|$)/.test(url)) {
-        void invalidateBackoffice("command", "attendees");
+        void invalidateBackoffice("command", "attendees", "notifications");
       }
       return { error: null };
     }
@@ -145,7 +145,7 @@ function ManualPaymentModal({ products, onClose }: { products: DashboardProduct[
 
   return (
     <ModalShell
-      description="Regista uma entrada recebida fora do checkout. Conta como pagamento concluído em toda a app (receita, participantes e e-books)."
+      description="Regista uma entrada recebida fora do checkout. Conta como pagamento concluído em toda a app. O valor entra nas contas no dia em que é adicionado."
       eyebrow="Conciliação"
       onClose={onClose}
       title="Adicionar pagamento"

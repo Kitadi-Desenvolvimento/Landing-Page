@@ -34,33 +34,51 @@ function toCsv(header: string[], rows: Cell[][]) {
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }
 
+function actionInstant(created: unknown, chosen: unknown) {
+  const createdAt = typeof created === "string" ? created : "";
+  const chosenAt = typeof chosen === "string" ? chosen : "";
+  if (chosenAt && createdAt && chosenAt > createdAt) return chosenAt;
+  return createdAt || chosenAt;
+}
+
+function inSpan(instant: string, from: string, to: string) {
+  return instant >= from && instant < to;
+}
+
 async function loadEntries(month: string) {
   const range = monthRange(month);
-  const { data, error } = await createSupabaseAdminClient()
-    .from("payment_orders")
-    .select("*")
-    .in("status", ["accepted", "refunded"])
-    .or(
-      `and(paid_at.gte.${range.from},paid_at.lt.${range.to}),` +
-        `and(paid_at.is.null,created_at.gte.${range.from},created_at.lt.${range.to})`,
-    )
-    .order("paid_at", { ascending: true })
-    .limit(rowLimit);
+  const admin = createSupabaseAdminClient();
+  const [byRegistration, byConfirmation] = await Promise.all([
+    admin.from("payment_orders").select("*").in("status", ["accepted", "refunded"]).gte("created_at", range.from).lt("created_at", range.to).order("created_at", { ascending: true }).limit(rowLimit),
+    admin.from("payment_orders").select("*").in("status", ["accepted", "refunded"]).gte("paid_at", range.from).lt("paid_at", range.to).order("paid_at", { ascending: true }).limit(rowLimit),
+  ]);
+  const error = byRegistration.error ?? byConfirmation.error;
   if (error) throwDatabaseError("exporting entries", error);
-  return (data ?? []) as Record<string, unknown>[];
+  const rows = new Map<string, Record<string, unknown>>();
+  for (const row of [...(byRegistration.data ?? []), ...(byConfirmation.data ?? [])]) {
+    const record = row as Record<string, unknown>;
+    if (!inSpan(actionInstant(record.created_at, record.paid_at), range.from, range.to)) continue;
+    rows.set(String(record.reference), record);
+  }
+  return [...rows.values()];
 }
 
 async function loadWithdrawals(month: string) {
   const range = monthRange(month);
-  const { data, error } = await createSupabaseAdminClient()
-    .from("wipay_withdrawals")
-    .select("*")
-    .gte("withdrawn_at", range.from)
-    .lt("withdrawn_at", range.to)
-    .order("withdrawn_at", { ascending: true })
-    .limit(rowLimit);
+  const admin = createSupabaseAdminClient();
+  const [byRegistration, byChosenDate] = await Promise.all([
+    admin.from("wipay_withdrawals").select("*").gte("created_at", range.from).lt("created_at", range.to).order("created_at", { ascending: true }).limit(rowLimit),
+    admin.from("wipay_withdrawals").select("*").gte("withdrawn_at", range.from).lt("withdrawn_at", range.to).order("withdrawn_at", { ascending: true }).limit(rowLimit),
+  ]);
+  const error = byRegistration.error ?? byChosenDate.error;
   if (error) throwDatabaseError("exporting withdrawals", error);
-  return (data ?? []) as Record<string, unknown>[];
+  const rows = new Map<string, Record<string, unknown>>();
+  for (const row of [...(byRegistration.data ?? []), ...(byChosenDate.data ?? [])]) {
+    const record = row as Record<string, unknown>;
+    if (!inSpan(actionInstant(record.created_at, record.withdrawn_at), range.from, range.to)) continue;
+    rows.set(String(record.id), record);
+  }
+  return [...rows.values()];
 }
 
 async function loadExpenses(month: string) {
@@ -68,9 +86,9 @@ async function loadExpenses(month: string) {
   const { data, error } = await createSupabaseAdminClient()
     .from("expenses")
     .select("*")
-    .gte("spent_on", range.fromDate)
-    .lt("spent_on", range.toDate)
-    .order("spent_on", { ascending: true })
+    .gte("created_at", range.from)
+    .lt("created_at", range.to)
+    .order("created_at", { ascending: true })
     .limit(rowLimit);
   if (error) throwDatabaseError("exporting expenses", error);
   return (data ?? []) as Record<string, unknown>[];
@@ -85,9 +103,9 @@ export async function buildExport(type: ExportType, month: string) {
   if (type === "entries") {
     const rows = await loadEntries(month);
     return toCsv(
-      ["Data de pagamento", "Referência", "Origem", "Método", "Produto", "Variante", "Cliente", "Email", "Telefone", "Valor (Kz)", "Estado", "Conciliado em", "Estornado em", "Motivo do estorno"],
+      ["Data na conta", "Referência", "Origem", "Método", "Produto", "Variante", "Cliente", "Email", "Telefone", "Valor (Kz)", "Estado", "Conciliado em", "Estornado em", "Motivo do estorno"],
       rows.map((row) => [
-        luandaDateTime(row.paid_at ?? row.created_at),
+        luandaDateTime(actionInstant(row.created_at, row.paid_at)),
         text(row.reference),
         row.payment_provider === "manual" ? "Manual" : "WiPay",
         text(row.payment_method),
@@ -110,7 +128,7 @@ export async function buildExport(type: ExportType, month: string) {
     return toCsv(
       ["Data", "Referência WiPay", "Valor (Kz)", "Estado", "Conciliado em", "Motivo da anulação"],
       rows.map((row) => [
-        luandaDateTime(row.withdrawn_at),
+        luandaDateTime(actionInstant(row.created_at, row.withdrawn_at)),
         text(row.provider_reference),
         row.amount_kz as number,
         row.status === "voided" ? "Anulado" : row.reconciled_at ? "Conciliado" : "Por conciliar",
@@ -125,7 +143,7 @@ export async function buildExport(type: ExportType, month: string) {
     return toCsv(
       ["Data", "Categoria", "Fornecedor", "Descrição", "Valor (Kz)", "Comprovativo", "Origem", "Estado", "Motivo da anulação"],
       rows.map((row) => [
-        text(row.spent_on),
+        luandaDateTime(row.created_at),
         expenseCategoryLabel(text(row.category)),
         text(row.supplier),
         text(row.description),
@@ -141,10 +159,10 @@ export async function buildExport(type: ExportType, month: string) {
   const [entries, withdrawals] = await Promise.all([loadEntries(month), loadWithdrawals(month)]);
   const movements: { at: string; row: Cell[] }[] = [
     ...entries.map((row) => ({
-      at: String(row.paid_at ?? row.created_at),
+      at: actionInstant(row.created_at, row.paid_at),
       row: [
         "Entrada",
-        luandaDateTime(row.paid_at ?? row.created_at),
+        luandaDateTime(actionInstant(row.created_at, row.paid_at)),
         text(row.reference),
         text(row.product_title),
         row.amount_kz as number,
@@ -155,10 +173,10 @@ export async function buildExport(type: ExportType, month: string) {
     ...withdrawals
       .filter((row) => row.status === "active")
       .map((row) => ({
-        at: String(row.withdrawn_at),
+        at: actionInstant(row.created_at, row.withdrawn_at),
         row: [
           "Levantamento",
-          luandaDateTime(row.withdrawn_at),
+          luandaDateTime(actionInstant(row.created_at, row.withdrawn_at)),
           text(row.provider_reference),
           "Levantamento WiPay",
           -(row.amount_kz as number),
