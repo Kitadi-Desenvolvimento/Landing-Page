@@ -1,40 +1,9 @@
 {
   "pages": {
-    "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
-    ],
-    "/backoffice/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/backoffice/page.js"
-    ],
-    "/api/backoffice/notifications/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/notifications/route.js"
-    ],
-    "/api/backoffice/profile/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/profile/route.js"
-    ],
     "/api/backoffice/command/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/backoffice/command/route.js"
-    ],
-    "/api/backoffice/objectives/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/objectives/route.js"
-    ],
-    "/api/backoffice/commercial/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/commercial/route.js"
     ]
   }
 }

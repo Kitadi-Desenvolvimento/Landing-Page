@@ -1,6 +1,3 @@
 {
-  "/api/backoffice/notifications/route": "app/api/backoffice/notifications/route.js",
-  "/api/backoffice/command/route": "app/api/backoffice/command/route.js",
-  "/api/backoffice/profile/route": "app/api/backoffice/profile/route.js",
-  "/backoffice/page": "app/backoffice/page.js"
+  "/api/backoffice/command/route": "app/api/backoffice/command/route.js"
 }
