@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { loadCommercialSteps, scheduleDueCommercialNotices } from "../../../lib/commercial-steps";
+import { personLabel } from "../../../lib/person-label";
 import { touchBackofficeData } from "../../../lib/read-cache";
+import { listVisibleStaff } from "../../../lib/staff-profiles";
 import { createSupabaseAdminClient } from "../../../lib/supabase/admin";
 import { requireAdmin } from "../../../lib/supabase/require-admin";
 
@@ -33,20 +35,40 @@ export async function GET() {
   }
 
   const admin = createSupabaseAdminClient();
-  const [opportunitiesResult, contactsResult] = await Promise.all([
+  const contactsQuery = admin
+    .from("crm_contacts")
+    .select("id,contact_type,name,email,phone,company_id,owner_id")
+    .order("name", { ascending: true })
+    .limit(1000);
+  const [opportunitiesResult, contactsResult, staff] = await Promise.all([
     admin
       .from("crm_opportunities")
       .select("*,contact:crm_contacts!crm_opportunities_contact_id_fkey(*)")
       .order("created_at", { ascending: false })
       .limit(1000),
-    admin
+    contactsQuery,
+    listVisibleStaff("admin", authorization.user.id, null).catch(() => []),
+  ]);
+  let contacts: Record<string, unknown>[] = contactsResult.data ?? [];
+  if (contactsResult.error && isMissingCrm(contactsResult.error)) {
+    const fallback = await admin
       .from("crm_contacts")
       .select("id,contact_type,name,email,phone,company_id")
       .order("name", { ascending: true })
-      .limit(1000),
-  ]);
+      .limit(1000);
+    if (fallback.error) {
+      return NextResponse.json(
+        { error: isMissingCrm(fallback.error) ? "commercial_not_configured" : "commercial_unavailable" },
+        { status: isMissingCrm(fallback.error) ? 503 : 500 },
+      );
+    }
+    contacts = fallback.data ?? [];
+  } else if (contactsResult.error) {
+    console.error("[commercial] loading CRM failed", contactsResult.error.code ?? "unknown");
+    return NextResponse.json({ error: "commercial_unavailable" }, { status: 500 });
+  }
 
-  const error = opportunitiesResult.error ?? contactsResult.error;
+  const error = opportunitiesResult.error;
   if (error) {
     const notConfigured = isMissingCrm(error);
     if (!notConfigured) {
@@ -105,7 +127,9 @@ export async function GET() {
             : null,
         };
       }),
-      contacts: contactsResult.data ?? [],
+      contacts,
+      staff: staff.map((person) => ({ id: person.id, name: personLabel(person.displayName, person.email) })),
+      currentUserId: authorization.user.id,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
@@ -146,6 +170,14 @@ export async function POST(request: NextRequest) {
   const productTitle = readOptionalText(body.opportunity.productTitle, 180);
   const notes = readOptionalText(body.opportunity.notes, 2000);
   const followUpAt = readOptionalText(body.opportunity.followUpAt, 40);
+  const rawOwner = body.contact.ownerId;
+  const ownerId = rawOwner === undefined
+    ? authorization.user.id
+    : rawOwner === null || rawOwner === ""
+      ? null
+      : typeof rawOwner === "string" && uuidPattern.test(rawOwner)
+        ? rawOwner
+        : undefined;
   const amount = body.opportunity.amountKz;
 
   if (
@@ -161,6 +193,7 @@ export async function POST(request: NextRequest) {
     productTitle === undefined ||
     notes === undefined ||
     followUpAt === undefined ||
+    ownerId === undefined ||
     (email !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
     (phone !== null && !/^\+?[0-9 ]{9,24}$/.test(phone)) ||
     (companyId !== null && !uuidPattern.test(companyId)) ||
@@ -176,6 +209,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_contact" }, { status: 400 });
   }
 
+  if (ownerId) {
+    const staff = await listVisibleStaff("admin", authorization.user.id, null);
+    if (!staff.some((person) => person.id === ownerId)) {
+      return NextResponse.json({ error: "invalid_contact" }, { status: 400 });
+    }
+  }
+
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase.rpc("backoffice_create_crm_opportunity", {
     p_contact: {
@@ -185,6 +225,7 @@ export async function POST(request: NextRequest) {
       phone,
       company_id: companyId,
       company_name: companyName,
+      owner_id: ownerId,
     },
     p_opportunity: {
       title: title || productTitle,
@@ -207,6 +248,17 @@ export async function POST(request: NextRequest) {
       { error: notConfigured ? "commercial_not_configured" : "commercial_create_failed" },
       { status: notConfigured ? 503 : 500 },
     );
+  }
+
+  if (typeof data === "string" && uuidPattern.test(data)) {
+    const created = await supabase.from("crm_opportunities").select("contact_id").eq("id", data).maybeSingle();
+    const contactId = created.data?.contact_id;
+    if (typeof contactId === "string") {
+      const ownerUpdate = await supabase.from("crm_contacts").update({ owner_id: ownerId }).eq("id", contactId);
+      if (ownerUpdate.error && !isMissingCrm(ownerUpdate.error)) {
+        console.error("[commercial] saving contact owner failed", ownerUpdate.error.code ?? "unknown");
+      }
+    }
   }
 
   touchBackofficeData();

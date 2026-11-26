@@ -9,7 +9,7 @@ import {
 import { loadAvailableProducts } from "./objective-products";
 import { getFinanceData } from "./finance";
 import { loadCheckinSnapshots } from "./checkin-snapshots";
-import { loadCommercialSteps, stageStepLimits } from "./commercial-steps";
+import { loadCommercialSteps, loadContactOwners, stageStepLimits } from "./commercial-steps";
 import { remember } from "./read-cache";
 import { personLabel } from "./person-label";
 import { isStaffSchemaMissing, listVisibleStaff } from "./staff-profiles";
@@ -65,6 +65,8 @@ type OpportunityRow = {
   product_slug: string | null;
   follow_up_at: string | null;
   created_by: string | null;
+  contact_id: string;
+  owner_id?: string | null;
   created_at: string;
   payment_status: string | null;
   contact: { name?: string } | { name?: string }[] | null;
@@ -577,7 +579,7 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
   const admin = createSupabaseAdminClient();
   const objectiveSelect = "id,title,scope_type,area_id,assigned_to,period_type,period_start,due_date,product_id,parent_objective_id,value_type,target_value,unit,active,archived";
   const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,refunded_at,created_by,reconciled_at";
-  const opportunitySelect = "id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)";
+  const opportunitySelect = "id,contact_id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)";
   const [objectives, memberships, products, people, blocks, steps, activity] = await Promise.all([
     pageRows<ObjectiveRow>((from) => admin.from("objectives").select(objectiveSelect).eq("archived", false).order("title").range(from, from + 999)),
     pageRows<{ area_id: string; user_id: string }>((from) => admin.from("objective_area_members").select("area_id,user_id").range(from, from + 999)),
@@ -632,6 +634,10 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
     const slice = missingOpportunityIds.slice(index, index + 150);
     const extra = await pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).in("id", slice).range(from, from + 999));
     for (const opportunity of extra) opportunities.set(opportunity.id, opportunity);
+  }
+  const owners = await loadContactOwners([...opportunities.values()].map((opportunity) => opportunity.contact_id));
+  for (const opportunity of opportunities.values()) {
+    opportunity.owner_id = owners ? owners.get(opportunity.contact_id) ?? null : opportunity.created_by;
   }
   const checkinHistory = new Map<string, { date: string; value: unknown }[]>();
   for (const [id, point] of snapshots.asOf) checkinHistory.set(id, [point]);
@@ -852,7 +858,7 @@ export async function buildCommandDashboard(input: {
   const closures = sources.closures;
   const closedBetween = (id: string, from: string, to: string) => closures.some((change) => change.opportunity_id === id && change.created_at >= from && change.created_at < to);
   const opportunityVisible = (opportunity: OpportunityRow) =>
-    (person === "all" || opportunity.created_by === person) &&
+    (person === "all" || opportunity.owner_id === person) &&
     productOk(opportunity.product_slug) &&
     (input.stage === "all" || opportunity.stage === input.stage);
   const openOpportunities = opportunities.filter((opportunity) => opportunity.stage !== "converted" && opportunity.stage !== "lost" && opportunityVisible(opportunity));
@@ -895,7 +901,7 @@ export async function buildCommandDashboard(input: {
       return Boolean(objective && belongsToPerson(objective));
     }
     const opportunity = opportunities.find((item) => item.id === block.subjectId);
-    return opportunity?.created_by === person;
+    return opportunity?.owner_id === person;
   };
   const visibleBlocks = blocks.filter((block) => {
     if (!personIsBlocker(block)) return false;
@@ -1150,20 +1156,20 @@ export async function buildCommandDashboard(input: {
   const priorStillOpen = priorWindow ? opportunities.filter((opportunity) => {
     if (opportunity.created_at >= priorWindow.to) return false;
     if (opportunity.stage === "converted" || opportunity.stage === "lost") return false;
-    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (person !== "all" && opportunity.owner_id !== person) return false;
     if (!productOk(opportunity.product_slug)) return false;
     if (input.stage !== "all" && opportunity.stage !== input.stage) return false;
     return true;
   }) : [];
   const priorClosedSince = priorWindow ? opportunities.filter((opportunity) => {
     if (opportunity.created_at >= priorWindow.to || input.stage !== "all") return false;
-    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (person !== "all" && opportunity.owner_id !== person) return false;
     if (!productOk(opportunity.product_slug)) return false;
     return closures.some((change) => change.opportunity_id === opportunity.id && change.created_at >= priorWindow.to);
   }) : [];
   const priorClosedInWindow = priorWindow ? opportunities.filter((opportunity) => {
     if (opportunity.stage !== "converted" && opportunity.stage !== "lost") return false;
-    if (person !== "all" && opportunity.created_by !== person) return false;
+    if (person !== "all" && opportunity.owner_id !== person) return false;
     if (!productOk(opportunity.product_slug)) return false;
     if (input.stage !== "all" && opportunity.stage !== input.stage) return false;
     return closedBetween(opportunity.id, priorWindow.from, priorWindow.to) ||

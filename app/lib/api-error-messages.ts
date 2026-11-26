@@ -107,6 +107,7 @@ const apiErrorMessages: Record<string, string> = {
   commercial_unavailable: "Não foi possível consultar o funil comercial. Tente novamente.",
   commercial_create_failed: "Não foi possível registar o contacto. Tente novamente.",
   commercial_update_failed: "Não foi possível guardar as alterações desta oportunidade.",
+  contact_owner_not_ready: "Aplique a migração do comercial responsável para guardar esta pessoa.",
   commercial_stage_locked: "Os pagamentos confirmados permanecem na etapa Convertido.",
   stage_change_reason_required: "Explique o motivo da mudança de etapa.",
   lost_reason_required: "Indique o motivo da perda.",

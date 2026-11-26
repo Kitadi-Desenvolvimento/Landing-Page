@@ -1,4 +1,5 @@
 {
   "/api/backoffice/commercial/route": "app/api/backoffice/commercial/route.js",
+  "/api/backoffice/commercial/[id]/route": "app/api/backoffice/commercial/[id]/route.js",
   "/backoffice/page": "app/backoffice/page.js"
 }

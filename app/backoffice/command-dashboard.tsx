@@ -354,7 +354,7 @@ function noticeReading(notice: CommandData["notices"][number]): Reading {
   return {
     title: notice.contactName || notice.title,
     summary: notice.line,
-    meaning: `${notice.stageLabel} é a etapa actual. O aviso aparece porque o tempo desta etapa já passou, ou porque o seguimento é para hoje. ${notice.personName === "Sem responsável" ? "Ainda ninguém da equipa assumiu este contacto." : `${notice.personName} é quem criou o contacto.`}`,
+    meaning: `${notice.stageLabel} é a etapa actual. O aviso aparece porque o tempo desta etapa já passou, ou porque o seguimento é para hoje. ${notice.personName === "Sem responsável" ? "Ainda ninguém da equipa assumiu este contacto." : `${notice.personName} é o comercial responsável.`}`,
     items: [],
     remainder: "",
   };

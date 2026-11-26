@@ -356,6 +356,12 @@ type CommercialContact = {
   email: string | null;
   phone: string | null;
   company_id: string | null;
+  owner_id?: string | null;
+};
+
+type CommercialStaff = {
+  id: string;
+  name: string;
 };
 
 type CommercialPayment = {
@@ -424,7 +430,12 @@ function isCommercialContact(value: unknown): value is CommercialContact {
     typeof value.name === "string" &&
     (typeof value.email === "string" || value.email === null) &&
     (typeof value.phone === "string" || value.phone === null) &&
-    (typeof value.company_id === "string" || value.company_id === null);
+    (typeof value.company_id === "string" || value.company_id === null) &&
+    (!("owner_id" in value) || typeof value.owner_id === "string" || value.owner_id === null);
+}
+
+function isCommercialStaff(value: unknown): value is CommercialStaff {
+  return isObjectRecord(value) && typeof value.id === "string" && typeof value.name === "string";
 }
 
 function isCommercialOpportunity(value: unknown): value is CommercialOpportunity {
@@ -460,7 +471,9 @@ async function loadCommercialList(signal?: AbortSignal) {
   ) {
     throw new BackofficeRequestError("O serviço comercial devolveu dados inválidos.", response.status);
   }
-  return { opportunities: result.opportunities, contacts: result.contacts };
+  const staff = Array.isArray(result.staff) ? result.staff.filter(isCommercialStaff) : [];
+  const currentUserId = typeof result.currentUserId === "string" ? result.currentUserId : "";
+  return { opportunities: result.opportunities, contacts: result.contacts, staff, currentUserId };
 }
 
 function isCommercialHistory(item: unknown): item is CommercialHistory {
@@ -495,6 +508,8 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
   const queryClient = useQueryClient();
   const [opportunities, setOpportunities] = useState<CommercialOpportunity[]>([]);
   const [contacts, setContacts] = useState<CommercialContact[]>([]);
+  const [staff, setStaff] = useState<CommercialStaff[]>([]);
+  const [currentUserId, setCurrentUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -535,6 +550,8 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
     if (!commercialQuery.data) return;
     setOpportunities(commercialQuery.data.opportunities);
     setContacts(commercialQuery.data.contacts);
+    setStaff(commercialQuery.data.staff);
+    setCurrentUserId(commercialQuery.data.currentUserId);
     setError("");
     setLoading(false);
   }, [commercialQuery.data]);
@@ -578,6 +595,29 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
   const selectedContactOpportunities = selectedOpportunity
     ? opportunities.filter((item) => item.contact_id === selectedOpportunity.contact_id)
     : [];
+
+  async function claimContact(contactId: string, opportunityId: string) {
+    setError("");
+    try {
+      const response = await fetch(`/api/backoffice/commercial/${opportunityId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claim: true, contactId }),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(messageFromApiBody(result, "Não foi possível assumir este contacto."));
+      }
+      setOpportunities((current) => current.map((item) => item.contact_id === contactId
+        ? { ...item, contact: { ...item.contact, owner_id: currentUserId } }
+        : item));
+      reloadCommercial();
+      return true;
+    } catch (claimError) {
+      setError(claimError instanceof Error ? claimError.message : "Não foi possível assumir este contacto.");
+      return false;
+    }
+  }
 
   function updateOpportunity(updated: CommercialOpportunity) {
     setOpportunities((current) =>
@@ -823,6 +863,9 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                         <span className="mt-0.5 block truncate text-[10px] text-[#998f8b]">
                           {card.contact.contact_type === "company" ? "Empresa" : item.product_title || item.title}
                         </span>
+                        <span className="mt-0.5 block truncate text-[10px] font-semibold text-[#8c6a2c]">
+                          {staff.find((person) => person.id === card.contact.owner_id)?.name ?? "Sem comercial"}
+                        </span>
                       </span>
                     </span>
                     {card.contact.company_id ? (
@@ -884,12 +927,14 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
       {loading ? <p className="mt-4 text-[11px] text-[#938783]">A carregar oportunidades…</p> : null}
       {createOpen ? (
         <CommercialCreateModal
+          currentUserId={currentUserId}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             setCreateOpen(false);
             reloadCommercial();
           }}
           products={products}
+          staff={staff}
         />
       ) : null}
       {stageChangePrompt ? (
@@ -911,6 +956,9 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
           onSaved={updateOpportunity}
           opportunity={selectedOpportunity}
           contactOpportunities={selectedContactOpportunities}
+          currentUserId={currentUserId}
+          onClaim={() => claimContact(selectedOpportunity.contact_id, selectedOpportunity.id)}
+          staff={staff}
         />
       ) : null}
       {importOpen ? (
@@ -1106,10 +1154,14 @@ function paymentStatusForCommercial(status: KitadiOrder["status"], createdAt: st
 
 function CommercialCreateModal({
   products,
+  staff,
+  currentUserId,
   onClose,
   onCreated,
 }: {
   products: DashboardProduct[];
+  staff: CommercialStaff[];
+  currentUserId: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -1145,6 +1197,7 @@ function CommercialCreateModal({
             email: form.get("email"),
             phone: form.get("phone"),
             companyName: form.get("companyName"),
+            ownerId: form.get("ownerId") || null,
           },
           opportunity: {
             title: form.get("title"),
@@ -1207,6 +1260,13 @@ function CommercialCreateModal({
               </label>
             ) : <div />}
             <label className="text-[11px] font-semibold text-[#514849]">
+              Comercial responsável
+              <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" defaultValue={staff.some((person) => person.id === currentUserId) ? currentUserId : ""} name="ownerId">
+                <option value="">Sem comercial</option>
+                {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              </select>
+            </label>
+            <label className="text-[11px] font-semibold text-[#514849]">
               Produto / serviço
               <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" defaultValue="" name="productSlug">
                 <option value="">Sem produto definido</option>
@@ -1245,12 +1305,18 @@ function CommercialDetailsModal({
   opportunity,
   contactOpportunities,
   contacts,
+  staff,
+  currentUserId,
+  onClaim,
   onClose,
   onSaved,
 }: {
   opportunity: CommercialOpportunity;
   contactOpportunities: CommercialOpportunity[];
   contacts: CommercialContact[];
+  staff: CommercialStaff[];
+  currentUserId: string;
+  onClaim: () => Promise<boolean>;
   onClose: () => void;
   onSaved: (opportunity: CommercialOpportunity) => void;
 }) {
@@ -1261,6 +1327,7 @@ function CommercialDetailsModal({
     opportunity.follow_up_at ? toLocalDateTime(opportunity.follow_up_at) : "",
   );
   const [lostReason, setLostReason] = useState(opportunity.lost_reason ?? "");
+  const [ownerId, setOwnerId] = useState(opportunity.contact.owner_id ?? "");
   const [history, setHistory] = useState<CommercialHistory[]>([]);
   const [detailOpportunities, setDetailOpportunities] = useState(contactOpportunities);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -1324,6 +1391,7 @@ function CommercialDetailsModal({
           editOpportunityId: opportunity.id,
           notes,
           followUpAt: followUpIso,
+          ownerId: ownerId || null,
           lostReason: stage === "lost"
             ? stageChanged ? stageChangeReason.trim() : lostReason.trim()
             : "",
@@ -1339,6 +1407,7 @@ function CommercialDetailsModal({
         lost_reason: stage === "lost" ? lostReason.trim() : null,
         notes,
         follow_up_at: followUpIso,
+        contact: { ...opportunity.contact, owner_id: ownerId || null },
         converted_at: stage === "converted"
           ? opportunity.converted_at ?? new Date().toISOString()
           : opportunity.converted_at,
@@ -1369,6 +1438,7 @@ function CommercialDetailsModal({
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a8792f]">{opportunity.source === "checkout" ? "Inscrição do site" : "Registo manual"}</p>
             <h2 className="mt-1 truncate text-[20px] font-bold text-[#302829]" id="commercial-detail-title">{opportunity.contact.name}</h2>
             <p className="mt-1 text-[12px] text-[#827976]">{opportunity.title}</p>
+            <p className="mt-1 text-[12px] font-semibold text-[#8c6a2c]">{staff.find((person) => person.id === (opportunity.contact.owner_id ?? ""))?.name ?? "Sem comercial"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <button className="rounded-full border border-[#e2d6c4] px-3 py-1.5 text-[10px] font-semibold text-[#762838]" onClick={() => setBlockOpen(true)} type="button">Bloquear</button>
@@ -1434,6 +1504,28 @@ function CommercialDetailsModal({
               Próximo contacto
               <DateField className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" mode="datetime" onChange={(event) => setFollowUpAt(event.target.value)} value={followUpAt} />
             </label>
+            <div className="sm:col-span-2">
+              <label className="text-[11px] font-semibold text-[#514849]">
+                Comercial responsável
+                <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setOwnerId(event.target.value)} value={ownerId}>
+                  <option value="">Sem comercial</option>
+                  {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+                </select>
+              </label>
+              {currentUserId && ownerId !== currentUserId && opportunity.stage !== "converted" && opportunity.stage !== "lost" ? (
+                <button
+                  className="mt-2 rounded-full bg-[#510f1d] px-3 py-1.5 text-[10px] font-semibold text-white"
+                  onClick={() => {
+                    void onClaim().then((claimed) => {
+                      if (claimed) setOwnerId(currentUserId);
+                    });
+                  }}
+                  type="button"
+                >
+                  {ownerId ? "Assumir este contacto" : "Pegar este contacto"}
+                </button>
+              ) : null}
+            </div>
             {stageChanged ? (
               <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
                 Motivo da mudança{stage === "lost" ? " e da perda" : ""}
