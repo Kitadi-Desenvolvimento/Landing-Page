@@ -38,6 +38,7 @@ import type { Withdrawal } from "../lib/payments/withdrawals";
 import type { CommercialSummary } from "../lib/commercial";
 import type { DragEvent, FormEvent, ReactNode } from "react";
 import { messageFromApiBody } from "../lib/api-error-messages";
+import { followUpAfterStageChange } from "../lib/commercial-stage";
 import BlockDialog from "./block-dialog";
 
 const sectionTitles: Record<DashboardSection, { title: string; subtitle: string }> = {
@@ -530,6 +531,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
   } | null>(null);
   const [dragOverStage, setDragOverStage] = useState<CommercialOpportunity["stage"] | null>(null);
   const lastCardDragAt = useRef(0);
+  const completingFollowUp = useRef(new Set<string>());
   const [search, setSearch] = useState("");
   const [productFilter, setProductFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
@@ -596,34 +598,88 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
     ? opportunities.filter((item) => item.contact_id === selectedOpportunity.contact_id)
     : [];
 
-  async function claimContact(contactId: string, opportunityId: string) {
-    setError("");
-    try {
-      const response = await fetch(`/api/backoffice/commercial/${opportunityId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claim: true, contactId }),
-      });
-      const result: unknown = await response.json();
-      if (!response.ok) {
-        throw new Error(messageFromApiBody(result, "Não foi possível assumir este contacto."));
-      }
-      setOpportunities((current) => current.map((item) => item.contact_id === contactId
-        ? { ...item, contact: { ...item.contact, owner_id: currentUserId } }
-        : item));
-      reloadCommercial();
-      return true;
-    } catch (claimError) {
-      setError(claimError instanceof Error ? claimError.message : "Não foi possível assumir este contacto.");
-      return false;
+  async function closeFollowUp(
+    item: CommercialOpportunity,
+    stage: CommercialOpportunity["stage"],
+    lostReason = "",
+  ) {
+    const response = await fetch(`/api/backoffice/commercial/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contactId: item.contact_id,
+        fromStage: stage,
+        toStage: stage,
+        stageChangeReason: "",
+        editOpportunityId: item.id,
+        notes: item.notes ?? "",
+        followUpAt: null,
+        lostReason: stage === "lost" ? lostReason : "",
+      }),
+    });
+    const result: unknown = await response.json();
+    if (!response.ok) {
+      throw new Error(messageFromApiBody(result, "Não foi possível concluir o seguimento."));
     }
   }
 
-  function updateOpportunity(updated: CommercialOpportunity) {
+  function movedWithCard(
+    item: CommercialOpportunity,
+    contactId: string,
+    fromStage: CommercialOpportunity["stage"],
+    toStage: CommercialOpportunity["stage"],
+  ) {
+    return item.contact_id === contactId
+      && item.stage === fromStage
+      && (item.payment_status !== "accepted" || toStage === "converted");
+  }
+
+  async function updateOpportunity(updated: CommercialOpportunity, previousStage: CommercialOpportunity["stage"]) {
+    const siblings = previousStage === updated.stage
+      ? []
+      : opportunities.filter((item) =>
+        item.id !== updated.id &&
+        movedWithCard(item, updated.contact_id, previousStage, updated.stage) &&
+        followUpState(item),
+      );
     setOpportunities((current) =>
-      current.map((item) => item.id === updated.id ? updated : item),
+      current.map((item) => {
+        if (item.id === updated.id) return updated;
+        if (previousStage === updated.stage || !movedWithCard(item, updated.contact_id, previousStage, updated.stage)) {
+          return item;
+        }
+        return {
+          ...item,
+          stage: updated.stage,
+          follow_up_at: followUpState(item) ? null : item.follow_up_at,
+          lost_reason: updated.stage === "lost" ? updated.lost_reason ?? null : null,
+          converted_at: updated.stage === "converted" ? item.converted_at ?? new Date().toISOString() : item.converted_at,
+        };
+      }),
     );
+    try {
+      await Promise.all(siblings.map((item) => closeFollowUp(item, updated.stage, updated.lost_reason ?? "")));
+    } catch (closeError) {
+      setError(closeError instanceof Error ? closeError.message : "Não foi possível concluir o seguimento.");
+    }
     reloadCommercial();
+  }
+
+  async function completeFollowUp(item: CommercialOpportunity) {
+    if (!followUpState(item) || completingFollowUp.current.has(item.id)) return;
+    completingFollowUp.current.add(item.id);
+    setError("");
+    try {
+      await closeFollowUp(item, item.stage);
+      setOpportunities((current) =>
+        current.map((entry) => entry.id === item.id ? { ...entry, follow_up_at: null } : entry),
+      );
+      reloadCommercial();
+    } catch (completeError) {
+      setError(completeError instanceof Error ? completeError.message : "Não foi possível concluir o seguimento.");
+    } finally {
+      completingFollowUp.current.delete(item.id);
+    }
   }
 
   async function moveCardToStage(
@@ -653,7 +709,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
           stageChangeReason,
           editOpportunityId: opportunity.id,
           notes: opportunity.notes ?? "",
-          followUpAt: opportunity.follow_up_at ? new Date(opportunity.follow_up_at).toISOString() : null,
+          followUpAt: followUpState(opportunity) ? null : opportunity.follow_up_at ? new Date(opportunity.follow_up_at).toISOString() : null,
           lostReason: toStage === "lost" ? stageChangeReason.trim() : "",
         }),
       });
@@ -661,7 +717,30 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
       if (!response.ok) {
         throw new Error(messageFromApiBody(result, "Não foi possível mover o cartão."));
       }
+      const siblings = opportunities.filter((item) =>
+        item.id !== opportunity.id &&
+        movedWithCard(item, contactId, fromStage, toStage) &&
+        followUpState(item),
+      );
+      const closed = await Promise.allSettled(
+        siblings.map((item) => closeFollowUp(item, toStage, toStage === "lost" ? stageChangeReason.trim() : "")),
+      );
+      setOpportunities((current) =>
+        current.map((item) => {
+          if (!movedWithCard(item, contactId, fromStage, toStage)) return item;
+          return {
+            ...item,
+            stage: toStage,
+            follow_up_at: followUpState(item) ? null : item.follow_up_at,
+            lost_reason: toStage === "lost" ? stageChangeReason.trim() : null,
+            converted_at: toStage === "converted" ? item.converted_at ?? new Date().toISOString() : item.converted_at,
+          };
+        }),
+      );
       reloadCommercial();
+      if (closed.some((result) => result.status === "rejected")) {
+        setError("O cartão mudou de etapa, mas nem todos os seguimentos de hoje foram concluídos.");
+      }
     } catch (moveError) {
       setError(moveError instanceof Error ? moveError.message : "Não foi possível mover o cartão.");
     }
@@ -718,16 +797,18 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
           <ul className="mt-3 grid gap-2 lg:grid-cols-2">
             {dueFollowUps.slice(0, 6).map((item) => {
               const overdue = followUpState(item) === "overdue";
+              const ownerName = staff.find((person) => person.id === item.contact.owner_id)?.name ?? "Sem comercial";
               return (
                 <li className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2" key={item.id}>
                   <button className="min-w-0 text-left" onClick={() => setSelectedId(item.id)} type="button">
+                    <span className="block truncate text-[10px] font-semibold text-[#8c6a2c]">Responsável · {ownerName}</span>
                     <span className="block truncate text-[11px] font-bold text-[#3d3435]">{item.contact.name}</span>
                     <span className={`block truncate text-[10px] ${overdue ? "font-semibold text-red-700" : "text-[#8c6a2c]"}`}>
                       {overdue ? "Atrasado · " : "Hoje · "}{formatPaymentDate(item.follow_up_at ?? item.created_at)}
                       {item.product_title ? ` · ${item.product_title}` : ""}
                     </span>
                   </button>
-                  <ContactActions compact contact={item.contact} />
+                  <ContactActions compact contact={item.contact} onAction={() => { void completeFollowUp(item); }} />
                 </li>
               );
             })}
@@ -953,11 +1034,10 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
         <CommercialDetailsModal
           contacts={contacts}
           onClose={() => setSelectedId(null)}
+          onContactAction={() => { void completeFollowUp(selectedOpportunity); }}
           onSaved={updateOpportunity}
           opportunity={selectedOpportunity}
           contactOpportunities={selectedContactOpportunities}
-          currentUserId={currentUserId}
-          onClaim={() => claimContact(selectedOpportunity.contact_id, selectedOpportunity.id)}
           staff={staff}
         />
       ) : null}
@@ -1058,7 +1138,15 @@ function phoneWithCountryCode(phone: string | null) {
   return digits.length === 9 ? `244${digits}` : digits;
 }
 
-function ContactActions({ contact, compact = false }: { contact: CommercialContact; compact?: boolean }) {
+function ContactActions({
+  contact,
+  compact = false,
+  onAction,
+}: {
+  contact: CommercialContact;
+  compact?: boolean;
+  onAction?: () => void;
+}) {
   const phone = phoneWithCountryCode(contact.phone);
   const actions = [
     phone.length >= 9
@@ -1076,6 +1164,7 @@ function ContactActions({ contact, compact = false }: { contact: CommercialConta
           className={`rounded-full border border-[#e2d6d0] bg-white font-semibold text-[#510f1d] transition-colors hover:bg-[#f7efe9] ${compact ? "px-2.5 py-1 text-[10px]" : "px-3.5 py-2 text-[11px]"}`}
           href={action.href}
           key={action.label}
+          onClick={() => onAction?.()}
           {...(action.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
         >
           {action.label}
@@ -1306,19 +1395,17 @@ function CommercialDetailsModal({
   contactOpportunities,
   contacts,
   staff,
-  currentUserId,
-  onClaim,
   onClose,
+  onContactAction,
   onSaved,
 }: {
   opportunity: CommercialOpportunity;
   contactOpportunities: CommercialOpportunity[];
   contacts: CommercialContact[];
   staff: CommercialStaff[];
-  currentUserId: string;
-  onClaim: () => Promise<boolean>;
   onClose: () => void;
-  onSaved: (opportunity: CommercialOpportunity) => void;
+  onContactAction: () => void;
+  onSaved: (opportunity: CommercialOpportunity, previousStage: CommercialOpportunity["stage"]) => void;
 }) {
   const [stage, setStage] = useState(opportunity.stage);
   const [notes, setNotes] = useState(opportunity.notes);
@@ -1377,6 +1464,12 @@ function CommercialDetailsModal({
       setError("Escolha o dia e a hora no calendário.");
       return;
     }
+    const nextFollowUp = followUpAfterStageChange(
+      opportunity.follow_up_at,
+      followUpIso,
+      stageChanged,
+      followUpState(opportunity) !== null,
+    );
     setSaving(true);
     setError("");
     try {
@@ -1390,7 +1483,7 @@ function CommercialDetailsModal({
           stageChangeReason: stageChanged ? stageChangeReason.trim() : "",
           editOpportunityId: opportunity.id,
           notes,
-          followUpAt: followUpIso,
+          followUpAt: nextFollowUp,
           ownerId: ownerId || null,
           lostReason: stage === "lost"
             ? stageChanged ? stageChangeReason.trim() : lostReason.trim()
@@ -1401,17 +1494,18 @@ function CommercialDetailsModal({
       if (!response.ok) {
         throw new Error(messageFromApiBody(result, "Não foi possível guardar as alterações desta oportunidade."));
       }
+      if (!nextFollowUp) setFollowUpAt("");
       onSaved({
         ...opportunity,
         stage,
         lost_reason: stage === "lost" ? lostReason.trim() : null,
         notes,
-        follow_up_at: followUpIso,
+        follow_up_at: nextFollowUp,
         contact: { ...opportunity.contact, owner_id: ownerId || null },
         converted_at: stage === "converted"
           ? opportunity.converted_at ?? new Date().toISOString()
           : opportunity.converted_at,
-      });
+      }, opportunity.stage);
       if (isObjectRecord(result) && result.updated === true) {
         try {
           await queryClient.fetchQuery({
@@ -1446,7 +1540,15 @@ function CommercialDetailsModal({
           </div>
         </div>
         <div className="mt-4">
-          <ContactActions contact={opportunity.contact} />
+          <ContactActions
+            contact={opportunity.contact}
+            onAction={() => {
+              if (followUpState(opportunity) === null) return;
+              const savedLocal = opportunity.follow_up_at ? toLocalDateTime(opportunity.follow_up_at) : "";
+              if (followUpAt === savedLocal) setFollowUpAt("");
+              onContactAction();
+            }}
+          />
         </div>
         <div className="mt-4 grid gap-3 rounded-2xl bg-[#faf8f7] p-4 sm:grid-cols-2">
           <DetailItem label="Tipo" value={opportunity.contact.contact_type === "company" ? "Empresa" : "Pessoa"} />
@@ -1504,28 +1606,13 @@ function CommercialDetailsModal({
               Próximo contacto
               <DateField className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" mode="datetime" onChange={(event) => setFollowUpAt(event.target.value)} value={followUpAt} />
             </label>
-            <div className="sm:col-span-2">
-              <label className="text-[11px] font-semibold text-[#514849]">
-                Comercial responsável
-                <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setOwnerId(event.target.value)} value={ownerId}>
-                  <option value="">Sem comercial</option>
-                  {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
-                </select>
-              </label>
-              {currentUserId && ownerId !== currentUserId && opportunity.stage !== "converted" && opportunity.stage !== "lost" ? (
-                <button
-                  className="mt-2 rounded-full bg-[#510f1d] px-3 py-1.5 text-[10px] font-semibold text-white"
-                  onClick={() => {
-                    void onClaim().then((claimed) => {
-                      if (claimed) setOwnerId(currentUserId);
-                    });
-                  }}
-                  type="button"
-                >
-                  {ownerId ? "Assumir este contacto" : "Pegar este contacto"}
-                </button>
-              ) : null}
-            </div>
+            <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
+              Comercial responsável
+              <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setOwnerId(event.target.value)} value={ownerId}>
+                <option value="">Sem comercial</option>
+                {staff.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+              </select>
+            </label>
             {stageChanged ? (
               <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
                 Motivo da mudança{stage === "lost" ? " e da perda" : ""}

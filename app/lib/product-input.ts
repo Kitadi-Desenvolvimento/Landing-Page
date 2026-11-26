@@ -1,4 +1,4 @@
-import type { ProductData } from "../product-types";
+import type { ProductCrossSell, ProductData } from "../product-types";
 import { maxProductPriceKz } from "../course-data";
 
 export type ProductVariantInput = {
@@ -19,6 +19,7 @@ export type ProductInput = {
   checkoutEnabled: boolean;
   priceAmount: number | null;
   variants: ProductVariantInput[];
+  crossSell: ProductCrossSell[];
 };
 
 export function parseProductInput(value: unknown): ProductInput | null {
@@ -96,6 +97,9 @@ export function parseProductInput(value: unknown): ProductInput | null {
     return null;
   }
 
+  const crossSell = readCrossSell(input.crossSell);
+  if (!crossSell) return null;
+
   const image = (input.image as string).trim();
   if (!image.startsWith("/") || image.startsWith("//")) return null;
 
@@ -112,7 +116,26 @@ export function parseProductInput(value: unknown): ProductInput | null {
     checkoutEnabled: input.checkoutEnabled,
     priceAmount,
     variants: validVariants,
+    crossSell,
   };
+}
+
+function readCrossSell(value: unknown): ProductCrossSell[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 2) return null;
+  const slots: ProductCrossSell[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const row = item as Record<string, unknown>;
+    const slug = typeof row.slug === "string" ? row.slug.trim() : "";
+    const reason = typeof row.reason === "string" ? row.reason.trim() : "";
+    if (!slug && !reason) continue;
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) || slug.length > 80) return null;
+    if (!reason || reason.length > 300) return null;
+    slots.push({ slug, reason });
+  }
+  if (new Set(slots.map((slot) => slot.slug)).size !== slots.length) return null;
+  return slots;
 }
 
 export function productSlug(title: string) {
@@ -147,6 +170,9 @@ export function makeProductData(
     whatsappCta: existing?.whatsappCta ?? true,
     whatsappOnly: existing?.whatsappOnly ?? !existing?.course,
   };
+  const crossSell = input.crossSell.filter((slot) => slot.slug !== next.slug);
+  if (crossSell.length > 0) next.crossSell = crossSell;
+  else delete next.crossSell;
 
   if (input.priceAmount !== null) {
     next.priceAmount = input.priceAmount;

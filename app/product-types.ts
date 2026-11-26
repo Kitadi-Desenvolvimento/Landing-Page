@@ -8,11 +8,17 @@ export type EbookFile = {
   uploadedAt: string;
 };
 
+export type ProductCrossSell = {
+  slug: string;
+  reason: string;
+};
+
 export type ProductData = ProductListing & {
   course?: Course | null;
   price?: string;
   priceAmount?: number;
   edition?: string;
+  crossSell?: ProductCrossSell[];
   ebook?: EbookFile;
 };
 

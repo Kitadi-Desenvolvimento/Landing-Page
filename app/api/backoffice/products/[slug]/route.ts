@@ -28,14 +28,14 @@ export async function PATCH(
   if (!request.headers.get("content-type")?.startsWith("application/json")) {
     return jsonError("invalid_content_type", 415);
   }
-  if (Number(request.headers.get("content-length") ?? 0) > 4096) {
+  if (Number(request.headers.get("content-length") ?? 0) > 8192) {
     return jsonError("request_too_large", 413);
   }
 
   let payload: unknown;
   try {
     const body = await request.text();
-    if (body.length > 4096) return jsonError("request_too_large", 413);
+    if (body.length > 8192) return jsonError("request_too_large", 413);
     payload = JSON.parse(body);
   } catch {
     return jsonError("invalid_json", 400);

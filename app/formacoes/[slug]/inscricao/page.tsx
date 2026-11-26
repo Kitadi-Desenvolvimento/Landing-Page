@@ -6,7 +6,8 @@ import {
   getProductPath,
   offersPublicCheckout,
 } from "../../../course-data";
-import { getPublishedProductBySlug } from "../../../lib/products";
+import { resolveCrossSell, toCartCatalog } from "../../../lib/cross-sell";
+import { getPublishedProductBySlug, getPublishedProducts } from "../../../lib/products";
 import Checkout from "./checkout";
 import ProductCheckout from "./product-checkout";
 import { studentDiscountEnabled } from "../../../lib/students-server";
@@ -41,16 +42,32 @@ export default async function CheckoutPage({
 }: CheckoutPageProps) {
   const { slug } = await params;
   const { variante } = await searchParams;
-  const product = await getPublishedProductBySlug(slug);
+  const products = await getPublishedProducts();
+  const product = products.find((item) => item.slug === slug);
+  const catalog = products.flatMap((item) => {
+    const entry = toCartCatalog(item.data);
+    return entry ? [entry] : [];
+  });
 
   if (!product) notFound();
   if (!offersPublicCheckout(product.data)) {
     redirect(getProductPath({ slug: product.slug }));
   }
 
+  const source = catalog.find((item) => item.slug === product.slug);
+  const suggestions = source ? resolveCrossSell(source, catalog) : [];
+  const studentEnabled = studentDiscountEnabled();
+
   if (!product.data.course) {
-    return <ProductCheckout product={product.data} studentEnabled={studentDiscountEnabled()} />;
+    return <ProductCheckout product={product.data} studentEnabled={studentEnabled} suggestions={suggestions} />;
   }
 
-  return <Checkout course={product.data.course} initialVariantId={variante} studentEnabled={studentDiscountEnabled()} />;
+  return (
+    <Checkout
+      course={product.data.course}
+      initialVariantId={variante}
+      studentEnabled={studentEnabled}
+      suggestions={suggestions}
+    />
+  );
 }

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { getProductPath } from "../../../course-data";
 import type { ProductData } from "../../../product-types";
+import type { CrossSellOffer } from "../../../lib/cross-sell";
+import CheckoutCompanions from "./checkout-companions";
 import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
@@ -41,7 +43,15 @@ function isChargeDetails(value: unknown): value is ChargeDetails {
   }
 }
 
-export default function ProductCheckout({ product, studentEnabled }: { product: ProductData; studentEnabled: boolean }) {
+export default function ProductCheckout({
+  product,
+  studentEnabled,
+  suggestions,
+}: {
+  product: ProductData;
+  studentEnabled: boolean;
+  suggestions: CrossSellOffer[];
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [reviewingDetails, setReviewingDetails] = useState(false);
@@ -52,9 +62,21 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
     phone: "",
     companyName: "",
   });
-  const total = verifiedStudent && product.priceAmount !== undefined
-    ? studentDiscountedAmount(product.priceAmount)
-    : product.priceAmount;
+  const [extraSlugs, setExtraSlugs] = useState<string[]>([]);
+  const extras = suggestions.filter((item) => extraSlugs.includes(item.slug));
+  const priceOf = (amountKz: number) =>
+    verifiedStudent ? studentDiscountedAmount(amountKz) : amountKz;
+  const total = product.priceAmount === undefined
+    ? undefined
+    : priceOf(product.priceAmount) + extras.reduce((sum, item) => sum + priceOf(item.amountKz), 0);
+
+  function toggleExtra(offer: CrossSellOffer) {
+    setExtraSlugs((current) =>
+      current.includes(offer.slug)
+        ? current.filter((slug) => slug !== offer.slug)
+        : [...current, offer.slug],
+    );
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,7 +100,17 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          courseSlug: product.slug,
+          ...(extras.length > 0
+            ? {
+                items: [
+                  { courseSlug: product.slug, variantId: "default" },
+                  ...extras.map((item) => ({
+                    courseSlug: item.slug,
+                    variantId: item.variantId,
+                  })),
+                ],
+              }
+            : { courseSlug: product.slug }),
           name: details.name,
           email: details.email,
           phone: details.phone,
@@ -144,6 +176,13 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
 
       <section className="px-6 py-10 sm:py-14">
         <SectionContainer className="max-w-[920px]">
+          <CheckoutCompanions
+            className="mb-6"
+            amountLabel={(amount) => formatStudentPrice(priceOf(amount))}
+            selectedSlugs={extraSlugs}
+            suggestions={suggestions}
+            onToggle={toggleExtra}
+          />
           <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.9fr)] lg:gap-7">
             {reviewingDetails ? (
               <section
@@ -164,6 +203,7 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                     ["Telemóvel", details.phone],
                     ...(details.companyName ? [["Empresa", details.companyName]] : []),
                     ["Produto", product.title],
+                    ...extras.map((item) => [item.title, formatStudentPrice(priceOf(item.amountKz))]),
                     ...(verifiedStudent && product.priceAmount !== undefined
                       ? [["Desconto de aluno", `${studentDiscountPercent(product.priceAmount)}%`]]
                       : []),
@@ -272,7 +312,9 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
                 disabled={isSubmitting}
                 type="submit"
               >
-                {isSubmitting ? "A preparar pagamento…" : "Continuar para pagamento"}
+                {isSubmitting
+                  ? "A preparar pagamento…"
+                  : `Continuar para pagamento${total !== undefined ? ` · ${formatStudentPrice(total)}` : ""}`}
               </button>
               <p className="mt-4 text-xs leading-5 text-[#716a69]">
                 A Kitadi nunca pede o seu PIN, códigos de acesso ou credenciais bancárias.
@@ -280,18 +322,27 @@ export default function ProductCheckout({ product, studentEnabled }: { product: 
             </form>
             )}
 
-            <aside className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8">
-              <Image
-                alt={product.alt}
-                className="aspect-[4/3] w-full rounded-2xl bg-[#f5f0ed] object-cover"
-                height={360}
-                src={product.coverImage ?? product.image}
-                width={480}
-              />
-              <p className="mt-5 text-xs font-semibold uppercase tracking-[0.12em] text-[#ae7d32]">
-                Resumo da compra
-              </p>
-              <h2 className="mt-2 text-lg font-bold">{product.title}</h2>
+            <aside className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8 md:sticky md:top-6 md:self-start">
+              <div className="flex gap-3">
+                <Image
+                  alt=""
+                  className="h-16 w-16 flex-none rounded-xl bg-[#f5f0ed] object-cover"
+                  height={64}
+                  src={product.coverImage ?? product.image}
+                  width={64}
+                />
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ae7d32]">
+                    Resumo da compra
+                  </p>
+                  <h2 className="mt-1 text-lg font-bold">{product.title}</h2>
+                </div>
+              </div>
+              {extras.map((item) => (
+                <p className="mt-3 text-sm text-[#716a69]" key={item.slug}>
+                  + {item.title} · {formatStudentPrice(priceOf(item.amountKz))}
+                </p>
+              ))}
               <p className="mt-4 border-t border-[#eee8e5] pt-4 text-xl font-bold text-[#510f1d]">
                 {total !== undefined ? formatStudentPrice(total) : product.price}
               </p>

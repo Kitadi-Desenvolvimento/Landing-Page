@@ -8,6 +8,8 @@ import {
   getProductPath,
   type Course,
 } from "../../../course-data";
+import type { CrossSellOffer } from "../../../lib/cross-sell";
+import CheckoutCompanions from "./checkout-companions";
 import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
 import SiteHeader from "../../../site-header";
@@ -302,10 +304,12 @@ export default function Checkout({
   course,
   initialVariantId,
   studentEnabled,
+  suggestions,
 }: {
   course: Course;
   initialVariantId?: string;
   studentEnabled: boolean;
+  suggestions: CrossSellOffer[];
 }) {
   const [paymentCharge, setPaymentCharge] = useState<ChargeDetails | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -317,7 +321,21 @@ export default function Checkout({
   );
   const variant =
     getCourseVariant(course, variantId) ?? course.variants[0];
-  const total = variant && verifiedStudent ? studentDiscountedAmount(variant.priceAmount) : variant?.priceAmount;
+  const [extraSlugs, setExtraSlugs] = useState<string[]>([]);
+  const extras = suggestions.filter((item) => extraSlugs.includes(item.slug));
+  const priceOf = (amountKz: number) =>
+    verifiedStudent ? studentDiscountedAmount(amountKz) : amountKz;
+  const total = variant
+    ? priceOf(variant.priceAmount) + extras.reduce((sum, item) => sum + priceOf(item.amountKz), 0)
+    : undefined;
+
+  function toggleExtra(offer: CrossSellOffer) {
+    setExtraSlugs((current) =>
+      current.includes(offer.slug)
+        ? current.filter((slug) => slug !== offer.slug)
+        : [...current, offer.slug],
+    );
+  }
   const [enrollment, setEnrollment] = useState<EnrollmentDetails>({
     name: "",
     email: "",
@@ -402,8 +420,17 @@ export default function Checkout({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          courseSlug: course.slug,
-          variantId: variant.id,
+          ...(extras.length > 0
+            ? {
+                items: [
+                  { courseSlug: course.slug, variantId: variant.id },
+                  ...extras.map((item) => ({
+                    courseSlug: item.slug,
+                    variantId: item.variantId,
+                  })),
+                ],
+              }
+            : { courseSlug: course.slug, variantId: variant.id }),
           name: enrollment.name,
           email: enrollment.email,
           phone: enrollment.phone,
@@ -467,20 +494,20 @@ export default function Checkout({
         ? "A cobrança foi criada. Continue para o checkout seguro da WiPay."
         : reviewingDetails
           ? "Confira os dados da inscrição e o valor antes de avançar para o pagamento."
-          : "Preencha os seus dados e escolha como pagar. Sem carrinho, sem complicações.";
+          : "Preencha os seus dados. Pode juntar outros produtos e pagar tudo de uma vez.";
 
   return (
     <main className="min-h-svh text-[#211d1e]">
       <section
         aria-labelledby="checkout-title"
-        className="pb-10 text-white sm:pb-12"
+        className="pb-6 text-white sm:pb-8"
         style={{
           background:
             "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)",
         }}
       >
         <SiteHeader />
-        <SectionContainer className="px-6 pt-8 sm:pt-10">
+        <SectionContainer className="px-6 pt-4 sm:pt-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <Link
               className="text-sm font-medium text-white/80 transition-colors hover:text-[#cda45c]"
@@ -503,7 +530,7 @@ export default function Checkout({
             </ol>
           </div>
 
-          <p className="section-eyebrow mt-7 text-[#cda45c]">{paymentHeading}</p>
+          <p className="section-eyebrow mt-4 text-[#cda45c]">{paymentHeading}</p>
           <h1 className="section-heading mt-3 max-w-[800px]" id="checkout-title">
             {checkoutHeading}
           </h1>
@@ -522,6 +549,15 @@ export default function Checkout({
         className="bg-[#f5f2f1] px-6 py-10 sm:py-14"
       >
         <SectionContainer className="max-w-[920px]">
+          {paymentCharge ? null : (
+            <CheckoutCompanions
+              className="mb-6"
+              amountLabel={(amount) => formatStudentPrice(priceOf(amount))}
+              selectedSlugs={extraSlugs}
+              suggestions={suggestions}
+              onToggle={toggleExtra}
+            />
+          )}
           <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.9fr)] lg:gap-7">
             {paymentCharge ? (
               <PaymentInstructions
@@ -550,6 +586,7 @@ export default function Checkout({
                       ? [["Empresa", enrollment.companyName]]
                       : []),
                     ["Formato", `${variant.label} · ${variant.detail}`],
+                    ...extras.map((item) => [item.title, formatStudentPrice(priceOf(item.amountKz))]),
                     ...(verifiedStudent ? [["Desconto de aluno", `${studentDiscountPercent(variant.priceAmount)}%`]] : []),
                     ["Total a pagar", formatStudentPrice(total ?? variant.priceAmount)],
                   ].map(([label, value]) => (
@@ -767,34 +804,35 @@ export default function Checkout({
             </form>
             )}
 
-            <aside className="overflow-hidden rounded-[28px] border border-[#e7e1df] bg-white">
-              <div className="relative h-[210px] bg-[#3b0a15] sm:h-[190px]">
-                <Image
-                  alt={course.alt}
-                  className="object-contain object-center"
-                  fill
-                  priority
-                  sizes="(min-width: 768px) 300px, (min-width: 640px) 100vw, 100vw"
-                  src={course.image}
-                />
-              </div>
+            <aside className="overflow-hidden rounded-[28px] border border-[#e7e1df] bg-white md:sticky md:top-6 md:self-start">
               <div className="p-6 sm:p-7">
-                <p className="section-eyebrow text-[11px] text-[#ae7d32]">
-                  {course.category}
-                </p>
-                <h2 className="content-card-title mt-3">{course.title}</h2>
-                <p className="content-card-copy mt-3 text-[#716a69]">
-                  {course.description}
-                </p>
+                <div className="flex gap-3">
+                  <Image
+                    alt=""
+                    className="h-16 w-16 flex-none rounded-xl bg-[#3b0a15] object-cover"
+                    height={64}
+                    src={course.coverImage ?? course.image}
+                    width={64}
+                  />
+                  <div className="min-w-0">
+                    <p className="section-eyebrow text-[11px] text-[#ae7d32]">
+                      {course.category}
+                    </p>
+                    <h2 className="content-card-title mt-1">{course.title}</h2>
+                  </div>
+                </div>
 
-                <div className="my-5 border-t border-[#e7e1df]" />
-
-                <div className="flex items-center justify-between text-sm text-[#716a69]">
+                <div className="mt-4 flex items-center justify-between text-sm text-[#716a69]">
                   <span>
                     {variant.label} · {variant.detail}
                   </span>
                   <span className="text-[#211d1e]">{variant.price}</span>
                 </div>
+                {extras.map((item) => (
+                  <p className="mt-2 text-sm text-[#716a69]" key={item.slug}>
+                    + {item.title} · {formatStudentPrice(priceOf(item.amountKz))}
+                  </p>
+                ))}
 
                 <div className="mt-4 rounded-[16px] bg-[#f7efe0] p-5">
                   <p className="text-sm text-[#862f3b]">Total a pagar</p>

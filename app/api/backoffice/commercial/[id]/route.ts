@@ -132,27 +132,6 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
   if (typeof body === "object" && body !== null) {
-    if ("claim" in body && body.claim === true) {
-      const contactId = "contactId" in body ? body.contactId : "";
-      if (typeof contactId !== "string" || !uuidPattern.test(contactId)) {
-        return NextResponse.json({ error: "invalid_update" }, { status: 400 });
-      }
-      const admin = createSupabaseAdminClient();
-      const opportunity = await admin.from("crm_opportunities").select("contact_id").eq("id", id).maybeSingle();
-      if (opportunity.error || !opportunity.data || opportunity.data.contact_id !== contactId) {
-        return NextResponse.json({ error: "opportunity_not_found" }, { status: 404 });
-      }
-      const ownerUpdate = await admin.from("crm_contacts").update({ owner_id: authorization.user.id }).eq("id", contactId);
-      if (ownerUpdate.error) {
-        if (missingCrmCodes.has(ownerUpdate.error.code ?? "")) {
-          return NextResponse.json({ error: "contact_owner_not_ready" }, { status: 503 });
-        }
-        console.error("[commercial] claiming contact failed", ownerUpdate.error.code ?? "unknown");
-        return NextResponse.json({ error: "commercial_update_failed" }, { status: 500 });
-      }
-      touchBackofficeData();
-      return NextResponse.json({ updated: true, ownerId: authorization.user.id });
-    }
     if ("notes" in body && body.notes === null) body.notes = "";
     if ("followUpAt" in body && typeof body.followUpAt === "string" && body.followUpAt.length <= 40) {
       const parsedFollowUp = Date.parse(body.followUpAt);

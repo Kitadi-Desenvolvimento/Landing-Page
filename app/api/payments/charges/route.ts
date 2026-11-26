@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { offersPublicCheckout } from "../../../course-data";
 import { getPublishedProductBySlug } from "../../../lib/products";
-import { newKitadiReference, saveOrder, updateOrder } from "../../../lib/payments/orders";
+import {
+  CartLedgerNotReadyError,
+  newKitadiReference,
+  saveOrder,
+  updateOrder,
+  type CartItem,
+} from "../../../lib/payments/orders";
 import { studentDiscountedAmount, studentDiscountPercent } from "../../../lib/student-discount";
 import { getVerifiedStudent } from "../../../lib/students-server";
 import {
@@ -19,6 +25,54 @@ function readString(value: unknown, maxLength: number) {
   return typeof value === "string" && value.trim().length <= maxLength
     ? value.trim()
     : null;
+}
+
+const maxCartLines = 6;
+
+type ChargeLine = {
+  slug: string;
+  title: string;
+  variantId: string;
+  variantLabel: string;
+  edition: string | null;
+  originalAmountKz: number;
+  amountKz: number;
+  discountPercent: number | null;
+};
+
+async function priceCheckoutLine(
+  slug: string,
+  variantId: string | null,
+  applyStudentDiscount: boolean,
+): Promise<ChargeLine | null> {
+  const product = await getPublishedProductBySlug(slug);
+  if (!product || !offersPublicCheckout(product.data)) return null;
+  const course = product.data.course;
+  const variant = course
+    ? variantId
+      ? course.variants.find((item) => item.id === variantId) ?? null
+      : course.variants[0] ?? null
+    : null;
+  if (course && !variant) return null;
+  if (!course && variantId !== null && variantId !== "default") return null;
+  const originalAmountKz = course ? variant?.priceAmount : product.data.priceAmount;
+  if (
+    originalAmountKz === undefined ||
+    !Number.isSafeInteger(originalAmountKz) ||
+    originalAmountKz <= 0
+  ) {
+    return null;
+  }
+  return {
+    slug: product.slug,
+    title: product.data.title,
+    variantId: variant?.id ?? "default",
+    variantLabel: variant?.label ?? "Compra",
+    edition: product.data.edition?.trim() || null,
+    originalAmountKz,
+    amountKz: applyStudentDiscount ? studentDiscountedAmount(originalAmountKz) : originalAmountKz,
+    discountPercent: applyStudentDiscount ? studentDiscountPercent(originalAmountKz) : null,
+  };
 }
 
 function siteOrigin(request: Request) {
@@ -59,8 +113,48 @@ export async function POST(request: Request) {
     );
   }
 
-  const courseSlug = readString(body.courseSlug, 100);
-  const variantId = readString(body.variantId, 40);
+  const requestedItems = Array.isArray(body.items) ? body.items : null;
+  const requests: { slug: string; variantId: string | null }[] = [];
+  if (requestedItems) {
+    if (requestedItems.length < 1 || requestedItems.length > maxCartLines) {
+      return NextResponse.json(
+        { error: "O carrinho precisa de ter entre 1 e 6 produtos." },
+        { status: 400 },
+      );
+    }
+    for (const item of requestedItems) {
+      if (!isRecord(item)) {
+        return NextResponse.json(
+          { error: "Verifique os produtos do carrinho antes de continuar." },
+          { status: 400 },
+        );
+      }
+      const slug = readString(item.courseSlug, 100);
+      if (!slug) {
+        return NextResponse.json(
+          { error: "Verifique os produtos do carrinho antes de continuar." },
+          { status: 400 },
+        );
+      }
+      requests.push({ slug, variantId: readString(item.variantId, 40) });
+    }
+  } else {
+    const slug = readString(body.courseSlug, 100);
+    if (!slug) {
+      return NextResponse.json(
+        { error: "Verifique o curso e os dados de contacto antes de continuar." },
+        { status: 400 },
+      );
+    }
+    requests.push({ slug, variantId: readString(body.variantId, 40) });
+  }
+  if (new Set(requests.map((item) => item.slug)).size !== requests.length) {
+    return NextResponse.json(
+      { error: "Cada produto entra uma vez no carrinho." },
+      { status: 400 },
+    );
+  }
+
   let name = readString(body.name, 120);
   let email = readString(body.email, 254);
   let phone = readString(body.phone, 24);
@@ -72,20 +166,7 @@ export async function POST(request: Request) {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.analyticsSessionId)
       ? body.analyticsSessionId
       : null;
-  const product = courseSlug
-    ? await getPublishedProductBySlug(courseSlug)
-    : undefined;
-  const course = product?.data.course;
-  const variant = course
-    ? variantId
-      ? course.variants.find((item) => item.id === variantId)
-      : course.variants[0]
-    : undefined;
-  const originalAmountKz = course
-    ? variant?.priceAmount
-    : product?.data.priceAmount;
-  let amountKz = originalAmountKz;
-  let discountPercent: number | null = null;
+  let applyStudentDiscount = false;
 
   if (body.studentToken !== undefined) {
     if (typeof body.studentToken !== "string") {
@@ -94,23 +175,44 @@ export async function POST(request: Request) {
     try {
       const studentVerified = await getVerifiedStudent(body.studentToken);
       if (!studentVerified) return NextResponse.json({ error: "A verificação de aluno expirou. Confirme novamente." }, { status: 401 });
-      if (amountKz !== undefined) {
-        discountPercent = studentDiscountPercent(amountKz);
-        amountKz = studentDiscountedAmount(amountKz);
-      }
+      applyStudentDiscount = true;
     } catch (error) {
       console.error("[payments] student verification failed", error instanceof Error ? error.message : "unknown");
       return NextResponse.json({ error: "Não foi possível verificar o desconto de aluno." }, { status: 503 });
     }
   }
 
+  const lines: ChargeLine[] = [];
+  for (const request of requests) {
+    const line = await priceCheckoutLine(request.slug, request.variantId, applyStudentDiscount);
+    if (!line) {
+      return NextResponse.json(
+        { error: "Verifique os produtos e os dados de contacto antes de continuar." },
+        { status: 400 },
+      );
+    }
+    lines.push(line);
+  }
+  const amountKz = lines.reduce((sum, line) => sum + line.amountKz, 0);
+  const originalAmountKz = lines.reduce((sum, line) => sum + line.originalAmountKz, 0);
+  const discountPercent = applyStudentDiscount && lines.every((line) => line.discountPercent === lines[0]?.discountPercent)
+    ? lines[0]?.discountPercent ?? null
+    : null;
+  const first = lines[0];
+  const cartItems: CartItem[] | undefined = lines.length > 1
+    ? lines.map((line) => ({
+      slug: line.slug,
+      title: line.title,
+      variantId: line.variantId,
+      variantLabel: line.variantLabel,
+      amountKz: line.amountKz,
+    }))
+    : undefined;
+  const editions = [...new Set(lines.map((line) => line.edition))];
+
   if (
-    !product ||
-    !offersPublicCheckout(product.data) ||
-    amountKz === undefined ||
+    !first ||
     !Number.isSafeInteger(amountKz) ||
-    (course !== null && course !== undefined && !variant) ||
-    (!course && variantId !== null) ||
     !name ||
     !email ||
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
@@ -150,13 +252,16 @@ export async function POST(request: Request) {
     await saveOrder({
       reference,
       amountKz,
-      originalAmountKz: discountPercent === null ? null : originalAmountKz,
+      originalAmountKz: applyStudentDiscount ? originalAmountKz : null,
       studentDiscountPercent: discountPercent,
-      courseSlug: product.slug,
-      productTitle: product.data.title,
-      variantId: variant?.id ?? "default",
-      variantLabel: variant?.label ?? "Compra",
-      edition: product?.data.edition?.trim() || null,
+      courseSlug: first.slug,
+      productTitle: lines.length === 1
+        ? first.title
+        : lines.map((line) => line.title).join(" + ").slice(0, 180),
+      variantId: lines.length === 1 ? first.variantId : "carrinho",
+      variantLabel: lines.length === 1 ? first.variantLabel : `${lines.length} itens`,
+      edition: editions.length === 1 ? editions[0] : null,
+      cartItems,
       name,
       email,
       phone: phone.replace(/\s+/g, ""),
@@ -176,6 +281,9 @@ export async function POST(request: Request) {
       analyticsSessionId,
     });
   } catch (error) {
+    if (error instanceof CartLedgerNotReadyError) {
+      return NextResponse.json({ error: error.message }, { status: 503 });
+    }
     console.error(
       "[payments] could not persist order before checkout",
       error instanceof Error ? error.message : "unknown",

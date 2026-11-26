@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import CartLink from "./cart-link";
 
 const navItems = [
   { label: "Início", href: "/#inicio" },
@@ -53,7 +54,10 @@ export default function SiteHeader() {
           ))}
         </nav>
 
-        <ContactButton className="hidden min-w-[128px] md:inline-flex" />
+        <div className="hidden items-center gap-3 md:flex">
+          <CartLink />
+          <ContactButton className="inline-flex min-w-[128px]" />
+        </div>
 
         <details className="group relative md:hidden">
           <summary
@@ -79,6 +83,7 @@ export default function SiteHeader() {
                 {item.label}
               </Link>
             ))}
+            <CartLink className="min-h-11" />
             <ContactButton className="mt-1 inline-flex min-h-11 px-5" />
           </nav>
         </details>

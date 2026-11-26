@@ -12,6 +12,21 @@ export type PaymentStatus =
   | "canceled"
   | "refunded";
 
+export type CartItem = {
+  slug: string;
+  title: string;
+  variantId: string;
+  variantLabel: string;
+  amountKz: number;
+};
+
+export class CartLedgerNotReadyError extends Error {
+  constructor() {
+    super("Aplique a migração das linhas do carrinho para pagar vários produtos de uma vez.");
+    this.name = "CartLedgerNotReadyError";
+  }
+}
+
 export type KitadiOrder = {
   reference: string;
   amountKz: number;
@@ -22,6 +37,7 @@ export type KitadiOrder = {
   variantId: string;
   variantLabel: string;
   edition: string | null;
+  cartItems?: CartItem[];
   name: string;
   email: string;
   phone: string;
@@ -183,6 +199,7 @@ function toDatabase(order: KitadiOrder) {
     variant_id: order.variantId,
     variant_label: order.variantLabel,
     edition: order.edition,
+    ...(order.cartItems ? { cart_items: order.cartItems } : {}),
     customer_name: order.name,
     customer_email: order.email,
     customer_phone: order.phone,
@@ -254,7 +271,10 @@ export async function saveOrder(order: KitadiOrder) {
     .select("*")
     .single();
 
-  if (error) throwDatabaseError("saving order", error);
+  if (error) {
+    if (order.cartItems && error.code === "PGRST204") throw new CartLedgerNotReadyError();
+    throwDatabaseError("saving order", error);
+  }
   touchBackofficeData();
   return fromDatabase(data);
 }
