@@ -76,7 +76,7 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     references.length
       ? admin
       .from("payment_orders")
-      .select("reference,status,provider_status,reason,created_at,paid_at,amount_kz,product_title,variant_label")
+      .select("reference,status,provider_status,reason,created_at,paid_at,amount_kz,product_title,variant_label,customer_name")
       .in("reference", references)
       : Promise.resolve({ data: [], error: null }),
   ]);

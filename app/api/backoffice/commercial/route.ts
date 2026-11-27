@@ -88,7 +88,7 @@ export async function GET() {
   if (references.length) {
     const { data, error: paymentError } = await admin
       .from("payment_orders")
-      .select("reference,status,provider_status,reason,created_at,paid_at")
+      .select("reference,status,provider_status,reason,created_at,paid_at,customer_name")
       .in("reference", references);
     if (paymentError) {
       const notConfigured = isMissingCrm(paymentError);

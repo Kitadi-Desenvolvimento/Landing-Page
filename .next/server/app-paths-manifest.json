@@ -1,8 +1,8 @@
 {
+  "/api/backoffice/commercial/route": "app/api/backoffice/commercial/route.js",
+  "/api/backoffice/commercial/[id]/route": "app/api/backoffice/commercial/[id]/route.js",
+  "/api/backoffice/notifications/route": "app/api/backoffice/notifications/route.js",
   "/api/backoffice/command/route": "app/api/backoffice/command/route.js",
   "/api/backoffice/profile/route": "app/api/backoffice/profile/route.js",
-  "/api/backoffice/commercial/route": "app/api/backoffice/commercial/route.js",
-  "/api/backoffice/notifications/route": "app/api/backoffice/notifications/route.js",
-  "/api/backoffice/commercial/[id]/route": "app/api/backoffice/commercial/[id]/route.js",
   "/backoffice/page": "app/backoffice/page.js"
 }

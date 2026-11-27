@@ -375,6 +375,7 @@ type CommercialPayment = {
   amount_kz?: number;
   product_title?: string;
   variant_label?: string;
+  customer_name?: string | null;
 };
 
 type CommercialOpportunity = {
@@ -526,6 +527,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
     refetchInterval: 30_000,
   });
   const [draggedCard, setDraggedCard] = useState<{
+    opportunityId: string;
     contactId: string;
     stage: CommercialOpportunity["stage"];
   } | null>(null);
@@ -538,6 +540,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
   const [onlyFollowUp, setOnlyFollowUp] = useState(false);
   const [showLost, setShowLost] = useState(false);
   const [stageChangePrompt, setStageChangePrompt] = useState<{
+    opportunityId: string;
     contactId: string;
     fromStage: CommercialOpportunity["stage"];
     toStage: CommercialOpportunity["stage"];
@@ -623,45 +626,10 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
     }
   }
 
-  function movedWithCard(
-    item: CommercialOpportunity,
-    contactId: string,
-    fromStage: CommercialOpportunity["stage"],
-    toStage: CommercialOpportunity["stage"],
-  ) {
-    return item.contact_id === contactId
-      && item.stage === fromStage
-      && (item.payment_status !== "accepted" || toStage === "converted");
-  }
-
-  async function updateOpportunity(updated: CommercialOpportunity, previousStage: CommercialOpportunity["stage"]) {
-    const siblings = previousStage === updated.stage
-      ? []
-      : opportunities.filter((item) =>
-        item.id !== updated.id &&
-        movedWithCard(item, updated.contact_id, previousStage, updated.stage) &&
-        followUpState(item),
-      );
+  async function updateOpportunity(updated: CommercialOpportunity) {
     setOpportunities((current) =>
-      current.map((item) => {
-        if (item.id === updated.id) return updated;
-        if (previousStage === updated.stage || !movedWithCard(item, updated.contact_id, previousStage, updated.stage)) {
-          return item;
-        }
-        return {
-          ...item,
-          stage: updated.stage,
-          follow_up_at: followUpState(item) ? null : item.follow_up_at,
-          lost_reason: updated.stage === "lost" ? updated.lost_reason ?? null : null,
-          converted_at: updated.stage === "converted" ? item.converted_at ?? new Date().toISOString() : item.converted_at,
-        };
-      }),
+      current.map((item) => item.id === updated.id ? updated : item),
     );
-    try {
-      await Promise.all(siblings.map((item) => closeFollowUp(item, updated.stage, updated.lost_reason ?? "")));
-    } catch (closeError) {
-      setError(closeError instanceof Error ? closeError.message : "Não foi possível concluir o seguimento.");
-    }
     reloadCommercial();
   }
 
@@ -683,17 +651,16 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
   }
 
   async function moveCardToStage(
+    opportunityId: string,
     contactId: string,
     fromStage: CommercialOpportunity["stage"],
     toStage: CommercialOpportunity["stage"],
     stageChangeReason = "",
   ) {
     if (fromStage === toStage) return;
-    const opportunity = opportunities.find(
-      (item) => item.contact_id === contactId && item.stage === fromStage,
-    );
+    const opportunity = opportunities.find((item) => item.id === opportunityId && item.stage === fromStage);
     if (!opportunity) {
-      setError("Não foi possível encontrar as oportunidades deste cartão. Actualize o funil.");
+      setError("Não foi possível encontrar esta oportunidade. Actualize o funil.");
       return;
     }
 
@@ -717,17 +684,9 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
       if (!response.ok) {
         throw new Error(messageFromApiBody(result, "Não foi possível mover o cartão."));
       }
-      const siblings = opportunities.filter((item) =>
-        item.id !== opportunity.id &&
-        movedWithCard(item, contactId, fromStage, toStage) &&
-        followUpState(item),
-      );
-      const closed = await Promise.allSettled(
-        siblings.map((item) => closeFollowUp(item, toStage, toStage === "lost" ? stageChangeReason.trim() : "")),
-      );
       setOpportunities((current) =>
         current.map((item) => {
-          if (!movedWithCard(item, contactId, fromStage, toStage)) return item;
+          if (item.id !== opportunity.id) return item;
           return {
             ...item,
             stage: toStage,
@@ -738,9 +697,6 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
         }),
       );
       reloadCommercial();
-      if (closed.some((result) => result.status === "rejected")) {
-        setError("O cartão mudou de etapa, mas nem todos os seguimentos de hoje foram concluídos.");
-      }
     } catch (moveError) {
       setError(moveError instanceof Error ? moveError.message : "Não foi possível mover o cartão.");
     }
@@ -752,7 +708,12 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
     const drag = draggedCard;
     setDraggedCard(null);
     if (!drag) return;
-    setStageChangePrompt({ contactId: drag.contactId, fromStage: drag.stage, toStage });
+    setStageChangePrompt({
+      opportunityId: drag.opportunityId,
+      contactId: drag.contactId,
+      fromStage: drag.stage,
+      toStage,
+    });
   }
 
   return (
@@ -802,7 +763,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                 <li className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2" key={item.id}>
                   <button className="min-w-0 text-left" onClick={() => setSelectedId(item.id)} type="button">
                     <span className="block truncate text-[10px] font-semibold text-[#8c6a2c]">Responsável · {ownerName}</span>
-                    <span className="block truncate text-[11px] font-bold text-[#3d3435]">{item.contact.name}</span>
+                    <span className="block truncate text-[11px] font-bold text-[#3d3435]">{commercialPersonName(item)}</span>
                     <span className={`block truncate text-[10px] ${overdue ? "font-semibold text-red-700" : "text-[#8c6a2c]"}`}>
                       {overdue ? "Atrasado · " : "Hoje · "}{formatPaymentDate(item.follow_up_at ?? item.created_at)}
                       {item.product_title ? ` · ${item.product_title}` : ""}
@@ -910,12 +871,12 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                   const cardAmount = card.opportunities.reduce((sum, current) => sum + (current.amount_kz ?? 0), 0);
                   return (
                   <button
-                    aria-label={`${card.contact.name}, arrastar para outra etapa ou abrir detalhes`}
+                    aria-label={`${commercialPersonName(item)}, arrastar para outra etapa ou abrir detalhes`}
                     className={`block w-full rounded-[15px] border border-[#ebe5e2] bg-white p-3.5 text-left shadow-[0_3px_10px_rgba(47,32,28,0.025)] transition hover:border-[#cda45c] hover:shadow-sm ${
-                      draggedCard?.contactId === card.contact.id ? "opacity-50" : ""
+                      draggedCard?.opportunityId === item.id ? "opacity-50" : ""
                     }`}
                     draggable
-                    key={`${card.contact.id}:${stage.id}`}
+                    key={item.id}
                     onDragEnd={() => {
                       lastCardDragAt.current = Date.now();
                       setDraggedCard(null);
@@ -923,8 +884,8 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                     }}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", card.contact.id);
-                      setDraggedCard({ contactId: card.contact.id, stage: stage.id });
+                      event.dataTransfer.setData("text/plain", item.id);
+                      setDraggedCard({ opportunityId: item.id, contactId: card.contact.id, stage: stage.id });
                     }}
                     onClick={(event) => {
                       if (Date.now() - lastCardDragAt.current < 500) {
@@ -937,10 +898,10 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                   >
                     <span className="flex items-center gap-2.5">
                       <span className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${toneAvatar(stage.tone)}`}>
-                        {initials(card.contact.name)}
+                        {initials(commercialPersonName(item))}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[11px] font-bold text-[#3d3435]">{card.contact.name}</span>
+                        <span className="block truncate text-[11px] font-bold text-[#3d3435]">{commercialPersonName(item)}</span>
                         <span className="mt-0.5 block truncate text-[10px] text-[#998f8b]">
                           {card.contact.contact_type === "company" ? "Empresa" : item.product_title || item.title}
                         </span>
@@ -952,11 +913,6 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
                     {card.contact.company_id ? (
                       <span className="mt-2 block truncate text-[9px] text-[#928783]">
                         {contacts.find((contact) => contact.id === card.contact.company_id)?.name ?? "Associado a uma empresa"}
-                      </span>
-                    ) : null}
-                    {card.opportunities.length > 1 ? (
-                      <span className="mt-2 block text-[9px] font-semibold text-[#84756e]">
-                        {card.opportunities.length} oportunidades nesta etapa
                       </span>
                     ) : null}
                     {stage.id === "lost" && item.lost_reason ? (
@@ -1026,7 +982,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
           onConfirm={(reason) => {
             const prompt = stageChangePrompt;
             setStageChangePrompt(null);
-            void moveCardToStage(prompt.contactId, prompt.fromStage, prompt.toStage, reason);
+            void moveCardToStage(prompt.opportunityId, prompt.contactId, prompt.fromStage, prompt.toStage, reason);
           }}
         />
       ) : null}
@@ -1079,21 +1035,21 @@ function StageCardList({ children }: { children: ReactNode }) {
   );
 }
 
+function commercialPersonName(opportunity: CommercialOpportunity) {
+  const registered = opportunity.payment?.customer_name?.trim();
+  return registered || opportunity.contact.name;
+}
+
 function groupCommercialCards(
   opportunities: CommercialOpportunity[],
   stage: CommercialOpportunity["stage"],
 ) {
-  const groups = new Map<string, CommercialOpportunity[]>();
-  for (const opportunity of opportunities) {
-    if (opportunity.stage !== stage) continue;
-    const group = groups.get(opportunity.contact_id) ?? [];
-    group.push(opportunity);
-    groups.set(opportunity.contact_id, group);
-  }
-  return [...groups.values()].map((items) => ({
-    contact: items[0].contact,
-    opportunities: items,
-  }));
+  return opportunities
+    .filter((opportunity) => opportunity.stage === stage)
+    .map((opportunity) => ({
+      contact: opportunity.contact,
+      opportunities: [opportunity],
+    }));
 }
 
 function followUpState(opportunity: CommercialOpportunity): "overdue" | "today" | null {
@@ -1121,7 +1077,7 @@ function matchesCommercialSearch(
   if (!query) return true;
   const { contact } = opportunity;
   const text = normalizeSearch(
-    [contact.name, contact.email, companyName, opportunity.title, opportunity.product_title]
+    [commercialPersonName(opportunity), contact.name, contact.email, companyName, opportunity.title, opportunity.product_title]
       .filter(Boolean)
       .join(" "),
   );
@@ -1405,7 +1361,7 @@ function CommercialDetailsModal({
   staff: CommercialStaff[];
   onClose: () => void;
   onContactAction: () => void;
-  onSaved: (opportunity: CommercialOpportunity, previousStage: CommercialOpportunity["stage"]) => void;
+  onSaved: (opportunity: CommercialOpportunity) => void;
 }) {
   const [stage, setStage] = useState(opportunity.stage);
   const [notes, setNotes] = useState(opportunity.notes);
@@ -1505,7 +1461,7 @@ function CommercialDetailsModal({
         converted_at: stage === "converted"
           ? opportunity.converted_at ?? new Date().toISOString()
           : opportunity.converted_at,
-      }, opportunity.stage);
+      });
       if (isObjectRecord(result) && result.updated === true) {
         try {
           await queryClient.fetchQuery({
@@ -1530,7 +1486,7 @@ function CommercialDetailsModal({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#a8792f]">{opportunity.source === "checkout" ? "Inscrição do site" : "Registo manual"}</p>
-            <h2 className="mt-1 truncate text-[20px] font-bold text-[#302829]" id="commercial-detail-title">{opportunity.contact.name}</h2>
+            <h2 className="mt-1 truncate text-[20px] font-bold text-[#302829]" id="commercial-detail-title">{commercialPersonName(opportunity)}</h2>
             <p className="mt-1 text-[12px] text-[#827976]">{opportunity.title}</p>
             <p className="mt-1 text-[12px] font-semibold text-[#8c6a2c]">{staff.find((person) => person.id === (opportunity.contact.owner_id ?? ""))?.name ?? "Sem comercial"}</p>
           </div>
@@ -1594,7 +1550,7 @@ function CommercialDetailsModal({
         <form className="mt-5 space-y-4" onSubmit={save}>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-[11px] font-semibold text-[#514849]">
-              Mover cartão e oportunidades desta etapa
+              Mover esta oportunidade
               <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => {
                 setStage(event.target.value as CommercialOpportunity["stage"]);
                 setStageChangeReason("");
