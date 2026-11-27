@@ -1,6 +1,7 @@
 import "server-only";
 
 import { loadCommercialSteps, stageStepLimits, type CommercialStep } from "./commercial-steps";
+import { isStaffSchemaMissing, loadDisplayNames } from "./staff-profiles";
 import { objectivePeriodEnd, objectivePeriodStart, type ObjectivePeriodType } from "./objective-periods";
 import { createSupabaseAdminClient } from "./supabase/admin";
 import type { BackofficeRole } from "./supabase/require-admin";
@@ -97,7 +98,7 @@ async function objectiveNotices(role: BackofficeRole, userId: string, areaIds: s
     const silent = periodStart !== null && !hasCheckin;
     if (!due && !silent) return [];
     return [{
-      id: `objective-${row.id}`,
+      id: due ? `objective:${row.id}:due:${row.due_date}` : `objective:${row.id}:silent:${periodStart ?? "open"}`,
       kind: "objective" as const,
       title: row.title,
       detail: due ? "O prazo deste objectivo já chegou." : "Ainda não há check-in neste período.",
@@ -116,7 +117,7 @@ async function paymentNotice() {
     .is("reconciled_at", null);
   if (error || !count) return [] as StaffNotification[];
   return [{
-    id: "payments-unreconciled",
+    id: `payments-unreconciled:${count}`,
     kind: "payment" as const,
     title: count === 1 ? "1 pagamento por reconciliar" : `${count} pagamentos por reconciliar`,
     detail: "Já entraram e ainda não foram conferidos.",
@@ -135,22 +136,78 @@ function formatDay(date: string) {
   return new Intl.DateTimeFormat("pt-PT", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${date.slice(0, 10)}T00:00:00Z`));
 }
 
-function commercialNotice(step: CommercialStep): StaffNotification {
-  const today = luandaToday();
-  const followDay = step.followUpAt ? luandaDay(step.followUpAt) : null;
-  const reason = step.stageDue
-    ? `Há ${step.days} ${step.days === 1 ? "dia" : "dias"} em ${stageStepLimits[step.stage].label}.`
-    : followDay && followDay < today
+function commercialNotices(step: CommercialStep, ownerName: string): StaffNotification[] {
+  const person = step.contactName || step.title || "Contacto";
+  const notices: StaffNotification[] = [];
+  if (step.followDue && step.followUpAt) {
+    const today = luandaToday();
+    const followDay = luandaDay(step.followUpAt);
+    const when = followDay && followDay < today
       ? `O seguimento é de ${formatDay(followDay)}.`
       : "O seguimento é para hoje.";
-  return {
-    id: `step-${step.id}`,
-    kind: "commercial_step",
-    title: step.title,
-    detail: `${step.contactName || "Contacto"} · ${reason} ${step.next ?? ""}`.trim(),
-    section: "commercial",
-    targetId: step.id,
-  };
+    notices.push({
+      id: `follow:${step.id}:${step.followUpAt}`,
+      kind: "commercial_step",
+      title: person,
+      detail: `${ownerName} · ${when}`,
+      section: "commercial",
+      targetId: step.id,
+    });
+  }
+  if (step.stageDue) {
+    const days = `${step.days} ${step.days === 1 ? "dia" : "dias"}`;
+    notices.push({
+      id: `stage:${step.id}:${step.stage}:${step.enteredAt}`,
+      kind: "commercial_step",
+      title: person,
+      detail: `${ownerName} · Há ${days} em ${stageStepLimits[step.stage].label}.`,
+      section: "commercial",
+      targetId: step.id,
+    });
+  }
+  return notices;
+}
+
+const noticeKeyPattern = /^[\w:+.-]{1,300}$/;
+
+async function hiddenNoticeKeys(userId: string, keys: string[]) {
+  const hidden = new Set<string>();
+  if (keys.length === 0) return hidden;
+  const admin = createSupabaseAdminClient();
+  for (let index = 0; index < keys.length; index += 100) {
+    const slice = keys.slice(index, index + 100);
+    const { data, error } = await admin
+      .from("staff_notification_dismissals")
+      .select("notice_key")
+      .eq("user_id", userId)
+      .in("notice_key", slice);
+    if (error) {
+      if (isStaffSchemaMissing(error.code)) return hidden;
+      throw error;
+    }
+    for (const row of data ?? []) {
+      if (typeof row.notice_key === "string") hidden.add(row.notice_key);
+    }
+  }
+  return hidden;
+}
+
+export async function dismissStaffNotifications(userId: string, keys: string[]) {
+  const unique = [...new Set(keys)];
+  if (unique.length === 0 || unique.length > 200 || unique.some((key) => !noticeKeyPattern.test(key))) {
+    return "invalid" as const;
+  }
+  const { error } = await createSupabaseAdminClient()
+    .from("staff_notification_dismissals")
+    .upsert(
+      unique.map((noticeKey) => ({ user_id: userId, notice_key: noticeKey })),
+      { onConflict: "user_id,notice_key" },
+    );
+  if (error) {
+    if (isStaffSchemaMissing(error.code)) return "missing" as const;
+    throw error;
+  }
+  return "ok" as const;
 }
 
 export async function loadStaffNotifications(input: {
@@ -180,12 +237,16 @@ export async function loadStaffNotifications(input: {
 
   try {
     const steps = input.steps ?? await loadCommercialSteps();
+    const ownerNames = await loadDisplayNames(steps.flatMap((step) => step.createdBy ? [step.createdBy] : []));
     for (const step of steps) {
-      if (!step.next) continue;
+      if (!step.followDue && !step.stageDue) continue;
       const owns = step.createdBy === input.userId;
       const unowned = !step.createdBy;
       if (input.role !== "admin" && !owns) continue;
-      if (input.role === "admin" || owns || unowned) notifications.push(commercialNotice(step));
+      if (input.role === "admin" || owns || unowned) {
+        const ownerName = step.createdBy ? ownerNames.get(step.createdBy) || "Comercial" : "Sem comercial";
+        notifications.push(...commercialNotices(step, ownerName));
+      }
     }
   } catch (error) {
     console.error("[backoffice] commercial notifications failed", error instanceof Error ? error.message : "unknown");
@@ -206,5 +267,8 @@ export async function loadStaffNotifications(input: {
   }
 
   const order = { block: 0, commercial_step: 1, payment: 2, objective: 3 };
-  return notifications.sort((left, right) => order[left.kind] - order[right.kind] || left.title.localeCompare(right.title, "pt"));
+  const hidden = await hiddenNoticeKeys(input.userId, notifications.map((item) => item.id));
+  return notifications
+    .filter((item) => !hidden.has(item.id))
+    .sort((left, right) => order[left.kind] - order[right.kind] || left.title.localeCompare(right.title, "pt"));
 }

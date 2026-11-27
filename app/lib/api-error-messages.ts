@@ -89,6 +89,8 @@ const apiErrorMessages: Record<string, string> = {
   blocks_unavailable: "Não foi possível guardar o bloqueio. Tente novamente.",
   command_unavailable: "Não foi possível carregar o dashboard. Tente novamente.",
   notifications_unavailable: "Não foi possível carregar as notificações. Tente novamente.",
+  notifications_dismiss_unavailable: "Aplique a migração 20261127080000 no Supabase para poder eliminar notificações.",
+  invalid_notification: "Não foi possível eliminar esta notificação.",
   invalid_period: "O período escolhido não é válido.",
 
   invalid_invite: "O convite enviado não é válido.",
