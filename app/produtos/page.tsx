@@ -27,7 +27,7 @@ export default async function ProductsPage() {
         }}
       >
         <SiteHeader />
-        <SectionContainer className="px-6 pb-4 pt-28 sm:pt-32">
+        <SectionContainer className="px-6 pb-4 pt-32 sm:pt-36">
           <nav aria-label="Navegação estrutural" className="text-sm text-white/70">
             <Link className="transition-colors hover:text-white" href="/#inicio">
               Início

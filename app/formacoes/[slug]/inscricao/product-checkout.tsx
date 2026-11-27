@@ -155,7 +155,7 @@ export default function ProductCheckout({
         }}
       >
         <SiteHeader />
-        <SectionContainer className="px-6 pt-8 sm:pt-10">
+        <SectionContainer className="px-6 pt-28 sm:pt-32">
           <Link
             className="text-sm font-medium text-white/80 transition-colors hover:text-[#cda45c]"
             href={getProductPath(product)}

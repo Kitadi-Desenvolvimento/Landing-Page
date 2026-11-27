@@ -60,7 +60,7 @@ export default async function Home() {
     <main className="min-h-svh overflow-x-hidden">
       <section
         aria-labelledby="hero-title"
-        className="flex min-h-svh flex-col"
+        className="flex min-h-svh flex-col pt-[7.5rem]"
         id="inicio"
         style={{
           background:

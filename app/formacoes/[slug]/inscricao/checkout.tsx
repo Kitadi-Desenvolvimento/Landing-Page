@@ -507,7 +507,7 @@ export default function Checkout({
         }}
       >
         <SiteHeader />
-        <SectionContainer className="px-6 pt-4 sm:pt-6">
+        <SectionContainer className="px-6 pt-28 sm:pt-32">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
             <Link
               className="text-sm font-medium text-white/80 transition-colors hover:text-[#cda45c]"

@@ -168,7 +168,7 @@ function SimpleProductPage({ product }: { product: ProductData }) {
     <main className="min-h-svh bg-[#f5f2f1] text-[#211d1e]">
       <section className="text-white" style={burgundy}>
         <SiteHeader />
-        <SectionContainer className="grid items-center gap-10 px-6 pb-16 pt-16 sm:pb-20 lg:grid-cols-2">
+        <SectionContainer className="grid items-center gap-10 px-6 pb-16 pt-28 sm:pb-20 sm:pt-32 lg:grid-cols-2">
           <div>
             <nav aria-label="Navegação estrutural" className="text-sm text-white/70">
               <Link className="transition-colors hover:text-white" href="/produtos">
@@ -222,7 +222,7 @@ function Hero({
   return (
     <section className="relative overflow-hidden text-white" style={burgundy}>
       <SiteHeader />
-      <SectionContainer className="px-6 pb-16 pt-28 sm:pb-20 sm:pt-32">
+      <SectionContainer className="px-6 pb-16 pt-32 sm:pb-20 sm:pt-36">
         <nav aria-label="Navegação estrutural" className="text-sm text-white/70">
           <Link className="transition-colors hover:text-white" href="/#inicio">
             Início

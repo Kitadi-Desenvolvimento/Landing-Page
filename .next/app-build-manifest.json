@@ -1,14 +1,9 @@
 {
   "pages": {
-    "/api/backoffice/notifications/route": [
+    "/api/mercado/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/notifications/route.js"
-    ],
-    "/api/backoffice/commercial/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/commercial/route.js"
+      "static/chunks/app/api/mercado/route.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -16,20 +11,20 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/backoffice/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/backoffice/page.js"
+      "static/chunks/app/page.js"
     ],
-    "/api/backoffice/profile/route": [
+    "/api/site-analytics/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/profile/route.js"
+      "static/chunks/app/api/site-analytics/route.js"
     ],
-    "/api/backoffice/command/route": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/backoffice/command/route.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

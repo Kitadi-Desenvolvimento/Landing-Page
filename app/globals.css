@@ -101,6 +101,34 @@ h3,
   display: none;
 }
 
+.market-ticker-track {
+  animation: market-ticker 42s linear infinite;
+}
+
+.market-ticker:hover .market-ticker-track,
+.market-ticker:focus-within .market-ticker-track {
+  animation-play-state: paused;
+}
+
+@keyframes market-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .market-ticker {
+    overflow-x: auto;
+  }
+
+  .market-ticker-track {
+    animation: none;
+  }
+
+  .market-ticker-copy {
+    display: none;
+  }
+}
+
 .print-area {
   display: none;
 }

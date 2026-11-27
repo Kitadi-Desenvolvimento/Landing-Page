@@ -184,7 +184,7 @@ export default function CartView({
         style={{ background: "linear-gradient(110deg, #510f1d 0%, #3b0a15 47%, #28070d 100%)" }}
       >
         <SiteHeader />
-        <SectionContainer className="px-6 pt-8 sm:pt-10">
+        <SectionContainer className="px-6 pt-28 sm:pt-32">
           <p className="section-eyebrow mt-7 text-[#cda45c]">Pagamento único</p>
           <h1 className="section-heading mt-3 max-w-[800px]">Carrinho</h1>
           <p className="content-card-copy mt-3 max-w-[620px] text-white/75">

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import CartLink from "./cart-link";
+import MarketTicker from "./market-ticker";
 
 const navItems = [
   { label: "Início", href: "/#inicio" },
@@ -22,7 +23,8 @@ function ContactButton({ className = "" }: { className?: string }) {
 
 export default function SiteHeader() {
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#390b15]/95 px-6 py-4 shadow-lg backdrop-blur-md">
+    <header className="fixed inset-x-0 top-0 z-50 shadow-lg">
+      <div className="border-b border-white/10 bg-[#390b15]/95 px-6 py-4 backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-[1058px] items-center justify-between">
         <Link
           aria-label="Kitadi — início"
@@ -88,6 +90,8 @@ export default function SiteHeader() {
           </nav>
         </details>
       </div>
+      </div>
+      <MarketTicker />
     </header>
   );
 }

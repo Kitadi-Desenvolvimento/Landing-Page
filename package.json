@@ -14,6 +14,7 @@
     "test:objectives": "node --experimental-strip-types --test scripts/objectives.test.mjs",
     "test:commercial": "node --experimental-strip-types --test scripts/commercial-stage.test.mjs",
     "test:reports": "node --experimental-strip-types --test scripts/report-descriptions.test.mjs",
+    "test:market": "node --experimental-strip-types --test scripts/market.test.mjs",
     "backoffice:invite-admin": "node --env-file=.env.local scripts/invite-initial-admin.mjs",
     "backoffice:generate-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link",
     "backoffice:generate-local-admin-link": "node --env-file=.env.local scripts/invite-initial-admin.mjs --link --local",
