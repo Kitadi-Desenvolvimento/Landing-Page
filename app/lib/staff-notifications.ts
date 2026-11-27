@@ -114,13 +114,14 @@ async function paymentNotice() {
     .from("payment_orders")
     .select("reference", { count: "exact", head: true })
     .eq("status", "accepted")
+    .neq("payment_provider", "manual")
     .is("reconciled_at", null);
   if (error || !count) return [] as StaffNotification[];
   return [{
     id: `payments-unreconciled:${count}`,
     kind: "payment" as const,
     title: count === 1 ? "1 pagamento por reconciliar" : `${count} pagamentos por reconciliar`,
-    detail: "Já entraram e ainda não foram conferidos.",
+    detail: "Entraram pelo checkout e ainda não foram conferidos com a WiPay.",
     section: "payments" as const,
     targetId: null,
   }];

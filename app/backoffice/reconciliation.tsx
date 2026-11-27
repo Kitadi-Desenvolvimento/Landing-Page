@@ -320,6 +320,29 @@ export function PaymentReconciliationCell({ order }: { order: KitadiOrder }) {
   const [error, setError] = useState("");
 
   if (order.status !== "accepted") return <span className="text-[#b5aca8]">—</span>;
+  if (order.paymentProvider === "manual") {
+    return (
+      <>
+        <span className="text-[10px] font-semibold text-[#8c6a2c]">Registo manual</span>
+        <button className="mt-1.5 block text-[9px] font-semibold text-[#a43832] hover:underline" onClick={() => setRefunding(true)} type="button">
+          Estornar
+        </button>
+        {refunding ? (
+          <ReasonModal
+            description={`O pagamento ${order.reference} deixa de contar como receita. O registo fica guardado com o motivo.`}
+            onClose={() => setRefunding(false)}
+            onSubmit={async (reason) => {
+              const result = await send(`/api/backoffice/payments/${order.reference}`, "PATCH", { refundReason: reason });
+              if (!result.error) router.refresh();
+              return result;
+            }}
+            submitLabel="Estornar pagamento"
+            title="Estornar pagamento manual"
+          />
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -337,25 +360,7 @@ export function PaymentReconciliationCell({ order }: { order: KitadiOrder }) {
       {order.reconciledAt ? (
         <p className="mt-1 text-[9px] text-[#a19894]">{formatPaymentDate(order.reconciledAt)}</p>
       ) : null}
-      {order.paymentProvider === "manual" ? (
-        <button className="mt-1.5 block text-[9px] font-semibold text-[#a43832] hover:underline" onClick={() => setRefunding(true)} type="button">
-          Estornar
-        </button>
-      ) : null}
       {error ? <p className="mt-1 max-w-40 text-[9px] leading-4 text-[#a43832]" role="alert">{error}</p> : null}
-      {refunding ? (
-        <ReasonModal
-          description={`O pagamento ${order.reference} deixa de contar como receita. O registo fica guardado com o motivo.`}
-          onClose={() => setRefunding(false)}
-          onSubmit={async (reason) => {
-            const result = await send(`/api/backoffice/payments/${order.reference}`, "PATCH", { refundReason: reason });
-            if (!result.error) router.refresh();
-            return result;
-          }}
-          submitLabel="Estornar pagamento"
-          title="Estornar pagamento manual"
-        />
-      ) : null}
     </>
   );
 }
@@ -457,7 +462,7 @@ export function ReconciliationPanel({
         <div>
           <h3 className="text-[14px] font-bold text-[#342c2d]">Conciliação com a WiPay</h3>
           <p className="mt-1 max-w-xl text-[11px] leading-5 text-[#9b918d]">
-            Marque cada movimento como conciliado depois de confirmar que existe igual na WiPay. Quando tudo estiver conciliado, o saldo conciliado deve ser igual ao saldo da WiPay.
+            Marque cada entrada do checkout depois de a ver na WiPay. O valor registado à mão entra na receita e não se concilia, porque não está na carteira. O saldo conciliado compara o checkout conferido com os levantamentos.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -467,7 +472,7 @@ export function ReconciliationPanel({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <CashStat label="Entradas" note={`${cashSummary.entriesCount} pagamentos · ${cashSummary.manualEntriesCount} manuais (${formatKz(cashSummary.manualEntriesKz)})`} value={formatKz(cashSummary.entriesKz)} />
+        <CashStat label="Entradas" note={`Checkout ${formatKz(cashSummary.entriesKz - cashSummary.manualEntriesKz)} · Manual ${formatKz(cashSummary.manualEntriesKz)}`} value={formatKz(cashSummary.entriesKz)} />
         <CashStat label="Levantamentos" note={`${cashSummary.withdrawalsCount} levantamentos activos`} value={formatKz(cashSummary.withdrawalsKz)} />
         <CashStat
           label="Saldo disponível"
@@ -477,7 +482,7 @@ export function ReconciliationPanel({
         />
         <CashStat
           label="Saldo conciliado"
-          note={pendingMovements === 0 ? "Tudo conciliado" : `${pendingMovements} movimentos por conciliar · diferença ${formatKz(available - reconciledBalance)}`}
+          note={pendingMovements === 0 ? "Checkout conferido menos levantamentos" : `${pendingMovements} movimentos do checkout por conciliar · diferença ${formatKz(available - reconciledBalance)}`}
           value={formatKz(reconciledBalance)}
         />
       </div>

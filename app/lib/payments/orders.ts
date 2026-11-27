@@ -86,6 +86,8 @@ export type PaymentSummary = {
   refundedAmountKz: number;
   successRate: number;
   averageTicketKz: number;
+  checkoutAcceptedKz: number | null;
+  manualAcceptedKz: number | null;
 };
 
 export type WeeklyPaymentRevenue = {
@@ -112,6 +114,8 @@ const emptyPaymentSummary: PaymentSummary = {
   refundedAmountKz: 0,
   successRate: 0,
   averageTicketKz: 0,
+  checkoutAcceptedKz: null,
+  manualAcceptedKz: null,
 };
 
 function isMissingLedger(error: { code?: string }) {
@@ -126,6 +130,13 @@ export class PeriodClosedError extends Error {
   constructor() {
     super("O mês deste movimento está fechado.");
     this.name = "PeriodClosedError";
+  }
+}
+
+export class ManualReconcileError extends Error {
+  constructor() {
+    super("manual_not_reconcilable");
+    this.name = "ManualReconcileError";
   }
 }
 
@@ -383,12 +394,14 @@ export async function getAcceptedOrders(filters: {
 export async function getAcceptedOrderSalesByProduct() {
   const admin = createSupabaseAdminClient();
   const pageSize = 1000;
-  const salesByProduct: Record<string, { sales: number; revenueKz: number }> = {};
+  const byProduct: Record<string, { sales: number; revenueKz: number }> = {};
+  let checkoutRevenueKz = 0;
+  let manualRevenueKz = 0;
 
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await admin
       .from("payment_orders")
-      .select("course_slug,amount_kz")
+      .select("course_slug,amount_kz,payment_provider")
       .eq("status", "accepted")
       .order("paid_at", { ascending: false })
       .order("reference", { ascending: false })
@@ -398,13 +411,16 @@ export async function getAcceptedOrderSalesByProduct() {
     const page = data ?? [];
 
     for (const order of page) {
-      const product = salesByProduct[order.course_slug] ?? { sales: 0, revenueKz: 0 };
+      const amount = Number(order.amount_kz);
+      const product = byProduct[order.course_slug] ?? { sales: 0, revenueKz: 0 };
       product.sales += 1;
-      product.revenueKz += Number(order.amount_kz);
-      salesByProduct[order.course_slug] = product;
+      product.revenueKz += amount;
+      byProduct[order.course_slug] = product;
+      if (order.payment_provider === "manual") manualRevenueKz += amount;
+      else checkoutRevenueKz += amount;
     }
 
-    if (page.length < pageSize) return salesByProduct;
+    if (page.length < pageSize) return { byProduct, checkoutRevenueKz, manualRevenueKz };
   }
 }
 
@@ -473,6 +489,8 @@ export async function getPaymentSummary(): Promise<PaymentSummary> {
     refundedAmountKz: Number(row.refunded_amount_kz),
     successRate: Number(row.success_rate),
     averageTicketKz: Number(row.average_ticket_kz),
+    checkoutAcceptedKz: row.checkout_accepted_kz == null ? null : Number(row.checkout_accepted_kz),
+    manualAcceptedKz: row.manual_accepted_kz == null ? null : Number(row.manual_accepted_kz),
   };
 }
 
@@ -536,21 +554,35 @@ export async function setOrderReconciled(
   reconciled: boolean,
   userId: string,
 ) {
-  const { data, error } = await createSupabaseAdminClient()
+  const admin = createSupabaseAdminClient();
+  const normalized = reference.toUpperCase();
+  const { data, error } = await admin
     .from("payment_orders")
     .update({
       reconciled_at: reconciled ? new Date().toISOString() : null,
       reconciled_by: reconciled ? userId : null,
       updated_at: new Date().toISOString(),
     })
-    .eq("reference", reference.toUpperCase())
+    .eq("reference", normalized)
     .eq("status", "accepted")
+    .neq("payment_provider", "manual")
     .select("*")
     .maybeSingle();
 
   if (error) throwDatabaseError("reconciling order", error);
+  if (!data) {
+    const existing = await admin
+      .from("payment_orders")
+      .select("payment_provider,status")
+      .eq("reference", normalized)
+      .maybeSingle();
+    if (existing.data?.payment_provider === "manual" && existing.data.status === "accepted") {
+      throw new ManualReconcileError();
+    }
+    return null;
+  }
   touchBackofficeData();
-  return data ? fromDatabase(data) : null;
+  return fromDatabase(data);
 }
 
 /** Só pagamentos manuais podem ser estornados aqui; os da WiPay seguem o webhook. */

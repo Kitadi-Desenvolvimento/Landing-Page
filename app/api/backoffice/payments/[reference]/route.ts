@@ -4,6 +4,7 @@ import {
   isKitadiReference,
   PaymentLedgerNotMigratedError,
   PeriodClosedError,
+  ManualReconcileError,
   refundManualOrder,
   setOrderReconciled,
 } from "../../../../lib/payments/orders";
@@ -41,6 +42,7 @@ export async function PATCH(
       return errorResponse("ledger_not_migrated", 503);
     }
     if (error instanceof PeriodClosedError) return errorResponse("period_closed", 409);
+    if (error instanceof ManualReconcileError) return errorResponse("manual_not_reconcilable", 409);
     console.error("[backoffice] payment update failed", { reference });
     return errorResponse("payment_update_failed", 503);
   }

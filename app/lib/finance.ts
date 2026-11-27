@@ -56,6 +56,8 @@ export type PeriodSummary = {
   unreconciledEntriesCount: number;
   unreconciledWithdrawalsCount: number;
   pendingFixedCount: number;
+  checkoutEntriesKz: number | null;
+  manualEntriesKz: number | null;
   resultKz: number;
   /** Fecho em vigor; nesse caso os valores acima são os registados no fecho. */
   closure: PeriodClosure | null;
@@ -261,6 +263,8 @@ export async function getFinanceData(months = 12): Promise<FinanceData> {
       unreconciledEntriesCount: Number(row.unreconciled_entries_count),
       unreconciledWithdrawalsCount: Number(row.unreconciled_withdrawals_count),
       pendingFixedCount: Number(row.pending_fixed_count),
+      checkoutEntriesKz: row.checkout_entries_kz == null ? null : Number(row.checkout_entries_kz),
+      manualEntriesKz: row.manual_entries_kz == null ? null : Number(row.manual_entries_kz),
       resultKz: shown.entriesKz - shown.refundsKz - shown.expensesKz,
       closure,
     } satisfies PeriodSummary;

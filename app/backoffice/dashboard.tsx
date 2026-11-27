@@ -62,6 +62,8 @@ export default function BackofficeDashboard({
   products,
   catalogReady,
   productSales,
+  checkoutRevenueKz,
+  manualRevenueKz,
   siteAnalytics,
   analyticsReady,
   payments,
@@ -78,6 +80,8 @@ export default function BackofficeDashboard({
   products: DashboardProduct[];
   catalogReady: boolean;
   productSales: ProductSales | null;
+  checkoutRevenueKz: number | null;
+  manualRevenueKz: number | null;
   siteAnalytics: SiteAnalyticsSummary | null;
   analyticsReady: boolean;
   commercialSummary: CommercialSummary | null;
@@ -240,6 +244,8 @@ export default function BackofficeDashboard({
             catalogReady={catalogReady}
             onProductsChange={setCatalogProducts}
             products={catalogProducts}
+            checkoutRevenueKz={checkoutRevenueKz}
+            manualRevenueKz={manualRevenueKz}
             productSales={productSales}
             productAnalytics={siteAnalytics?.products ?? null}
             analyticsReady={analyticsReady}
@@ -309,7 +315,7 @@ function Payments({
       {activeView === "payments" ? (
         <>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <SimpleStat label="Total recebido" value={formatKz(paymentSummary.acceptedAmountKz)} note={`${paymentSummary.acceptedCount} pagamentos confirmados`} />
+            <SimpleStat label="Total recebido" value={formatKz(paymentSummary.acceptedAmountKz)} note={paymentSummary.checkoutAcceptedKz !== null && paymentSummary.manualAcceptedKz !== null ? `Checkout ${formatKz(paymentSummary.checkoutAcceptedKz)} · Manual ${formatKz(paymentSummary.manualAcceptedKz)}` : `${paymentSummary.acceptedCount} pagamentos confirmados`} />
             <SimpleStat label="Por confirmar" value={formatKz(paymentSummary.pendingAmountKz)} note={`${paymentSummary.pendingCount} pagamentos pendentes`} />
             <SimpleStat label="Pagamentos falhados" value={String(paymentSummary.failedCount)} note="rejeitados, expirados ou cancelados" />
             <SimpleStat label="Reembolsos" value={formatKz(paymentSummary.refundedAmountKz)} note={`${paymentSummary.refundedCount} pagamentos reembolsados`} />
@@ -339,7 +345,7 @@ function Payments({
             <section className="mt-5 rounded-[22px] border border-[#eee9e6] bg-white p-5 sm:p-6">
               <SectionHeading
                 title="Entradas a conciliar"
-                subtitle="Pagamentos concluídos (WiPay e manuais). Confirme cada um na WiPay e clique em Conciliar."
+                subtitle="Os pagamentos do checkout confirmam-se na WiPay. Os registos manuais aparecem na lista e não têm conciliação."
               />
               <PaymentTable orders={acceptedPayments} paymentsReady={paymentsReady} showReconciliation />
             </section>
@@ -1828,6 +1834,8 @@ function Products({
   onProductsChange,
   catalogReady,
   productSales,
+  checkoutRevenueKz,
+  manualRevenueKz,
   productAnalytics,
   analyticsReady,
 }: {
@@ -1835,6 +1843,8 @@ function Products({
   onProductsChange: (products: DashboardProduct[]) => void;
   catalogReady: boolean;
   productSales: ProductSales | null;
+  checkoutRevenueKz: number | null;
+  manualRevenueKz: number | null;
   productAnalytics: Record<string, ProductAnalytics> | null;
   analyticsReady: boolean;
 }) {
@@ -1908,7 +1918,7 @@ function Products({
         <SimpleStat
           label="Receita confirmada"
           value={totalRevenue === null ? "—" : formatKz(totalRevenue)}
-          note={productSales === null ? "pagamentos indisponíveis" : "total de pagamentos aceites"}
+          note={productSales === null ? "pagamentos indisponíveis" : checkoutRevenueKz !== null && manualRevenueKz !== null ? `Checkout ${formatKz(checkoutRevenueKz)} · Manual ${formatKz(manualRevenueKz)}` : "total de pagamentos aceites"}
         />
       </div>
       <section className="mt-5 overflow-hidden rounded-[22px] border border-[#eee9e6] bg-white">

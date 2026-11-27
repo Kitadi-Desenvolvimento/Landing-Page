@@ -84,6 +84,12 @@ function CloseModal({ period, onClose }: { period: PeriodSummary; onClose: () =>
       <form className="mt-5" onSubmit={submit}>
         <dl className="grid gap-2 rounded-2xl bg-[#faf8f7] p-4 text-[11px] text-[#514849] sm:grid-cols-2">
           <div className="flex justify-between gap-3"><dt>Entradas</dt><dd className="font-semibold">{formatKz(period.entriesKz)}</dd></div>
+          {period.checkoutEntriesKz !== null && period.manualEntriesKz !== null ? (
+            <>
+              <div className="flex justify-between gap-3"><dt>Checkout</dt><dd className="font-semibold">{formatKz(period.checkoutEntriesKz)}</dd></div>
+              <div className="flex justify-between gap-3"><dt>Manual</dt><dd className="font-semibold">{formatKz(period.manualEntriesKz)}</dd></div>
+            </>
+          ) : null}
           <div className="flex justify-between gap-3"><dt>Estornos</dt><dd className="font-semibold">{formatKz(period.refundsKz)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Despesas</dt><dd className="font-semibold">{formatKz(period.expensesKz)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Resultado</dt><dd className="font-bold text-[#510f1d]">{formatKz(period.resultKz)}</dd></div>
@@ -129,7 +135,7 @@ export function FinancePanel({
         <div>
           <h3 className="text-[14px] font-bold text-[#342c2d]">Fecho mensal</h3>
           <p className="mt-1 max-w-xl text-[11px] leading-5 text-[#9b918d]">
-            Entradas e levantamentos pela data do movimento, estornos pela data do estorno. Um mês só fecha depois de tudo estar conciliado com a WiPay.
+            Entradas e levantamentos pela data do movimento, estornos pela data do estorno. O mês fecha quando o checkout está conciliado com a WiPay. O valor manual entra na receita e fica de fora dessa conferência.
           </p>
         </div>
         <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#a39995]">
@@ -160,7 +166,7 @@ export function FinancePanel({
                 ? "Só é possível fechar depois de o mês terminar."
                 : pending > 0 || pendingFixed > 0
                   ? [
-                      pending > 0 ? `Faltam conciliar ${period.unreconciledEntriesCount} entradas e ${period.unreconciledWithdrawalsCount} levantamentos.` : "",
+                      pending > 0 ? `Faltam conciliar ${period.unreconciledEntriesCount} entradas do checkout e ${period.unreconciledWithdrawalsCount} levantamentos.` : "",
                       pendingFixed > 0 ? `Faltam lançar ${pendingFixed} despesas fixas.` : "",
                     ].filter(Boolean).join(" ")
                   : "Tudo conciliado e lançado. Pode fechar o mês."}
@@ -184,7 +190,13 @@ export function FinancePanel({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Stat label="Entradas" note={`${period.entriesCount} pagamentos`} value={formatKz(period.entriesKz)} />
+        <Stat
+          label="Entradas"
+          note={period.checkoutEntriesKz !== null && period.manualEntriesKz !== null
+            ? `Checkout ${formatKz(period.checkoutEntriesKz)} · Manual ${formatKz(period.manualEntriesKz)}`
+            : `${period.entriesCount} pagamentos`}
+          value={formatKz(period.entriesKz)}
+        />
         <Stat label="Estornos" note={`${period.refundsCount} estornados`} value={formatKz(period.refundsKz)} />
         <Stat label="Despesas" note={`${period.expensesCount} despesas activas`} value={formatKz(period.expensesKz)} />
         <Stat label="Resultado" note="Entradas − estornos − despesas" tone={period.resultKz < 0 ? "warn" : undefined} value={formatKz(period.resultKz)} />

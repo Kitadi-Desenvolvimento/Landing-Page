@@ -65,6 +65,8 @@ export default async function BackofficePage() {
   let paymentsReady = true;
   let payments: KitadiOrder[] = [];
   let productSales: ProductSales | null = {};
+  let checkoutRevenueKz: number | null = null;
+  let manualRevenueKz: number | null = null;
   let weeklyPaymentRevenue: WeeklyPaymentRevenue[] | null = [];
   let analyticsReady = true;
   let siteAnalytics: SiteAnalyticsSummary | null = null;
@@ -86,6 +88,8 @@ export default async function BackofficePage() {
     refundedAmountKz: 0,
     successRate: 0,
     averageTicketKz: 0,
+    checkoutAcceptedKz: null,
+    manualAcceptedKz: null,
   };
   if (role === "admin") {
     try {
@@ -112,12 +116,16 @@ export default async function BackofficePage() {
       ]);
       payments = recentOrders;
       paymentSummary = summary;
-      productSales = acceptedSalesByProduct;
+      productSales = acceptedSalesByProduct.byProduct;
+      checkoutRevenueKz = acceptedSalesByProduct.checkoutRevenueKz;
+      manualRevenueKz = acceptedSalesByProduct.manualRevenueKz;
       weeklyPaymentRevenue = weeklyRevenue;
     } catch (error) {
       if (!(error instanceof PaymentLedgerNotMigratedError)) throw error;
       paymentsReady = false;
       productSales = null;
+      checkoutRevenueKz = null;
+      manualRevenueKz = null;
       weeklyPaymentRevenue = null;
     }
 
@@ -153,6 +161,8 @@ export default async function BackofficePage() {
       finance={finance}
       financeReady={financeReady}
       products={products}
+      checkoutRevenueKz={checkoutRevenueKz}
+      manualRevenueKz={manualRevenueKz}
       productSales={productSales}
       weeklyPaymentRevenue={weeklyPaymentRevenue}
       siteAnalytics={siteAnalytics}

@@ -376,7 +376,7 @@ function unreconciledReading(data: CommandData, actions: CommandData["actions"])
   return {
     title: "Falta conferir",
     summary: `${data.payments.unreconciledKz} já entraram e ainda não foram conferidos, em ${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento" : "pagamentos"}. ${comparedWith(data.payments.unreconciledAmount, data.prior.unreconciledKz, data.prior.label, true)}`,
-    meaning: "O dinheiro foi confirmado e ainda ninguém marcou o pagamento como conferido.",
+    meaning: "Este dinheiro entrou pelo checkout e ainda não foi conferido com a carteira da WiPay.",
     items: actions.map((action) => ({ id: action.id, title: action.title, detail: action.detail })),
     remainder: data.payments.unreconciledCount > actions.length ? `Estão aqui ${actions.length} de ${data.payments.unreconciledCount}.` : "",
   };
@@ -712,9 +712,9 @@ export default function CommandDashboard({
             </select>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Kpi compare={comparedWith(data.metrics.revenueAmount, data.prior.revenueKz, data.prior.label, true)} icon="check" label="Já entrou" note={`${data.payments.acceptedCount} ${data.payments.acceptedCount === 1 ? "pagamento confirmado" : "pagamentos confirmados"}`} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
+            <Kpi compare={comparedWith(data.metrics.revenueAmount, data.prior.revenueKz, data.prior.label, true)} icon="check" label="Já entrou" note={data.metrics.revenueNote} onOpen={() => setReading(paymentStatusReading(data, "accepted"))} value={data.metrics.revenue} />
             <Kpi compare={comparedWith(data.payments.pendingAmount, data.prior.pendingKz, data.prior.label, true)} hot={data.payments.pendingCount > 0} icon="wait" label="Ainda não pagou" note={`${data.payments.pendingCount} ${data.payments.pendingCount === 1 ? "pagamento à espera" : "pagamentos à espera"}`} onOpen={() => setReading(paymentStatusReading(data, "pending"))} tone="watch" value={data.payments.pendingKz} />
-            <Kpi compare={comparedWith(data.payments.unreconciledAmount, data.prior.unreconciledKz, data.prior.label, true)} hot={data.payments.unreconciledCount > 0} icon="flag" label="Falta conferir" note={`${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento entrou e ainda não foi conferido" : "pagamentos entraram e ainda não foram conferidos"}`} onOpen={() => setReading(unreconciledReading(data, paymentActions))} tone="risk" value={data.payments.unreconciledKz} />
+            <Kpi compare={comparedWith(data.payments.unreconciledAmount, data.prior.unreconciledKz, data.prior.label, true)} hot={data.payments.unreconciledCount > 0} icon="flag" label="Falta conferir" note={`${data.payments.unreconciledCount} ${data.payments.unreconciledCount === 1 ? "pagamento do checkout ainda não foi conferido" : "pagamentos do checkout ainda não foram conferidos"}`} onOpen={() => setReading(unreconciledReading(data, paymentActions))} tone="risk" value={data.payments.unreconciledKz} />
             <Kpi compare={data.payments.resultAmount !== null && data.prior.resultKz !== null ? comparedWith(data.payments.resultAmount, data.prior.resultKz, data.prior.label, true) : undefined} icon="layers" label="Resultado do mês" note={data.payments.resultKz ? "Dinheiro que entrou menos as despesas" : "Este número só aparece quando o período escolhido é o mês"} onOpen={() => setReading(resultReading(data))} value={data.payments.resultKz ?? "—"} />
           </div>
           <section className="rounded-2xl border border-[#ece7e3] bg-white p-5 sm:p-6">

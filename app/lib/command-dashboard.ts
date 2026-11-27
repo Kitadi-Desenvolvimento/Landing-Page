@@ -48,6 +48,7 @@ type OrderRow = {
   refunded_at: string | null;
   created_by: string | null;
   reconciled_at: string | null;
+  payment_provider: string | null;
 };
 
 type StageClosure = {
@@ -71,6 +72,10 @@ type OpportunityRow = {
   payment_status: string | null;
   contact: { name?: string } | { name?: string }[] | null;
 };
+
+function awaitsCheckoutCheck(order: OrderRow) {
+  return order.status === "accepted" && order.payment_provider !== "manual" && !order.reconciled_at;
+}
 
 const stageLabels: Record<string, string> = {
   new_contact: "Contacto novo",
@@ -578,7 +583,7 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
   if (!prior) throw new Error("invalid_period");
   const admin = createSupabaseAdminClient();
   const objectiveSelect = "id,title,scope_type,area_id,assigned_to,period_type,period_start,due_date,product_id,parent_objective_id,value_type,target_value,unit,active,archived";
-  const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,refunded_at,created_by,reconciled_at";
+  const orderSelect = "reference,amount_kz,course_slug,product_title,status,created_at,paid_at,refunded_at,created_by,reconciled_at,payment_provider";
   const opportunitySelect = "id,contact_id,title,stage,amount_kz,product_slug,follow_up_at,created_by,created_at,payment_status,contact:crm_contacts!crm_opportunities_contact_id_fkey(name)";
   const [objectives, memberships, products, people, blocks, steps, activity] = await Promise.all([
     pageRows<ObjectiveRow>((from) => admin.from("objectives").select(objectiveSelect).eq("archived", false).order("title").range(from, from + 999)),
@@ -613,7 +618,7 @@ async function loadCommandSources(userId: string, period: CommandPeriod, bounds:
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).neq("status", "accepted").gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "refunded").gte("refunded_at", salesFrom).lt("refunded_at", bounds.to).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "pending").range(from, from + 999)),
-    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").is("reconciled_at", null).range(from, from + 999)),
+    pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").neq("payment_provider", "manual").is("reconciled_at", null).range(from, from + 999)),
     pageRows<OrderRow>((from) => admin.from("payment_orders").select(orderSelect).eq("status", "accepted").gte("reconciled_at", prior.from).lt("reconciled_at", bounds.to).range(from, from + 999)),
     pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).in("stage", ["new_contact", "in_conversation", "proposal_sent"]).range(from, from + 999)),
     pageRows<OpportunityRow>((from) => admin.from("crm_opportunities").select(opportunitySelect).gte("created_at", prior.from).lt("created_at", bounds.to).range(from, from + 999)),
@@ -830,6 +835,12 @@ export async function buildCommandDashboard(input: {
   );
   const revenueSeries = buildRevenueSeries(input.period, bounds.fromDate, bounds.toDate, acceptedInWindow);
   const revenueKz = acceptedInWindow.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
+  const checkoutRevenueKz = acceptedInWindow
+    .filter((order) => order.payment_provider !== "manual")
+    .reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
+  const manualRevenueKz = acceptedInWindow
+    .filter((order) => order.payment_provider === "manual")
+    .reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
 
   const filteredOrders = orders.filter((order) => {
     const moment = actionAt(order);
@@ -838,7 +849,7 @@ export async function buildCommandDashboard(input: {
     if (!productOk(order.course_slug)) return false;
     if (input.paymentStatus === "accepted" && order.status !== "accepted") return false;
     if (input.paymentStatus === "pending" && order.status !== "pending") return false;
-    if (input.paymentStatus === "unreconciled" && !(order.status === "accepted" && !order.reconciled_at)) return false;
+    if (input.paymentStatus === "unreconciled" && !awaitsCheckoutCheck(order)) return false;
     return true;
   });
   const accepted = filteredOrders.filter((order) => order.status === "accepted");
@@ -848,9 +859,9 @@ export async function buildCommandDashboard(input: {
     (input.paymentStatus === "all" ||
       (input.paymentStatus === "accepted" && order.status === "accepted") ||
       (input.paymentStatus === "pending" && order.status === "pending") ||
-      (input.paymentStatus === "unreconciled" && order.status === "accepted" && !order.reconciled_at));
+      (input.paymentStatus === "unreconciled" && awaitsCheckoutCheck(order)));
   const pending = orders.filter((order) => order.status === "pending" && orderVisible(order));
-  const unreconciled = orders.filter((order) => order.status === "accepted" && !order.reconciled_at && orderVisible(order));
+  const unreconciled = orders.filter((order) => awaitsCheckoutCheck(order) && orderVisible(order));
   const acceptedKz = accepted.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
   const pendingKz = pending.reduce((sum, order) => sum + Number(order.amount_kz ?? 0), 0);
 
@@ -1140,7 +1151,7 @@ export async function buildCommandDashboard(input: {
     if (!productOk(order.course_slug)) return false;
     if (input.paymentStatus === "accepted" && order.status !== "accepted") return false;
     if (input.paymentStatus === "pending" && order.status !== "pending") return false;
-    if (input.paymentStatus === "unreconciled" && !(order.status === "accepted" && !order.reconciled_at)) return false;
+    if (input.paymentStatus === "unreconciled" && !awaitsCheckoutCheck(order)) return false;
     return true;
   }) : [];
   const priorAccepted = priorOrders.filter((order) => order.status === "accepted");
@@ -1150,7 +1161,7 @@ export async function buildCommandDashboard(input: {
     return order.status === "accepted" && order.created_at < priorWindow.to && recordedAt(order) >= priorWindow.to;
   }) : [];
   const priorUnreconciled = priorWindow ? orders.filter((order) => {
-    if (order.status !== "accepted" || !orderVisible(order) || recordedAt(order) >= priorWindow.to) return false;
+    if (order.status !== "accepted" || order.payment_provider === "manual" || !orderVisible(order) || recordedAt(order) >= priorWindow.to) return false;
     return !order.reconciled_at || order.reconciled_at >= priorWindow.to;
   }) : [];
   const priorStillOpen = priorWindow ? opportunities.filter((opportunity) => {
@@ -1265,7 +1276,7 @@ export async function buildCommandDashboard(input: {
     metrics: {
       revenue: formatKz(revenueKz),
       revenueAmount: revenueKz,
-      revenueNote: `${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento já entrou" : "pagamentos já entraram"}`,
+      revenueNote: `Checkout ${formatKz(checkoutRevenueKz)} · Manual ${formatKz(manualRevenueKz)}`,
       pipeline: formatKz(pipelineKz),
       pipelineAmount: pipelineKz,
       pipelineNote: overdueFollowUps.length === 0
@@ -1276,7 +1287,7 @@ export async function buildCommandDashboard(input: {
     },
     revenueSeries,
     sentences: [
-      `Já entraram ${formatKz(revenueKz)}, em ${acceptedInWindow.length} ${acceptedInWindow.length === 1 ? "pagamento" : "pagamentos"}.`,
+      `Já entraram ${formatKz(revenueKz)}: ${formatKz(checkoutRevenueKz)} do checkout e ${formatKz(manualRevenueKz)} registados à mão.`,
       `Ainda estão por fechar ${formatKz(pipelineKz)}. ${overdueFollowUps.length} ${overdueFollowUps.length === 1 ? "contacto é para hoje" : "contactos são para hoje"}.`,
       `${attentionCount} ${attentionCount === 1 ? "meta pede uma decisão" : "metas pedem uma decisão"}. ${paceSentence}.`,
     ],

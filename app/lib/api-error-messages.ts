@@ -156,6 +156,7 @@ const apiErrorMessages: Record<string, string> = {
   invalid_withdrawal: "Verifique o valor, a referência WiPay e a data. A data não pode ser futura.",
   invalid_variant: "Escolha uma variante válida do produto.",
   payment_not_found_or_not_accepted: "Só pagamentos concluídos podem ser alterados.",
+  manual_not_reconcilable: "Um pagamento registado à mão não se concilia com a WiPay.",
   withdrawal_not_found_or_voided: "Este levantamento já foi anulado ou não existe.",
   period_closed: "Este mês está fechado. Reabra-o em Fecho e relatórios para alterar.",
   invalid_expense: "Verifique a data, a categoria, o fornecedor, a descrição e o valor. A data não pode ser futura.",
