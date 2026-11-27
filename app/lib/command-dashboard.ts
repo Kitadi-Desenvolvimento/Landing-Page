@@ -1347,5 +1347,5 @@ export async function buildCommandDashboard(input: {
     products: products.map((product) => ({ slug: product.slug, title: product.title })),
     prior,
   };
-  return { dashboard, noticeSteps: commercialSteps };
+  return { dashboard };
 }

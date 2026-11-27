@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { loadCommercialSteps, scheduleDueCommercialNotices } from "../../../lib/commercial-steps";
+import { loadCommercialSteps } from "../../../lib/commercial-steps";
 import { personLabel } from "../../../lib/person-label";
 import { touchBackofficeData } from "../../../lib/read-cache";
 import { listVisibleStaff } from "../../../lib/staff-profiles";
@@ -108,7 +108,6 @@ export async function GET() {
   let steps: Awaited<ReturnType<typeof loadCommercialSteps>> = [];
   try {
     steps = await loadCommercialSteps();
-    scheduleDueCommercialNotices(steps);
   } catch (noticeError) {
     console.error("[commercial] step notices failed", noticeError instanceof Error ? noticeError.message : "unknown");
   }

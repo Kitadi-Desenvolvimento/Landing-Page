@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadCommercialSteps, scheduleDueCommercialNotices } from "../../../lib/commercial-steps";
+import { loadCommercialSteps } from "../../../lib/commercial-steps";
 import { loadStaffNotifications } from "../../../lib/staff-notifications";
 import { requireBackofficeUser } from "../../../lib/supabase/require-admin";
 
@@ -15,7 +15,6 @@ export async function GET() {
     let steps: Awaited<ReturnType<typeof loadCommercialSteps>> | undefined;
     try {
       steps = await loadCommercialSteps();
-      scheduleDueCommercialNotices(steps);
     } catch (error) {
       console.error("[backoffice] commercial notices failed", error instanceof Error ? error.message : "unknown");
     }
