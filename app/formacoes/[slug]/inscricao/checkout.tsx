@@ -9,6 +9,7 @@ import {
   type Course,
 } from "../../../course-data";
 import type { CrossSellOffer } from "../../../lib/cross-sell";
+import { addCartLine, removeCartLine } from "../../../cart-storage";
 import CheckoutCompanions from "./checkout-companions";
 import { getSiteAnalyticsSessionId } from "../../../lib/site-analytics-client";
 import SectionContainer from "../../../section-container";
@@ -330,8 +331,21 @@ export default function Checkout({
     : undefined;
 
   function toggleExtra(offer: CrossSellOffer) {
+    const selected = extraSlugs.includes(offer.slug);
+    if (selected) {
+      removeCartLine(offer.slug);
+    } else {
+      addCartLine({
+        slug: offer.slug,
+        variantId: offer.variantId,
+        title: offer.title,
+        variantLabel: offer.variantLabel,
+        amountKz: offer.amountKz,
+        image: offer.image,
+      });
+    }
     setExtraSlugs((current) =>
-      current.includes(offer.slug)
+      selected
         ? current.filter((slug) => slug !== offer.slug)
         : [...current, offer.slug],
     );

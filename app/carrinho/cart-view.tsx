@@ -187,6 +187,13 @@ export default function CartView({
         <SectionContainer className="px-6 pt-28 sm:pt-32">
           <p className="section-eyebrow mt-7 text-[#cda45c]">Pagamento único</p>
           <h1 className="section-heading mt-3 max-w-[800px]">Carrinho</h1>
+          <p className="mt-3 text-[15px] font-medium text-white/80">
+            {lines.length === 0
+              ? "Nenhum produto"
+              : lines.length === 1
+                ? "1 produto"
+                : `${lines.length} produtos`}
+          </p>
           <p className="content-card-copy mt-3 max-w-[620px] text-white/75">
             Junte os produtos e pague o total numa só cobrança.
           </p>
@@ -288,7 +295,12 @@ export default function CartView({
               )}
 
               <aside className="rounded-[28px] border border-[#e7e1df] bg-white p-6 sm:p-8 md:sticky md:top-6 md:self-start">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ae7d32]">Resumo</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[#ae7d32]">Resumo</p>
+                  <p className="text-xs font-semibold text-[#510f1d]">
+                    {payable.length === 1 ? "1 produto" : `${payable.length} produtos`}
+                  </p>
+                </div>
                 <ul className="mt-4 space-y-4">
                   {lines.map((line) => (
                     <li className="flex gap-3" key={line.slug}>

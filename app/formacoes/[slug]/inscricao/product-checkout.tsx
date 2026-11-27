@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { addCartLine, removeCartLine } from "../../../cart-storage";
 import { getProductPath } from "../../../course-data";
 import type { ProductData } from "../../../product-types";
 import type { CrossSellOffer } from "../../../lib/cross-sell";
@@ -71,8 +72,21 @@ export default function ProductCheckout({
     : priceOf(product.priceAmount) + extras.reduce((sum, item) => sum + priceOf(item.amountKz), 0);
 
   function toggleExtra(offer: CrossSellOffer) {
+    const selected = extraSlugs.includes(offer.slug);
+    if (selected) {
+      removeCartLine(offer.slug);
+    } else {
+      addCartLine({
+        slug: offer.slug,
+        variantId: offer.variantId,
+        title: offer.title,
+        variantLabel: offer.variantLabel,
+        amountKz: offer.amountKz,
+        image: offer.image,
+      });
+    }
     setExtraSlugs((current) =>
-      current.includes(offer.slug)
+      selected
         ? current.filter((slug) => slug !== offer.slug)
         : [...current, offer.slug],
     );

@@ -1,10 +1,5 @@
 {
   "pages": {
-    "/api/mercado/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/mercado/route.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -21,10 +16,25 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/site-analytics/route.js"
     ],
-    "/_not-found/page": [
+    "/api/mercado/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/mercado/route.js"
+    ],
+    "/produtos/[slug]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/produtos/[slug]/page.js"
+    ],
+    "/formacoes/[slug]/inscricao/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/formacoes/[slug]/inscricao/page.js"
+    ],
+    "/carrinho/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/carrinho/page.js"
     ]
   }
 }

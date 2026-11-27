@@ -1,4 +1,8 @@
 {
+  "/api/site-analytics/route": "app/api/site-analytics/route.js",
   "/api/mercado/route": "app/api/mercado/route.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/produtos/[slug]/page": "app/produtos/[slug]/page.js",
+  "/formacoes/[slug]/inscricao/page": "app/formacoes/[slug]/inscricao/page.js",
+  "/carrinho/page": "app/carrinho/page.js"
 }
