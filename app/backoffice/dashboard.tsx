@@ -994,6 +994,7 @@ function Commercial({ products, focusId = null, focusNonce = 0 }: { products: Da
           onSaved={updateOpportunity}
           opportunity={selectedOpportunity}
           contactOpportunities={selectedContactOpportunities}
+          products={products}
           staff={staff}
         />
       ) : null}
@@ -1350,6 +1351,7 @@ function CommercialDetailsModal({
   opportunity,
   contactOpportunities,
   contacts,
+  products,
   staff,
   onClose,
   onContactAction,
@@ -1358,6 +1360,7 @@ function CommercialDetailsModal({
   opportunity: CommercialOpportunity;
   contactOpportunities: CommercialOpportunity[];
   contacts: CommercialContact[];
+  products: DashboardProduct[];
   staff: CommercialStaff[];
   onClose: () => void;
   onContactAction: () => void;
@@ -1371,6 +1374,9 @@ function CommercialDetailsModal({
   );
   const [lostReason, setLostReason] = useState(opportunity.lost_reason ?? "");
   const [ownerId, setOwnerId] = useState(opportunity.contact.owner_id ?? "");
+  const canEditOffer = opportunity.source === "manual" && !opportunity.payment_reference;
+  const [productSlug, setProductSlug] = useState(opportunity.product_slug ?? "");
+  const [amountKz, setAmountKz] = useState(opportunity.amount_kz === null ? "" : String(opportunity.amount_kz));
   const [history, setHistory] = useState<CommercialHistory[]>([]);
   const [detailOpportunities, setDetailOpportunities] = useState(contactOpportunities);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -1426,6 +1432,18 @@ function CommercialDetailsModal({
       stageChanged,
       followUpState(opportunity) !== null,
     );
+    const amountValue = amountKz.trim();
+    const parsedAmount = amountValue ? Number(amountValue) : null;
+    if (
+      canEditOffer &&
+      (parsedAmount !== null && (!Number.isSafeInteger(parsedAmount) || parsedAmount < 0 || parsedAmount > 2_000_000_000))
+    ) {
+      setError("Indique o valor em Kz, sem cêntimos, ou deixe o campo vazio.");
+      return;
+    }
+    const selectedProduct = products.find((product) => product.slug === productSlug);
+    const nextProductTitle = selectedProduct?.title
+      ?? (productSlug && productSlug === opportunity.product_slug ? opportunity.product_title : null);
     setSaving(true);
     setError("");
     try {
@@ -1444,6 +1462,10 @@ function CommercialDetailsModal({
           lostReason: stage === "lost"
             ? stageChanged ? stageChangeReason.trim() : lostReason.trim()
             : "",
+          ...(canEditOffer ? {
+            productSlug: productSlug || null,
+            amountKz: parsedAmount,
+          } : {}),
         }),
       });
       const result: unknown = await response.json();
@@ -1457,6 +1479,11 @@ function CommercialDetailsModal({
         lost_reason: stage === "lost" ? lostReason.trim() : null,
         notes,
         follow_up_at: nextFollowUp,
+        ...(canEditOffer ? {
+          product_slug: productSlug || null,
+          product_title: nextProductTitle,
+          amount_kz: parsedAmount,
+        } : {}),
         contact: { ...opportunity.contact, owner_id: ownerId || null },
         converted_at: stage === "converted"
           ? opportunity.converted_at ?? new Date().toISOString()
@@ -1511,8 +1538,8 @@ function CommercialDetailsModal({
           {company ? <DetailItem label="Empresa associada" value={company.name} /> : null}
           <DetailItem label="Email" value={opportunity.contact.email || "Não indicado"} />
           <DetailItem label="Telefone" value={opportunity.contact.phone || "Não indicado"} />
-          <DetailItem label="Produto / serviço" value={opportunity.product_title || "Por definir"} />
-          <DetailItem label="Valor potencial" value={opportunity.amount_kz === null ? "Por definir" : formatKz(opportunity.amount_kz)} />
+          {canEditOffer ? null : <DetailItem label="Produto / serviço" value={opportunity.product_title || "Por definir"} />}
+          {canEditOffer ? null : <DetailItem label="Valor potencial" value={opportunity.amount_kz === null ? "Por definir" : formatKz(opportunity.amount_kz)} />}
           <DetailItem label="Origem" value={opportunity.source === "checkout" ? "Checkout do site" : "Manual"} />
           <DetailItem label="Criado em" value={formatPaymentDate(opportunity.created_at)} />
           {opportunity.payment_reference ? <DetailItem label="Referência de pagamento" value={opportunity.payment_reference} /> : null}
@@ -1562,6 +1589,24 @@ function CommercialDetailsModal({
               Próximo contacto
               <DateField className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" mode="datetime" onChange={(event) => setFollowUpAt(event.target.value)} value={followUpAt} />
             </label>
+            {canEditOffer ? (
+              <>
+                <label className="text-[11px] font-semibold text-[#514849]">
+                  Produto / serviço
+                  <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setProductSlug(event.target.value)} value={productSlug}>
+                    <option value="">Sem produto definido</option>
+                    {opportunity.product_slug && !products.some((product) => product.slug === opportunity.product_slug) ? (
+                      <option value={opportunity.product_slug}>{opportunity.product_title || opportunity.product_slug}</option>
+                    ) : null}
+                    {products.map((product) => <option key={product.slug} value={product.slug}>{product.title}</option>)}
+                  </select>
+                </label>
+                <label className="text-[11px] font-semibold text-[#514849]">
+                  Valor potencial (Kz)
+                  <input className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] px-3 text-[12px]" inputMode="numeric" min="0" onChange={(event) => setAmountKz(event.target.value)} step="1" type="number" value={amountKz} />
+                </label>
+              </>
+            ) : null}
             <label className="text-[11px] font-semibold text-[#514849] sm:col-span-2">
               Comercial responsável
               <select className="mt-1.5 h-11 w-full rounded-xl border border-[#e7e1df] bg-white px-3 text-[12px]" onChange={(event) => setOwnerId(event.target.value)} value={ownerId}>

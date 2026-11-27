@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isValidStageChangeReason } from "../../../../lib/commercial-stage";
+import { getProductBySlugForDelivery } from "../../../../lib/products";
 import { touchBackofficeData } from "../../../../lib/read-cache";
 import { listVisibleStaff } from "../../../../lib/staff-profiles";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
@@ -7,10 +8,72 @@ import { requireAdmin } from "../../../../lib/supabase/require-admin";
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const stages = new Set(["new_contact", "in_conversation", "proposal_sent", "converted", "lost"]);
 const missingCrmCodes = new Set(["42P01", "PGRST202", "PGRST204", "PGRST205"]);
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+type ManualOfferUpdate = {
+  product_slug: string | null;
+  product_title: string | null;
+  amount_kz: number | null;
+};
+
+function readAmount(value: unknown) {
+  if (value === null || value === "") return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0 || value > 2_000_000_000) {
+    return undefined;
+  }
+  return value;
+}
+
+async function readManualOfferUpdate(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<ManualOfferUpdate | null | "invalid" | "unavailable"> {
+  if (!("productSlug" in body) && !("amountKz" in body)) return null;
+  const admin = createSupabaseAdminClient();
+  const current = await admin
+    .from("crm_opportunities")
+    .select("source,payment_reference,product_slug,product_title,amount_kz")
+    .eq("id", id)
+    .maybeSingle();
+  if (current.error) {
+    if (missingCrmCodes.has(current.error.code ?? "")) return "unavailable";
+    console.error("[commercial] loading opportunity offer failed", current.error.code ?? "unknown");
+    return "unavailable";
+  }
+  if (!current.data || current.data.source !== "manual" || current.data.payment_reference) return null;
+
+  const productSlug = "productSlug" in body ? body.productSlug : current.data.product_slug;
+  const amount = "amountKz" in body ? readAmount(body.amountKz) : undefined;
+  if (
+    (productSlug !== null && (typeof productSlug !== "string" || !slugPattern.test(productSlug))) ||
+    ("amountKz" in body && amount === undefined)
+  ) {
+    return "invalid";
+  }
+
+  let productTitle: string | null = null;
+  if (typeof productSlug === "string") {
+    try {
+      const product = await getProductBySlugForDelivery(productSlug);
+      productTitle = product?.data.title
+        ?? (productSlug === current.data.product_slug ? current.data.product_title : null);
+    } catch (error) {
+      console.error("[commercial] resolving product failed", error instanceof Error ? error.message : "unknown");
+      return "unavailable";
+    }
+    if (!productTitle) return "invalid";
+  }
+
+  return {
+    product_slug: typeof productSlug === "string" ? productSlug : null,
+    product_title: productTitle,
+    amount_kz: "amountKz" in body ? amount ?? null : current.data.amount_kz,
+  };
+}
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {
   const authorization = await requireAdmin();
@@ -196,6 +259,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }
   }
 
+  const offer = await readManualOfferUpdate(id, body as Record<string, unknown>);
+  if (offer === "invalid") {
+    return NextResponse.json({ error: "invalid_update" }, { status: 400 });
+  }
+  if (offer === "unavailable") {
+    return NextResponse.json({ error: "commercial_unavailable" }, { status: 503 });
+  }
+
   const { data, error } = await createSupabaseAdminClient().rpc(
     "backoffice_move_crm_contact_stage",
     {
@@ -226,6 +297,22 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   }
   if (data === 0) {
     return NextResponse.json({ error: "commercial_stage_locked" }, { status: 409 });
+  }
+
+  if (offer) {
+    const offerUpdate = await createSupabaseAdminClient()
+      .from("crm_opportunities")
+      .update(offer)
+      .eq("id", id)
+      .eq("source", "manual")
+      .is("payment_reference", null);
+    if (offerUpdate.error) {
+      if (missingCrmCodes.has(offerUpdate.error.code ?? "")) {
+        return NextResponse.json({ error: "commercial_not_configured" }, { status: 503 });
+      }
+      console.error("[commercial] saving opportunity offer failed", offerUpdate.error.code ?? "unknown");
+      return NextResponse.json({ error: "commercial_update_failed" }, { status: 500 });
+    }
   }
 
   if (ownerId !== undefined) {
