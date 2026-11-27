@@ -168,7 +168,31 @@ function commercialNotices(step: CommercialStep, ownerName: string): StaffNotifi
   return notices;
 }
 
-const noticeKeyPattern = /^[\w:+.-]{1,300}$/;
+function isNoticeKey(key: string) {
+  return key.length > 0 && key.length <= 500 && !/[\u0000-\u001f]/.test(key);
+}
+
+export async function dismissStaffNotifications(userId: string, keys: string[]) {
+  const unique = [...new Set(keys)];
+  if (unique.length === 0 || unique.length > 3000 || unique.some((key) => !isNoticeKey(key))) {
+    return "invalid" as const;
+  }
+  const admin = createSupabaseAdminClient();
+  for (let index = 0; index < unique.length; index += 100) {
+    const slice = unique.slice(index, index + 100);
+    const { error } = await admin
+      .from("staff_notification_dismissals")
+      .upsert(
+        slice.map((noticeKey) => ({ user_id: userId, notice_key: noticeKey })),
+        { onConflict: "user_id,notice_key" },
+      );
+    if (error) {
+      if (isStaffSchemaMissing(error.code)) return "missing" as const;
+      throw error;
+    }
+  }
+  return "ok" as const;
+}
 
 async function hiddenNoticeKeys(userId: string, keys: string[]) {
   const hidden = new Set<string>();
@@ -190,24 +214,6 @@ async function hiddenNoticeKeys(userId: string, keys: string[]) {
     }
   }
   return hidden;
-}
-
-export async function dismissStaffNotifications(userId: string, keys: string[]) {
-  const unique = [...new Set(keys)];
-  if (unique.length === 0 || unique.length > 200 || unique.some((key) => !noticeKeyPattern.test(key))) {
-    return "invalid" as const;
-  }
-  const { error } = await createSupabaseAdminClient()
-    .from("staff_notification_dismissals")
-    .upsert(
-      unique.map((noticeKey) => ({ user_id: userId, notice_key: noticeKey })),
-      { onConflict: "user_id,notice_key" },
-    );
-  if (error) {
-    if (isStaffSchemaMissing(error.code)) return "missing" as const;
-    throw error;
-  }
-  return "ok" as const;
 }
 
 export async function loadStaffNotifications(input: {
