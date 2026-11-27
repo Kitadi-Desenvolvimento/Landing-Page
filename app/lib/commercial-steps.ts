@@ -147,16 +147,14 @@ export async function loadCommercialSteps(now = Date.now()) {
   });
 }
 
-function noticeKey(step: CommercialStep, kind: "stage" | "follow") {
-  return kind === "stage"
-    ? `stage:${step.id}:${step.stage}:${step.enteredAt}`
-    : `follow:${step.id}:${step.followUpAt}`;
+function noticeKey(step: CommercialStep) {
+  return `stage:${step.id}:${step.stage}:${step.enteredAt}`;
 }
 
 function deliveryKeys(step: CommercialStep, userId: string) {
   if (!step.stageDue) return [];
   const suffix = step.createdBy ? "" : `:to:${userId}`;
-  return [`${noticeKey(step, "stage")}${suffix}`];
+  return [`${noticeKey(step)}${suffix}`];
 }
 
 async function adminRecipients() {
@@ -225,8 +223,6 @@ export async function notifyDueCommercialSteps(steps: CommercialStep[]) {
       contactName: delivery.step.contactName,
       stageLabel: stageStepLimits[delivery.step.stage].label,
       days: delivery.step.days,
-      stageDue: pending.some((key) => key.startsWith("stage:")),
-      followDue: pending.some((key) => key.startsWith("follow:")),
       nextStep: delivery.step.next,
     });
     if (!result.ok) {

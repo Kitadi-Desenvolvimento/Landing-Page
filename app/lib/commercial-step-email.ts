@@ -20,8 +20,6 @@ export async function sendCommercialStepEmail(input: {
   contactName: string;
   stageLabel: string;
   days: number;
-  stageDue: boolean;
-  followDue: boolean;
   nextStep: string;
 }): Promise<SendResult> {
   const apiKey = process.env.BIRD_API_KEY?.trim();
@@ -31,24 +29,18 @@ export async function sendCommercialStepEmail(input: {
   const name = personLabel(input.displayName, input.email);
   const subject = `Próximo passo na oportunidade ${input.title}`;
   const stay = `A oportunidade «${input.title}», do contacto ${input.contactName || "sem nome"}, está em ${input.stageLabel} há ${input.days} ${input.days === 1 ? "dia" : "dias"}.`;
-  const follow = "O seguimento é para hoje.";
-  const lines = [
+  const text = [
     `Olá, ${name}.`,
     "",
     stay,
-    input.stageDue ? input.nextStep : "",
-    input.followDue ? follow : "",
-    input.stageDue ? "" : input.nextStep,
+    input.nextStep,
     "",
     "Abra o comercial no backoffice e dê este passo.",
-  ].filter((line, index, all) => line !== "" || all[index - 1] !== "");
-  const text = lines.join("\n");
+  ].join("\n");
   const html = [
     `<p>Olá, ${escapeHtml(name)}.</p>`,
     `<p>${escapeHtml(stay)}</p>`,
-    input.stageDue ? `<p>${escapeHtml(input.nextStep)}</p>` : "",
-    input.followDue ? `<p>${escapeHtml(follow)}</p>` : "",
-    input.stageDue ? "" : `<p>${escapeHtml(input.nextStep)}</p>`,
+    `<p>${escapeHtml(input.nextStep)}</p>`,
     "<p>Abra o comercial no backoffice e dê este passo.</p>",
   ].join("");
   const host = apiKey.startsWith("bk_eu1_")
